@@ -1,0 +1,49 @@
+rules_version='2'
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function hasPatientAttachmentFields(patientId) {
+      return request.resource.data.nombre is string
+        && request.resource.data.tipo is string
+        && request.resource.data.url is string
+        && request.resource.data.storagePath is string
+        && request.resource.data.storagePath.matches('^pacientes/' + patientId + '/.+');
+    }
+
+    match /pacientes/{patientId} {
+      allow read, write: if isSignedIn();
+
+      match /historial/{entryId} {
+        allow read, write: if isSignedIn();
+      }
+
+      match /odontograma/{odontogramId} {
+        allow read, write: if isSignedIn();
+      }
+
+      match /adjuntos/{attachmentId} {
+        allow read, write: if isSignedIn() && hasPatientAttachmentFields(patientId);
+      }
+    }
+
+    match /servicios/{serviceId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /cotizaciones/{cotizacionId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /paquetes/{paqueteId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
