@@ -12,6 +12,16 @@ import { BottomNav } from "./BottomNav";
 import { useApp } from '@/state/AppContext';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 // Componente Header Interno para poder usar el hook useSidebar
 const HeaderOriginal = () => {
@@ -19,6 +29,8 @@ const HeaderOriginal = () => {
   const { currentUser, logout, setSearchQuery } = useApp();
   const [searchInput, setSearchInput] = useState('');
   const navigate = useNavigate();
+
+  const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -77,12 +89,29 @@ const HeaderOriginal = () => {
         <Button
           variant="ghost"
           size="icon"
-          onClick={handleLogout}
+          onClick={() => setLogoutDialogOpen(true)}
           aria-label="Cerrar sesión"
         >
           <LogOut className="h-5 w-5" />
         </Button>
       </div>
+
+      <AlertDialog open={logoutDialogOpen} onOpenChange={setLogoutDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Cerrar sesión?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se cerrará tu sesión actual. Vuelve a iniciar sesión para continuar usando la plataforma.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleLogout} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </header>
   );
 };

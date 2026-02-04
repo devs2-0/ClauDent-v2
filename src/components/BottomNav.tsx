@@ -1,13 +1,24 @@
-import React from "react";
+import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Home, Users, Stethoscope, FileText, LogOut } from "lucide-react";
 import { useApp } from "@/state/AppContext";
 import { cn } from "@/lib/utils";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 export function BottomNav() {
   const location = useLocation();
   const { logout } = useApp();
   const navigate = useNavigate();
+  const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
 
   const handleLogout = () => {
     logout();
@@ -43,15 +54,32 @@ export function BottomNav() {
           </Link>
         );
       })}
-      
+
       {/* Botón de Cerrar Sesión (Solo Móvil) */}
       <button
-        onClick={handleLogout}
+        onClick={() => setLogoutDialogOpen(true)}
         className="flex flex-col items-center justify-center gap-1 w-full h-full text-[10px] font-medium text-destructive hover:text-destructive/80 transition-colors"
       >
         <LogOut className="h-5 w-5" />
         <span>Salir</span>
       </button>
+
+      <AlertDialog open={logoutDialogOpen} onOpenChange={setLogoutDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirmar cierre de sesión</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se cerrará tu sesión actual. Asegúrate de haber guardado tu trabajo antes de continuar.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleLogout} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Cerrar sesión
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

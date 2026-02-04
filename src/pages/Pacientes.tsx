@@ -31,6 +31,16 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Separator } from '@/components/ui/separator';
 import InitialHistoryModal from '@/components/InitialHistoryModal';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 const initialFormData: Omit<Patient, 'id' | 'fechaRegistro'> = {
   nombres: '',
@@ -59,7 +69,9 @@ const Pacientes: React.FC = () => {
   const [filterStatus, setFilterStatus] = useState<'all' | 'activo' | 'inactivo'>('all');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingPatient, setEditingPatient] = useState<string | null>(null);
-  const [isFormLoading, setIsFormLoading] = useState(false); 
+  const [isFormLoading, setIsFormLoading] = useState(false);
+  const [pendingAction, setPendingAction] = useState<'create' | 'update'>('create');
+  const [isConfirmationOpen, setIsConfirmationOpen] = useState(false);
   const [crearHistorial, setCrearHistorial] = useState(false);
   
   const [historyModalState, setHistoryModalState] = useState<{isOpen: boolean; patientId: string | null}>({
@@ -113,15 +125,18 @@ const Pacientes: React.FC = () => {
     setIsDialogOpen(true);
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleRequestSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    setIsFormLoading(true);
-    
     if (!formData.nombres || !formData.apellidos || !formData.fechaNacimiento) {
-      toast.error("Nombres, Apellidos y Fecha de Nacimiento son obligatorios.");
-      setIsFormLoading(false);
+      toast.error('Nombres, Apellidos y Fecha de Nacimiento son obligatorios.');
       return;
     }
+    setPendingAction(editingPatient ? 'update' : 'create');
+    setIsConfirmationOpen(true);
+  };
+
+  const handleSubmit = async () => {
+    setIsFormLoading(true);
 
     try {
       if (editingPatient) {
@@ -143,6 +158,7 @@ const Pacientes: React.FC = () => {
       toast.error('Error al guardar el paciente');
     } finally {
       setIsFormLoading(false);
+      setIsConfirmationOpen(false);
     }
   };
 
@@ -317,7 +333,7 @@ const Pacientes: React.FC = () => {
               {editingPatient ? 'Modifica los datos del paciente' : 'Ingresa los datos del nuevo paciente'}
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-6 pt-4">
+          <form onSubmit={handleRequestSubmit} className="space-y-6 pt-4">
             <fieldset disabled={isFormLoading} className="space-y-6">
               
               {/* --- Datos Personales --- */}
@@ -469,8 +485,33 @@ const Pacientes: React.FC = () => {
           </form>
         </DialogContent>
       </Dialog>
-      
-      <InitialHistoryModal 
+
+      <AlertDialog open={isConfirmationOpen} onOpenChange={setIsConfirmationOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {pendingAction === 'update' ? 'Guardar cambios del paciente' : 'Crear nuevo paciente'}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingAction === 'update'
+                ? '¿Deseas guardar los cambios realizados en la información del paciente?'
+                : '¿Deseas crear este nuevo paciente con la información proporcionada?'}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isFormLoading}>Revisar de nuevo</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleSubmit}
+              disabled={isFormLoading}
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+            >
+              Confirmar
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <InitialHistoryModal
         isOpen={historyModalState.isOpen}
         patientId={historyModalState.patientId}
         onClose={() => setHistoryModalState({ isOpen: false, patientId: null })}

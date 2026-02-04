@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Menu, 
-  Search, 
-  Stethoscope, 
+import {
+  Menu,
+  Search,
+  Stethoscope,
   LogOut,
-  User 
+  User
 } from 'lucide-react';
 import { SidebarProvider, SidebarInset, useSidebar } from "@/components/ui/sidebar";
 import { AppSidebar } from "./AppSidebar";
@@ -14,6 +14,16 @@ import { useApp } from '@/state/AppContext';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { cn } from "@/lib/utils";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 // Componente Header Interno con Buscador Autocompletado
 const HeaderOriginal = () => {
@@ -51,6 +61,8 @@ const HeaderOriginal = () => {
     setShowResults(false);
     setSearchInput(''); // Limpiar buscador al ir
   };
+
+  const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
 
   const handleLogout = () => {
     logout();
@@ -128,10 +140,27 @@ const HeaderOriginal = () => {
           <p className="text-sm font-medium text-foreground">{currentUser?.email}</p>
           <p className="text-xs text-muted-foreground">Dentista</p> 
         </div>
-        <Button variant="ghost" size="icon" onClick={handleLogout} aria-label="Cerrar sesión">
+        <Button variant="ghost" size="icon" onClick={() => setLogoutDialogOpen(true)} aria-label="Cerrar sesión">
           <LogOut className="h-5 w-5" />
         </Button>
       </div>
+
+      <AlertDialog open={logoutDialogOpen} onOpenChange={setLogoutDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>¿Cerrar sesión?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Tu sesión se cerrará y deberás volver a iniciar sesión para continuar.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleLogout} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Sí, cerrar sesión
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </header>
   );
 };
