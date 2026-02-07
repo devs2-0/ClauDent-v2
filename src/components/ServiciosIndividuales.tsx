@@ -294,7 +294,7 @@ const ServiciosIndividuales: React.FC = () => {
                     id="precio"
                     type="number"
                     min="0"
-                    step="0.01" 
+                    step="0.1" 
                     value={formData.precio}
                     onChange={(e) => setFormData({ ...formData, precio: e.target.value })}
                     required
