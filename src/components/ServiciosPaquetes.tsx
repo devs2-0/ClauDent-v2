@@ -372,7 +372,7 @@ const ServiciosPaquetes: React.FC = () => {
                     id="paquete-precio"
                     type="number"
                     min="0"
-                    step="0.01"
+                    step="0.1"
                     value={formData.precioTotal}
                     onChange={(e) => setFormData({ ...formData, precioTotal: e.target.value })}
                     required

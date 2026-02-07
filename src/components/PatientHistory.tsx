@@ -385,8 +385,8 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
                         {/* Input Cantidad (Decimales permitidos) */}
                         <Input
                             type="number"
-                            min="0.01" 
-                            step="0.01" 
+                            min="1" 
+                            step="1" 
                             value={item.cantidad}
                             onChange={(e) => handleQuantityChange(index, e.target.value)}
                             className="w-20"

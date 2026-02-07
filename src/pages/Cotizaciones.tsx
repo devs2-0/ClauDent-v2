@@ -620,7 +620,7 @@ const Cotizaciones: React.FC = () => {
                             <Input
                             type="number"
                             min="0"
-                            step="0.01" 
+                            step="0.1" 
                             value={item.precioUnitario}
                             onChange={(e) => handleItemChange(index, 'precioUnitario', e.target.value)}
                             className="w-32"
@@ -631,8 +631,8 @@ const Cotizaciones: React.FC = () => {
                         
                         <Input
                         type="number"
-                        min="0.01" 
-                        step="0.01" 
+                        min="1" 
+                        step="1" 
                         value={item.cantidad}
                         onChange={(e) => handleItemChange(index, 'cantidad', e.target.value)}
                         className="w-20"
@@ -654,6 +654,7 @@ const Cotizaciones: React.FC = () => {
                         id="descuento"
                         type="number"
                         min="0"
+                        step="0.1" 
                         max="100"
                         placeholder="0"
                         value={formData.descuento}
