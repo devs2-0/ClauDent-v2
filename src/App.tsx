@@ -37,7 +37,7 @@ const ProtectedLayout = () => {
   }
 
   // Si hay usuario, renderiza el Layout principal (que a su vez tiene un Outlet)
-  return currentUser ? <Layout children={<Outlet />} /> : <Navigate to="/login" replace />;
+  return currentUser ? <Layout /> : <Navigate to="/login" replace />;
 };
 
 const AppRoutes = () => {
