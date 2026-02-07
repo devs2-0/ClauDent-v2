@@ -12,12 +12,12 @@ import {
   serverTimestamp,
   orderBy,
   writeBatch,
-  setDoc,
+  runTransaction,
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { toast } from 'sonner';
 // Lógica de sesión persistente para evitar duplicados en pestañas
-import { registerOrUpdateSession, getPersistentSessionId } from '@/lib/sessionService';
+import { registerOrUpdateSession, getPersistentSessionId, getDeviceInfo } from '@/lib/sessionService';
 
 // --- UTILIDADES ---
 const safeDate = (timestamp: any): string => {
@@ -127,7 +127,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const sessionIdRef = useRef<string | null>(null);
   const sessionMissingNotifiedRef = useRef(false);
   const logoutInProgressRef = useRef(false);
-  const lastLoggedSessionRef = useRef<string | null>(null);
+  const deviceLogInProgressRef = useRef(false);
 
   // --- LOGICA DE BITÁCORA ---
   const addLog = async (accion: string, modulo: string, detalle: string) => {
@@ -150,11 +150,27 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         sessionMissingNotifiedRef.current = false;
         const currentSid = await registerOrUpdateSession(user.uid);
         sessionIdRef.current = currentSid;
-        const loggedSessionId = localStorage.getItem('claudent_login_logged');
-        if (lastLoggedSessionRef.current !== currentSid && loggedSessionId !== currentSid) {
-          lastLoggedSessionRef.current = currentSid;
-          localStorage.setItem('claudent_login_logged', currentSid);
-          await addLog('LOGIN', 'sistema', 'Inicio de sesión');
+        if (!deviceLogInProgressRef.current) {
+          deviceLogInProgressRef.current = true;
+          try {
+            const deviceRef = doc(db, `usuarios/${user.uid}/dispositivos`, currentSid);
+            const shouldLog = await runTransaction(db, async (tx) => {
+              const snap = await tx.get(deviceRef);
+              if (snap.exists()) return false;
+              const { deviceType, browser } = getDeviceInfo();
+              tx.set(deviceRef, {
+                deviceType,
+                browser,
+                firstSeen: serverTimestamp(),
+              });
+              return true;
+            });
+            if (shouldLog) {
+              await addLog('LOGIN', 'sistema', 'Inicio de sesión (nuevo dispositivo)');
+            }
+          } finally {
+            deviceLogInProgressRef.current = false;
+          }
         }
 
         sessionUnsubRef.current = onSnapshot(collection(db, `usuarios/${user.uid}/sesiones`), (snap) => {
@@ -241,7 +257,6 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
       await signOut(auth);
     } finally {
-      localStorage.removeItem('claudent_login_logged');
       logoutInProgressRef.current = false;
     }
   };

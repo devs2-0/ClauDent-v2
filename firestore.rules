@@ -48,6 +48,10 @@ service cloud.firestore {
       match /sesiones/{sessionId} {
         allow read, write: if isSignedIn() && request.auth.uid == userId;
       }
+
+      match /dispositivos/{deviceId} {
+        allow read, write: if isSignedIn() && request.auth.uid == userId;
+      }
     }
 
     match /{document=**} {
