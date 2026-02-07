@@ -47,3 +47,4 @@ export function formatRut(rut: string): string {
   const formatted = body.replace(/\B(?=(\d{3})+(?!\d))/g, '.');
   return `${formatted}-${dv}`;
 }
+
