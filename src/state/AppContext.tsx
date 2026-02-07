@@ -1,5 +1,5 @@
 // RF01-RF11: Global state management (VERSIÓN FINAL INTEGRADA: TODO EL CÓDIGO ORIGINAL + SEGURIDAD SIN DUPLICADOS)
-import React, { createContext, useContext, useState, ReactNode, useEffect } from 'react';
+import React, { createContext, useContext, useState, ReactNode, useEffect, useRef } from 'react';
 import { User, onAuthStateChanged, signOut } from 'firebase/auth';
 import {
   collection,
@@ -123,6 +123,10 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     paquetes: [], paquetesLoading: true,
     sessions: [], searchQuery: '',
   });
+  const sessionUnsubRef = useRef<null | (() => void)>(null);
+  const sessionIdRef = useRef<string | null>(null);
+  const sessionMissingNotifiedRef = useRef(false);
+  const logoutInProgressRef = useRef(false);
 
   // --- LOGICA DE BITÁCORA ---
   const addLog = async (accion: string, modulo: string, detalle: string) => {
@@ -137,29 +141,45 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // --- GESTIÓN DE SESIÓN ÚNICA Y AUTH ---
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, async (user) => {
+      if (sessionUnsubRef.current) {
+        sessionUnsubRef.current();
+        sessionUnsubRef.current = null;
+      }
       if (user) {
+        sessionMissingNotifiedRef.current = false;
         const currentSid = await registerOrUpdateSession(user.uid);
-        
-        const unsubSessions = onSnapshot(collection(db, `usuarios/${user.uid}/sesiones`), (snap) => {
+        sessionIdRef.current = currentSid;
+        await addLog('LOGIN', 'sistema', 'Inicio de sesión');
+
+        sessionUnsubRef.current = onSnapshot(collection(db, `usuarios/${user.uid}/sesiones`), (snap) => {
           const activeSessions = snap.docs.map(d => ({
             id: d.id, ...d.data(), isCurrent: d.id === currentSid
           } as UserSession));
 
           setState(prev => ({ ...prev, sessions: activeSessions }));
 
-          if (!activeSessions.find(s => s.id === currentSid)) {
+          if (!activeSessions.find(s => s.id === currentSid) && !snap.metadata.fromCache && !sessionMissingNotifiedRef.current) {
+            sessionMissingNotifiedRef.current = true;
             toast.error("Tu sesión ha sido finalizada remotamente.");
-            logout();
+            logout().finally(() => {
+              sessionMissingNotifiedRef.current = false;
+            });
           }
         });
 
         setState(prev => ({ ...prev, currentUser: user, authLoading: false }));
-        return () => unsubSessions();
       } else {
+        sessionIdRef.current = null;
         setState(prev => ({ ...prev, currentUser: null, authLoading: false, sessions: [] }));
       }
     });
-    return () => unsubAuth();
+    return () => {
+      if (sessionUnsubRef.current) {
+        sessionUnsubRef.current();
+        sessionUnsubRef.current = null;
+      }
+      unsubAuth();
+    };
   }, []);
 
   // --- ESCUCHADORES DE DATOS ---
@@ -205,13 +225,18 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   };
 
   const logout = async () => {
-    if (state.currentUser) {
-      const sid = getPersistentSessionId();
-      await deleteDoc(doc(db, `usuarios/${state.currentUser.uid}/sesiones`, sid));
-      await addLog('LOGOUT', 'sistema', 'Sesión terminada');
+    if (logoutInProgressRef.current) return;
+    logoutInProgressRef.current = true;
+    try {
+      if (state.currentUser) {
+        const sid = sessionIdRef.current ?? getPersistentSessionId();
+        await deleteDoc(doc(db, `usuarios/${state.currentUser.uid}/sesiones`, sid));
+        await addLog('LOGOUT', 'sistema', 'Sesión terminada');
+      }
+      await signOut(auth);
+    } finally {
+      logoutInProgressRef.current = false;
     }
-    await signOut(auth);
-    localStorage.removeItem('claudent_session_id');
   };
 
   // --- CRUD FUNCTIONS ORIGINALES ---
