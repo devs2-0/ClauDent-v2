@@ -42,6 +42,18 @@ service cloud.firestore {
       allow read, write: if isSignedIn();
     }
 
+    match /usuarios/{userId} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
+
+      match /sesiones/{sessionId} {
+        allow read, write: if isSignedIn() && request.auth.uid == userId;
+      }
+
+      match /dispositivos/{deviceId} {
+        allow read, write: if isSignedIn() && request.auth.uid == userId;
+      }
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }
