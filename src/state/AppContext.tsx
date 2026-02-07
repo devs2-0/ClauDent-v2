@@ -127,6 +127,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const sessionIdRef = useRef<string | null>(null);
   const sessionMissingNotifiedRef = useRef(false);
   const logoutInProgressRef = useRef(false);
+  const lastLoggedSessionRef = useRef<string | null>(null);
 
   // --- LOGICA DE BITÁCORA ---
   const addLog = async (accion: string, modulo: string, detalle: string) => {
@@ -149,7 +150,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         sessionMissingNotifiedRef.current = false;
         const currentSid = await registerOrUpdateSession(user.uid);
         sessionIdRef.current = currentSid;
-        await addLog('LOGIN', 'sistema', 'Inicio de sesión');
+        const loggedSessionId = localStorage.getItem('claudent_login_logged');
+        if (lastLoggedSessionRef.current !== currentSid && loggedSessionId !== currentSid) {
+          lastLoggedSessionRef.current = currentSid;
+          localStorage.setItem('claudent_login_logged', currentSid);
+          await addLog('LOGIN', 'sistema', 'Inicio de sesión');
+        }
 
         sessionUnsubRef.current = onSnapshot(collection(db, `usuarios/${user.uid}/sesiones`), (snap) => {
           const activeSessions = snap.docs.map(d => ({
@@ -235,6 +241,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       }
       await signOut(auth);
     } finally {
+      localStorage.removeItem('claudent_login_logged');
       logoutInProgressRef.current = false;
     }
   };
