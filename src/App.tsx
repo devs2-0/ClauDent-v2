@@ -17,11 +17,16 @@ import Cotizaciones from "./pages/Cotizaciones";
 import NotFound from "./pages/NotFound";
 import OdontogramEditorPage from "./pages/OdontogramEditorPage";
 import ResetPassword from "./pages/ResetPassword";
+import Bitacora from "./pages/Bitacora"; 
+import Seguridad from "./pages/Seguridad"; // Página para gestionar sesiones activas
 
 const queryClient = new QueryClient();
 
-// 1. ProtectedRoute Moderno:
-// Ya no envuelve hijos manualmente. Verifica auth y renderiza el Outlet (que será el Layout)
+/**
+ * ProtectedLayout:
+ * Verifica el estado de autenticación antes de renderizar el contenido protegido.
+ * Si el usuario no está autenticado, redirige a /login.
+ */
 const ProtectedLayout = () => {
   const { currentUser, authLoading } = useApp();
 
@@ -36,7 +41,6 @@ const ProtectedLayout = () => {
     );
   }
 
-  // Si hay usuario, renderiza el Layout principal (que a su vez tiene un Outlet)
   return currentUser ? <Layout /> : <Navigate to="/login" replace />;
 };
 
@@ -51,17 +55,14 @@ const AppRoutes = () => {
       <Route path="/" element={<Navigate to={currentUser ? "/dashboard" : "/login"} />} />
 
       {/* RUTAS PROTEGIDAS CON LAYOUT 
-         Aquí está la magia: Todos estos componentes se renderizan DENTRO del Layout
-         gracias al <Outlet /> que pusimos en Layout.tsx
+          Todos estos componentes se renderizan dentro del Layout principal.
       */}
       <Route element={<ProtectedLayout />}>
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/pacientes" element={<Pacientes />} />
         <Route path="/pacientes/:id" element={<FichaPaciente />} />
         
-        {/* CORRECCIÓN DE IDs AQUÍ: 
-            Usamos :patientId y :odontogramId para coincidir con OdontogramEditorPage.tsx 
-        */}
+        {/* Ruta para el editor de odontogramas con IDs específicos */}
         <Route 
           path="/pacientes/:patientId/odontograma/:odontogramId" 
           element={<OdontogramEditorPage />} 
@@ -69,9 +70,13 @@ const AppRoutes = () => {
         
         <Route path="/servicios" element={<Servicios />} />
         <Route path="/cotizaciones" element={<Cotizaciones />} />
+        
+        {/* Nuevas rutas de Auditoría y Seguridad del Sistema */}
+        <Route path="/bitacora" element={<Bitacora />} />
+        <Route path="/seguridad" element={<Seguridad />} />
       </Route>
 
-      {/* Ruta 404 */}
+      {/* Ruta para manejar errores 404 */}
       <Route path="*" element={<NotFound />} />
     </Routes>
   );
