@@ -1,4 +1,4 @@
-// RF07: Odontogram Editor (CON TEXTO LIBRE PERSONALIZADO)
+// RF07: Odontogram Editor (RESPONSIVE MEJORADO: SCROLL HORIZONTAL)
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApp, Odontogram, ToothState } from '@/state/AppContext';
@@ -10,7 +10,7 @@ import { db } from '@/lib/firebase';
 import { 
   ArrowLeft, Save, Loader2, Eraser, Circle, X, Check, ArrowUp, AlertTriangle, 
   FileText, Ban, Activity, Crown, Syringe, AlertCircle, HelpCircle, MinusCircle, 
-  SearchX, Edit3
+  SearchX, Edit3, MoveHorizontal
 } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 import { Input } from '@/components/ui/input';
@@ -89,11 +89,11 @@ const ToothSVG: React.FC<ToothProps> = ({ number, data, onClick }) => {
   const isOtro = estados.includes('otro');
 
   return (
-    <div className="flex flex-col items-center gap-1 cursor-pointer group relative" onClick={onClick}>
+    <div className="flex flex-col items-center gap-1 cursor-pointer group relative shrink-0" onClick={onClick}>
       <span className={cn("text-[10px] sm:text-xs font-bold", estados.length > 0 ? "text-primary" : "text-slate-400")}>
         {number}
       </span>
-      <div className="relative h-8 w-6 sm:h-10 sm:w-8 transition-transform group-hover:scale-110">
+      <div className="relative h-9 w-7 sm:h-12 sm:w-9 transition-transform group-hover:scale-110">
         <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-sm">
           <path 
             d="M20,30 Q20,5 50,5 Q80,5 80,30 L80,70 Q80,95 50,95 Q20,95 20,70 Z" 
@@ -106,15 +106,12 @@ const ToothSVG: React.FC<ToothProps> = ({ number, data, onClick }) => {
           {isEndo && !isPerdido && <path d="M50,50 L50,90" className="stroke-slate-700 stroke-[3px]" />}
         </svg>
         
-        {/* Indicadores */}
         {estados.length > 1 && !isPerdido && (
             <div className="absolute -top-1 -right-1 h-2 w-2 sm:h-3 sm:w-3 bg-orange-500 rounded-full border border-white z-10" title="Múltiples hallazgos" />
         )}
-        {/* Indicador específico para 'Otro' (Punto Cyan) */}
         {isOtro && !isPerdido && (
             <div className="absolute -bottom-1 -right-1 h-2 w-2 sm:h-3 sm:w-3 bg-cyan-500 rounded-full border border-white z-10" title={data?.textoLibre || "Nota personalizada"} />
         )}
-        
         {isSinErupcionar && (
           <ArrowUp className="h-5 w-5 text-blue-600 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none drop-shadow-md" />
         )}
@@ -187,31 +184,26 @@ const OdontogramEditorPage: React.FC = () => {
 
     if (selectedTool === 'borrar') {
       newEstados = []; 
-      newTextoLibre = ""; // Borrar también el texto
+      newTextoLibre = "";
     } else if (selectedTool === 'sano') {
       newEstados = ['sano'];
       newTextoLibre = "";
     } else if (selectedTool === 'otro') {
-        // CASO ESPECIAL: TEXTO LIBRE
-        // Si ya tiene 'otro', lo quitamos. Si no, abrimos modal.
         if (newEstados.includes('otro')) {
             newEstados = newEstados.filter(e => e !== 'otro');
             newTextoLibre = "";
-            // Actualizamos directo
             setOdontogram({
                 ...odontogram,
                 dientes: { ...odontogram.dientes, [toothKey]: { ...currentToothState, estados: newEstados, textoLibre: newTextoLibre } }
             });
             return;
         } else {
-            // Abrir Modal para escribir
             setCurrentToothForFreeText(toothNumber);
             setFreeTextValue(newTextoLibre || "");
             setIsFreeTextModalOpen(true);
-            return; // Detenemos aquí, el guardado se hace en saveFreeText
+            return;
         }
     } else {
-      // Herramientas normales
       newEstados = newEstados.filter(e => e !== 'sano');
       if (newEstados.includes(selectedTool)) {
         newEstados = newEstados.filter(e => e !== selectedTool);
@@ -226,14 +218,12 @@ const OdontogramEditorPage: React.FC = () => {
     });
   };
 
-  // Función para guardar lo que se escribió en el modal
   const saveFreeText = () => {
       if (!odontogram || currentToothForFreeText === null) return;
       const toothKey = currentToothForFreeText.toString();
       const currentToothState = odontogram.dientes[toothKey] || { estados: [], superficies: {} };
       let newEstados = [...currentToothState.estados];
       
-      // Agregamos 'otro' si no está
       if (!newEstados.includes('otro')) {
           newEstados = newEstados.filter(e => e !== 'sano');
           newEstados.push('otro');
@@ -246,7 +236,7 @@ const OdontogramEditorPage: React.FC = () => {
             [toothKey]: { 
                 ...currentToothState, 
                 estados: newEstados,
-                textoLibre: freeTextValue // Guardamos el texto personalizado
+                textoLibre: freeTextValue
             } 
         }
       });
@@ -256,13 +246,11 @@ const OdontogramEditorPage: React.FC = () => {
       setCurrentToothForFreeText(null);
   };
 
-  // Generar Lista de Hallazgos
   const findingsList = useMemo(() => {
     if (!odontogram) return [];
     return Object.entries(odontogram.dientes)
       .filter(([_, data]) => data.estados.length > 0 && !data.estados.includes('sano'))
       .map(([key, data]) => {
-         // Si tiene 'otro', usamos el textoLibre como etiqueta
          const labels = data.estados.map(id => {
              if (id === 'otro' && data.textoLibre) return `Nota: ${data.textoLibre}`;
              return AFECCIONES.find(a => a.id === id)?.text || id;
@@ -278,7 +266,7 @@ const OdontogramEditorPage: React.FC = () => {
     else { for (let i = start; i <= end; i++) teeth.push(i); }
 
     return (
-      <div className="flex gap-1 sm:gap-2 justify-center bg-white p-2 rounded-lg shadow-sm border border-slate-100">
+      <div className="flex gap-1 sm:gap-2 justify-center bg-white p-2 rounded-lg shadow-sm border border-slate-100 shrink-0">
         {teeth.map(t => (
           <ToothSVG key={t} number={t} data={odontogram?.dientes[t.toString()]} onClick={() => handleToothClick(t)} selectedTool={selectedTool} />
         ))}
@@ -314,7 +302,7 @@ const OdontogramEditorPage: React.FC = () => {
       <div className="flex flex-col lg:flex-row flex-1 gap-4 overflow-hidden">
         
         {/* HERRAMIENTAS */}
-        <Card className="w-full lg:w-60 shrink-0 flex flex-col max-h-[250px] lg:max-h-full">
+        <Card className="w-full lg:w-60 shrink-0 flex flex-col max-h-[200px] lg:max-h-full">
           <CardHeader className="p-3 pb-2 border-b">
             <CardTitle className="text-xs uppercase text-muted-foreground font-bold">Diagnósticos</CardTitle>
           </CardHeader>
@@ -339,72 +327,81 @@ const OdontogramEditorPage: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* CANVAS */}
-        <div className="flex-1 bg-white rounded-xl border p-2 sm:p-4 overflow-y-auto flex items-start justify-center min-h-[300px]">
-          <div className="space-y-6 sm:space-y-8 w-full max-w-4xl origin-top scale-[0.80] sm:scale-100 pt-4">
+        {/* CANVAS CON SCROLL HORIZONTAL MEJORADO */}
+        <div className="flex-1 bg-white rounded-xl border p-0 lg:p-4 overflow-hidden flex flex-col min-h-[300px] relative">
+            <div className="absolute top-2 right-2 sm:hidden z-10 pointer-events-none opacity-50">
+                <Badge variant="outline" className="bg-white/80 backdrop-blur text-[10px]"><MoveHorizontal className="h-3 w-3 mr-1" /> Desliza</Badge>
+            </div>
             
-            {odontogram.tipo === 'mixto' && (
-              <div className="space-y-6">
-                 <div className="flex justify-center">
-                    <Badge variant="outline" className="bg-slate-50">
-                      Externo: Adulto | Interno: Niño
-                    </Badge>
-                 </div>
-                 
-                 {/* Superior */}
-                 <div className="flex flex-wrap gap-4 sm:gap-10 justify-center items-end">
-                    <div className="flex flex-col items-end gap-2">
-                        {renderRow(18, 11, true)}
-                        <div className="pr-4 scale-90 origin-right">{renderRow(55, 51, true)}</div>
-                    </div>
-                    <div className="flex flex-col items-start gap-2">
-                        {renderRow(21, 28, false)}
-                        <div className="pl-4 scale-90 origin-left">{renderRow(61, 65, false)}</div>
-                    </div>
-                 </div>
-                 <Separator className="my-4" />
-                 {/* Inferior */}
-                 <div className="flex flex-wrap gap-4 sm:gap-10 justify-center items-start">
-                    <div className="flex flex-col items-end gap-2">
-                        <div className="pr-4 scale-90 origin-right">{renderRow(85, 81, true)}</div>
-                        {renderRow(48, 41, true)}
-                    </div>
-                    <div className="flex flex-col items-start gap-2">
-                        <div className="pl-4 scale-90 origin-left">{renderRow(71, 75, false)}</div>
-                        {renderRow(31, 38, false)}
-                    </div>
-                 </div>
-              </div>
-            )}
+            {/* Contenedor Scrollable */}
+            <div className="flex-1 overflow-x-auto overflow-y-auto flex items-center bg-slate-50/30">
+                <div className="min-w-[650px] mx-auto p-4 sm:p-8 space-y-8">
+                    
+                    {odontogram.tipo === 'mixto' && (
+                    <div className="space-y-6">
+                        <div className="flex justify-center">
+                            <Badge variant="outline" className="bg-slate-50">
+                            Externo: Adulto | Interno: Niño
+                            </Badge>
+                        </div>
+                        
+                        {/* Superior */}
+                        <div className="flex gap-8 justify-center items-end">
+                            <div className="flex flex-col items-end gap-2">
+                                {renderRow(18, 11, true)}
+                                <div className="pr-4">{renderRow(55, 51, true)}</div>
+                            </div>
+                            <div className="flex flex-col items-start gap-2">
+                                {renderRow(21, 28, false)}
+                                <div className="pl-4">{renderRow(61, 65, false)}</div>
+                            </div>
+                        </div>
 
-            {(odontogram.tipo === 'adulto' || odontogram.tipo === 'niño') && (
-              <div className="space-y-8">
-                <div className="flex flex-wrap gap-4 justify-center">
-                   {odontogram.tipo === 'adulto' ? renderRow(18, 11, true) : renderRow(55, 51, true)}
-                   {odontogram.tipo === 'adulto' ? renderRow(21, 28, false) : renderRow(61, 65, false)}
+                        <Separator className="my-4" />
+
+                        {/* Inferior */}
+                        <div className="flex gap-8 justify-center items-start">
+                            <div className="flex flex-col items-end gap-2">
+                                <div className="pr-4">{renderRow(85, 81, true)}</div>
+                                {renderRow(48, 41, true)}
+                            </div>
+                            <div className="flex flex-col items-start gap-2">
+                                <div className="pl-4">{renderRow(71, 75, false)}</div>
+                                {renderRow(31, 38, false)}
+                            </div>
+                        </div>
+                    </div>
+                    )}
+
+                    {(odontogram.tipo === 'adulto' || odontogram.tipo === 'niño') && (
+                    <div className="space-y-8">
+                        <div className="flex gap-8 justify-center">
+                        {odontogram.tipo === 'adulto' ? renderRow(18, 11, true) : renderRow(55, 51, true)}
+                        {odontogram.tipo === 'adulto' ? renderRow(21, 28, false) : renderRow(61, 65, false)}
+                        </div>
+                        <Separator />
+                        <div className="flex gap-8 justify-center">
+                        {odontogram.tipo === 'adulto' ? renderRow(48, 41, true) : renderRow(85, 81, true)}
+                        {odontogram.tipo === 'adulto' ? renderRow(31, 38, false) : renderRow(71, 75, false)}
+                        </div>
+                    </div>
+                    )}
                 </div>
-                <Separator />
-                <div className="flex flex-wrap gap-4 justify-center">
-                   {odontogram.tipo === 'adulto' ? renderRow(48, 41, true) : renderRow(85, 81, true)}
-                   {odontogram.tipo === 'adulto' ? renderRow(31, 38, false) : renderRow(71, 75, false)}
-                </div>
-              </div>
-            )}
-          </div>
+            </div>
         </div>
 
         {/* RESUMEN */}
-        <Card className="w-full lg:w-72 shrink-0 flex flex-col h-[250px] lg:h-full">
+        <Card className="w-full lg:w-72 shrink-0 flex flex-col h-[200px] lg:h-full">
           <CardHeader className="p-3 border-b bg-muted/20">
             <CardTitle className="text-sm font-bold flex items-center gap-2">
-              <FileText className="h-4 w-4" /> Resumen de Hallazgos
+              <FileText className="h-4 w-4" /> Resumen
             </CardTitle>
           </CardHeader>
           <div className="flex-1 overflow-hidden flex flex-col">
             <ScrollArea className="flex-1 p-0">
                {findingsList.length === 0 ? (
                  <div className="p-8 text-center text-sm text-muted-foreground">
-                   <p>Selecciona diagnósticos para verlos aquí.</p>
+                   <p>Sin hallazgos.</p>
                  </div>
                ) : (
                  <div className="divide-y">
@@ -423,10 +420,9 @@ const OdontogramEditorPage: React.FC = () => {
             </ScrollArea>
             
             <div className="p-3 border-t bg-background">
-              <label className="text-xs font-semibold text-muted-foreground mb-1 block">Notas Generales</label>
               <Textarea 
-                placeholder="Observaciones generales..." 
-                className="min-h-[80px] text-xs resize-none"
+                placeholder="Notas generales..." 
+                className="min-h-[60px] text-xs resize-none"
                 value={notas}
                 onChange={(e) => setNotas(e.target.value)}
               />
@@ -441,21 +437,20 @@ const OdontogramEditorPage: React.FC = () => {
             <DialogHeader>
                 <DialogTitle>Nota Personalizada - Diente {currentToothForFreeText}</DialogTitle>
                 <DialogDescription>
-                    Escribe los detalles específicos de la afección para este diente.
+                    Escribe los detalles específicos de la afección.
                 </DialogDescription>
             </DialogHeader>
             <div className="py-2">
-                <Label>Descripción</Label>
                 <Input 
                     value={freeTextValue} 
                     onChange={(e) => setFreeTextValue(e.target.value)}
-                    placeholder="Ej. Mancha blanca, fractura vertical..."
+                    placeholder="Ej. Mancha blanca, fractura..."
                     autoFocus
                 />
             </div>
             <DialogFooter>
                 <Button variant="outline" onClick={() => setIsFreeTextModalOpen(false)}>Cancelar</Button>
-                <Button onClick={saveFreeText}>Guardar Nota</Button>
+                <Button onClick={saveFreeText}>Guardar</Button>
             </DialogFooter>
         </DialogContent>
       </Dialog>
