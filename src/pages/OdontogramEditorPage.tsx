@@ -1,4 +1,4 @@
-// RF07: Odontogram Editor (RESPONSIVE MEJORADO: SCROLL HORIZONTAL)
+// RF07: Odontogram Editor (CORREGIDO: ERROR AL GUARDAR)
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useApp, Odontogram, ToothState } from '@/state/AppContext';
@@ -165,11 +165,23 @@ const OdontogramEditorPage: React.FC = () => {
     if (!patientId || !odontogramId || !odontogram) return;
     setSaving(true);
     try {
+      // 1. LIMPIEZA DE DATOS (CRÍTICO PARA EVITAR ERROR 'UNDEFINED')
+      // Firestore odia 'undefined'. Nos aseguramos de que todo texto sea string o null.
+      const cleanDientes: Record<string, any> = {};
+      Object.entries(odontogram.dientes).forEach(([key, val]) => {
+          cleanDientes[key] = {
+              estados: val.estados || [],
+              superficies: val.superficies || {},
+              textoLibre: val.textoLibre || null // <--- ESTO ES LO QUE ARREGLA EL ERROR
+          };
+      });
+
       const docRef = doc(db, 'pacientes', patientId, 'odontograma', odontogramId);
-      await updateDoc(docRef, { dientes: odontogram.dientes, notas: notas });
+      await updateDoc(docRef, { dientes: cleanDientes, notas: notas || "" });
       toast.success("Guardado correctamente");
     } catch (error) {
-      toast.error("Error al guardar");
+      console.error("Error completo:", error); // Ver error real en consola
+      toast.error("Error al guardar: Verifique conexión");
     } finally {
       setSaving(false);
     }
@@ -180,18 +192,19 @@ const OdontogramEditorPage: React.FC = () => {
     const toothKey = toothNumber.toString();
     const currentToothState = odontogram.dientes[toothKey] || { estados: [], superficies: {} };
     let newEstados = [...currentToothState.estados];
-    let newTextoLibre = currentToothState.textoLibre;
+    // Aseguramos que textoLibre nunca sea undefined
+    let newTextoLibre = currentToothState.textoLibre || null;
 
     if (selectedTool === 'borrar') {
       newEstados = []; 
-      newTextoLibre = "";
+      newTextoLibre = null;
     } else if (selectedTool === 'sano') {
       newEstados = ['sano'];
-      newTextoLibre = "";
+      newTextoLibre = null;
     } else if (selectedTool === 'otro') {
         if (newEstados.includes('otro')) {
             newEstados = newEstados.filter(e => e !== 'otro');
-            newTextoLibre = "";
+            newTextoLibre = null;
             setOdontogram({
                 ...odontogram,
                 dientes: { ...odontogram.dientes, [toothKey]: { ...currentToothState, estados: newEstados, textoLibre: newTextoLibre } }
@@ -236,7 +249,7 @@ const OdontogramEditorPage: React.FC = () => {
             [toothKey]: { 
                 ...currentToothState, 
                 estados: newEstados,
-                textoLibre: freeTextValue
+                textoLibre: freeTextValue || null // Nunca undefined
             } 
         }
       });

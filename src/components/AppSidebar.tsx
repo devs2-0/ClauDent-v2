@@ -96,6 +96,7 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
+
       <SidebarFooter className="p-4 border-t border-border">
           {/* 
           
@@ -122,7 +123,9 @@ export function AppSidebar() {
           
           */}
          
-      </SidebarFooter>
+      </SidebarFooter> 
+
+
     </Sidebar>
   );
 }
