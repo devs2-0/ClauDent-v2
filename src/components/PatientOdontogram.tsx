@@ -1,20 +1,21 @@
-// RF06: Lista de Odontogramas (CON GESTIÓN: BORRAR, RENOMBRAR, MIXTO)
+// RF06: Lista de Odontogramas (DISEÑO LIMPIO + RESPONSIVE)
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom'; 
 import { useApp, Odontogram } from '@/state/AppContext';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { toast } from 'sonner';
-import { collection, query, onSnapshot, orderBy, QuerySnapshot, DocumentData } from 'firebase/firestore';
+import { collection, query, onSnapshot, orderBy } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Skeleton } from '@/components/ui/skeleton';
-import { Plus, Eye, Trash2, Pencil } from 'lucide-react';
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Plus, Eye, Trash2, Pencil, Calendar, FileText } from 'lucide-react';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { formatDate } from '@/lib/utils';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Badge } from '@/components/ui/badge';
 
 interface PatientOdontogramProps {
   patientId: string;
@@ -83,68 +84,94 @@ const PatientOdontogram: React.FC<PatientOdontogramProps> = ({ patientId }) => {
 
   return (
     <div className="space-y-6">
-      <Dialog open={isNewModalOpen} onOpenChange={setIsNewModalOpen}>
-        <DialogTrigger asChild>
-          <Button>
-            <Plus className="h-4 w-4 mr-2" /> Nuevo Odontograma
-          </Button>
-        </DialogTrigger>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Crear Nuevo Odontograma</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label>Tipo</Label>
-              <Select value={selectedType} onValueChange={(v: any) => setSelectedType(v)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="adulto">Adulto</SelectItem>
-                  <SelectItem value="niño">Niño</SelectItem>
-                  <SelectItem value="mixto">Mixto (Nuevo)</SelectItem>
-                </SelectContent>
-              </Select>
+      <div className="flex justify-between items-center">
+        <h3 className="text-lg font-semibold">Historial de Odontogramas</h3>
+        <Dialog open={isNewModalOpen} onOpenChange={setIsNewModalOpen}>
+            <DialogTrigger asChild>
+            <Button>
+                <Plus className="h-4 w-4 mr-2" /> Nuevo
+            </Button>
+            </DialogTrigger>
+            <DialogContent>
+            <DialogHeader>
+                <DialogTitle>Crear Nuevo Odontograma</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                <Label>Tipo de Dentición</Label>
+                <Select value={selectedType} onValueChange={(v: any) => setSelectedType(v)}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                    <SelectItem value="adulto">Permanente (Adulto)</SelectItem>
+                    <SelectItem value="niño">Temporal (Niño)</SelectItem>
+                    <SelectItem value="mixto">Mixta (6 - 12 años)</SelectItem>
+                    </SelectContent>
+                </Select>
+                </div>
+                <div className="space-y-2">
+                    <Label>Nombre / Descripción (Opcional)</Label>
+                    <Input placeholder="Ej. Revisión Inicial..." value={customName} onChange={(e) => setCustomName(e.target.value)} />
+                </div>
             </div>
-            <div className="space-y-2">
-                <Label>Nombre (Opcional)</Label>
-                <Input placeholder="Ej. Revisión Mensual" value={customName} onChange={(e) => setCustomName(e.target.value)} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsNewModalOpen(false)}>Cancelar</Button>
-            <Button onClick={handleCreateNew} disabled={isSaving}>{isSaving ? "Creando..." : "Crear"}</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+            <DialogFooter>
+                <Button variant="outline" onClick={() => setIsNewModalOpen(false)}>Cancelar</Button>
+                <Button onClick={handleCreateNew} disabled={isSaving}>{isSaving ? "Creando..." : "Crear"}</Button>
+            </DialogFooter>
+            </DialogContent>
+        </Dialog>
+      </div>
       
-      <Card>
-        <CardContent className="p-6">
-          <h3 className="text-lg font-semibold mb-4">Odontogramas Guardados</h3>
+      <Card className="border-none shadow-none bg-transparent">
+        <CardContent className="p-0">
           {listLoading ? (
-            <div className="space-y-2"><Skeleton className="h-12 w-full" /><Skeleton className="h-12 w-full" /></div>
+            <div className="space-y-3"><Skeleton className="h-24 w-full rounded-lg" /><Skeleton className="h-24 w-full rounded-lg" /></div>
           ) : odontogramList.length === 0 ? (
-            <p className="text-muted-foreground text-center py-4">No hay odontogramas guardados.</p>
+            <div className="border border-dashed rounded-lg p-8 text-center text-muted-foreground bg-muted/30">
+                <FileText className="h-10 w-10 mx-auto mb-2 opacity-20" />
+                <p>No hay odontogramas registrados.</p>
+            </div>
           ) : (
-            <div className="space-y-3">
+            <div className="grid gap-3">
               {odontogramList.map((odonto) => (
-                <div key={odonto.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
-                  <div>
-                    <div className="flex items-center gap-2">
-                        <p className="font-semibold">{odonto.nombre || `Odontograma ${odonto.tipo}`}</p>
-                        <span className="text-xs bg-secondary px-2 py-0.5 rounded capitalize">{odonto.tipo}</span>
+                <div key={odonto.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 bg-card border rounded-xl hover:shadow-sm transition-all gap-4">
+                  
+                  {/* SECCIÓN INFORMACIÓN */}
+                  <div className="flex gap-4 items-start w-full sm:w-auto">
+                    {/* Textos */}
+                    <div className="flex-1 min-w-0">
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                            <h4 className="font-semibold text-base leading-tight break-words">
+                                {odonto.nombre || `Odontograma ${odonto.tipo}`}
+                            </h4>
+                            <Badge variant="outline" className="w-fit capitalize text-[10px] font-normal text-muted-foreground">
+                                {odonto.tipo}
+                            </Badge>
+                        </div>
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
+                            <Calendar className="h-3.5 w-3.5" />
+                            {formatDate(odonto.fecha)}
+                        </div>
                     </div>
-                    <p className="text-sm text-muted-foreground">{formatDate(odonto.fecha)}</p>
                   </div>
-                  <div className="flex gap-2">
-                    <Link to={`/pacientes/${patientId}/odontograma/${odonto.id}`}>
-                      <Button variant="outline" size="default" title="Ver/Editar"><Eye className="h-4 w-4" />ABRIR</Button>
+
+                  {/* SECCIÓN ACCIONES */}
+                  <div className="flex items-center gap-2 w-full sm:w-auto pt-2 sm:pt-0 border-t sm:border-t-0 border-border/50">
+                    <Link to={`/pacientes/${patientId}/odontograma/${odonto.id}`} className="flex-1 sm:flex-none">
+                      {/* Botón Estándar (Outline) - Sin colores fuertes */}
+                      <Button variant="outline" className="w-full sm:w-auto">
+                        <Eye className="h-4 w-4 mr-2" />
+                        Ver
+                      </Button>
                     </Link>
-                    <Button variant="ghost" size="icon" onClick={() => setRenameData({ id: odonto.id, name: odonto.nombre || '' })} title="Renombrar">
-                        <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button variant="ghost" size="icon" className="text-destructive hover:text-destructive" onClick={() => setDeleteId(odonto.id)} title="Eliminar">
-                        <Trash2 className="h-4 w-4" />
-                    </Button>
+                    
+                    <div className="flex gap-1 border-l pl-2 ml-2">
+                        <Button variant="ghost" size="icon" onClick={() => setRenameData({ id: odonto.id, name: odonto.nombre || '' })} title="Cambiar nombre">
+                            <Pencil className="h-4 w-4 text-muted-foreground" />
+                        </Button>
+                        <Button variant="ghost" size="icon" className="hover:bg-destructive/10 hover:text-destructive text-muted-foreground" onClick={() => setDeleteId(odonto.id)} title="Eliminar">
+                            <Trash2 className="h-4 w-4" />
+                        </Button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -153,7 +180,7 @@ const PatientOdontogram: React.FC<PatientOdontogramProps> = ({ patientId }) => {
         </CardContent>
       </Card>
 
-      {/* Alertas y Modales de Edición */}
+      {/* Alertas y Modales */}
       <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
         <AlertDialogContent>
             <AlertDialogHeader>
@@ -169,10 +196,15 @@ const PatientOdontogram: React.FC<PatientOdontogramProps> = ({ patientId }) => {
 
       <Dialog open={!!renameData} onOpenChange={(open) => !open && setRenameData(null)}>
           <DialogContent>
-              <DialogHeader><DialogTitle>Renombrar Odontograma</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>Renombrar</DialogTitle></DialogHeader>
               <div className="py-4">
                   <Label>Nuevo Nombre</Label>
-                  <Input value={renameData?.name || ''} onChange={(e) => setRenameData(prev => prev ? ({...prev, name: e.target.value}) : null)} />
+                  <Input 
+                    value={renameData?.name || ''} 
+                    onChange={(e) => setRenameData(prev => prev ? ({...prev, name: e.target.value}) : null)} 
+                    placeholder="Ej. Finalizado"
+                    autoFocus
+                  />
               </div>
               <DialogFooter>
                   <Button variant="outline" onClick={() => setRenameData(null)}>Cancelar</Button>
