@@ -40,7 +40,17 @@ const cleanData = (data: any) => {
 };
 
 // --- INTERFACES ORIGINALES ---
-export interface UserSession { id: string; deviceType: string; browser: string; lastActive: any; isCurrent: boolean; }
+export interface UserSession {
+  id: string;
+  deviceType: string;
+  deviceLabel?: string;
+  browser: string;
+  browserVersion?: string;
+  os?: string;
+  platform?: string;
+  lastActive: any;
+  isCurrent: boolean;
+}
 export interface Patient { id: string; nombres: string; apellidos: string; fechaNacimiento: string; sexo: 'M' | 'F' | 'X'; telefonoPrincipal: string; telefonoContacto?: string; correo: string; curp?: string; direccion?: string; calle?: string; numeroExterior?: string; numeroInterior?: string; colonia?: string; municipio?: string; estadoDireccion?: string; estadoCivil?: string; estado: 'activo' | 'inactivo'; fechaRegistro: string; }
 export interface Service { id: string; codigo: string; nombre: string; descripcion: string; precio: number; categoria: string; estado: 'activo' | 'inactivo'; }
 export interface HistoryEntry { id: string; fecha: string; servicios: { servicioId: string; cantidad: number }[]; notas: string; total: number; }
@@ -157,10 +167,14 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
             const shouldLog = await runTransaction(db, async (tx) => {
               const snap = await tx.get(deviceRef);
               if (snap.exists()) return false;
-              const { deviceType, browser } = getDeviceInfo();
+              const { deviceType, deviceLabel, browser, browserVersion, os, platform } = getDeviceInfo();
               tx.set(deviceRef, {
                 deviceType,
+                deviceLabel,
                 browser,
+                browserVersion,
+                os,
+                platform,
                 firstSeen: serverTimestamp(),
               });
               return true;
