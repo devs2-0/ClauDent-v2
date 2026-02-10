@@ -60,7 +60,9 @@ const Seguridad: React.FC = () => {
                 </div>
                 <div className="space-y-1">
                   <div className="flex items-center gap-3">
-                    <p className="font-extrabold text-slate-800">{session.deviceType} • {session.browser}</p>
+                    <p className="font-extrabold text-slate-800">
+                      {session.deviceLabel ?? session.deviceType} • {session.browserVersion ? `${session.browser} ${session.browserVersion}` : session.browser}
+                    </p>
                     {session.isCurrent ? (
                       <Badge className="bg-primary text-white border-none px-3 py-0.5 text-[10px] animate-pulse font-black uppercase">
                         Este Navegador (Tú)
@@ -71,6 +73,11 @@ const Seguridad: React.FC = () => {
                       </Badge>
                     )}
                   </div>
+                  {(session.os || session.platform) && (
+                    <p className="text-xs text-slate-500 font-semibold">
+                      {session.os ?? session.platform}
+                    </p>
+                  )}
                   <p className="text-xs text-muted-foreground font-semibold flex items-center gap-1.5">
                     <Clock className="h-3.5 w-3.5 text-primary opacity-70" /> 
                     {session.isCurrent ? 'Activo en este momento' : 'Sesión remota conectada'}
