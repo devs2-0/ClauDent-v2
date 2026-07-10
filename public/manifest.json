@@ -1,0 +1,15 @@
+{
+    "short_name": "ClauDent",
+    "name": "ClauDent - Gestión Dental",
+    "icons": [
+    {
+        "src": "logo.png",
+        "sizes": "192x192 512x512",
+        "type": "image/png"
+    }
+    ],
+    "start_url": ".",
+    "display": "standalone",
+    "theme_color": "#51B6F5",
+    "background_color": "#ffffff"
+}

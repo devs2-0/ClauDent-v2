@@ -1,0 +1,126 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    /* Pastel dental palette - sky/emerald/sand */
+    --background: 200 40% 98%; /* azul casi blanco */
+    --foreground: 215 25% 20%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 215 25% 20%;
+
+    --popover: 0 0% 100%; /* Antes era azulito, ahora blanco */
+    --popover-foreground: 222 47% 11%;
+
+    --primary: 200 95% 65%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 160 60% 89%;
+    --secondary-foreground: 160 60% 20%;
+
+    --muted: 40 30% 94%;
+    --muted-foreground: 215 15% 45%;
+
+    --accent: 40 50% 88%;
+    --accent-foreground: 40 50% 25%;
+
+    --destructive: 0 75% 65%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 210 25% 88%;
+    --input: 210 25% 92%;
+    --ring: 200 95% 65%;
+
+    --radius: 1rem;
+
+    /* Success states */
+    --success: 160 60% 70%;
+    --success-foreground: 160 60% 15%;
+
+    /* Warning states */
+    --warning: 40 95% 65%;
+    --warning-foreground: 40 95% 15%;
+
+    /* Sidebar */
+    --sidebar-background: 210 35% 96%;
+    --sidebar-foreground: 215 25% 25%;
+    --sidebar-primary: 200 95% 65%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 210 30% 92%;
+    --sidebar-accent-foreground: 215 25% 25%;
+    --sidebar-border: 210 25% 88%;
+    --sidebar-ring: 200 95% 65%;
+
+    /* Smooth transitions */
+    --transition-smooth: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .dark {
+    --background: 215 30% 12%;
+    --foreground: 210 40% 95%;
+
+    --card: 215 28% 15%;
+    --card-foreground: 210 40% 95%;
+
+    --popover: 215 28% 15%;
+    --popover-foreground: 210 40% 95%;
+
+    --primary: 200 90% 55%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 160 50% 45%;
+    --secondary-foreground: 0 0% 100%;
+
+    --muted: 215 25% 20%;
+    --muted-foreground: 215 15% 60%;
+
+    --accent: 40 40% 35%;
+    --accent-foreground: 210 40% 95%;
+
+    --destructive: 0 70% 55%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 215 25% 25%;
+    --input: 215 25% 22%;
+    --ring: 200 90% 55%;
+
+    --success: 160 50% 45%;
+    --success-foreground: 0 0% 100%;
+
+    --warning: 40 90% 55%;
+    --warning-foreground: 0 0% 100%;
+
+    --sidebar-background: 215 28% 15%;
+    --sidebar-foreground: 210 40% 90%;
+    --sidebar-primary: 200 90% 55%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 215 25% 22%;
+    --sidebar-accent-foreground: 210 40% 90%;
+    --sidebar-border: 215 25% 25%;
+    --sidebar-ring: 200 90% 55%;
+  }
+}
+
+@layer base {
+  html {
+    /* Evita el cambio de tamaño automático en iOS horizontal */
+    -webkit-text-size-adjust: 100%;
+    scroll-behavior: smooth;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    /* Tamaño base para móviles, evita que se vea diminuto */
+    font-size: 16px;
+  }
+}
