@@ -1,31 +1,17 @@
-# Auth, roles y permisos - ClauDent
+# Auth - ClauDent
 
-Esta carpeta contendrá la lógica relacionada con autenticación, roles y permisos.
+Esta carpeta contiene la autenticacion basica, sesion actual y control de dispositivos activos.
 
-## Objetivo
-
-Centralizar la lógica de permisos para que módulos como Agenda, Inventario, Ventas, Pacientes, Servicios y Cotizaciones puedan mostrar u ocultar funcionalidades según el usuario.
+La configuracion de roles y permisos queda fuera del flujo activo por ahora para mantener el comportamiento de produccion del repositorio original.
 
 ## Estructura
 
 ```txt
-guards/      Protección de rutas o acciones
-hooks/       Hooks como usePermissions o useCurrentUserRole
-services/    Servicios para roles, permisos y usuarios
-store/       Contextos o estado de autenticación/permisos
-types/       Tipos TypeScript relacionados con permisos
-index.ts     Exportaciones públicas
-
-Regla importante
-
-Los permisos son transversales al sistema. No deben vivir dentro de Agenda, Inventario o Ventas.
-
----
-
-Regla importante
-
-Solo debe agregarse aquí código que realmente sea usado por más de un módulo.
-
-No mover componentes existentes durante esta fase.
-
-
+components/  Reservado para componentes de auth
+guards/      Guards de autenticacion
+hooks/       Hooks como useAuth
+pages/       Pantallas de login y recuperacion
+services/    Servicios de auth y sesiones
+store/       Provider de autenticacion
+types/       Tipos compartidos de auth
+```
