@@ -42,6 +42,44 @@ service cloud.firestore {
       allow read, write: if isSignedIn();
     }
 
+    match /pagos/{pagoId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /cortesCaja/{corteId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /cajaMovimientos/{movimientoId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /tratamientos/{tratamientoId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /bitacora/{logId} {
+      allow read, create: if isSignedIn();
+      allow update, delete: if false;
+    }
+
+    match /inventarioProductos/{productoId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /inventarioCategorias/{categoriaId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /inventarioMovimientos/{movimientoId} {
+      allow read, create: if isSignedIn();
+      allow update, delete: if false;
+    }
+
+    match /inventarioEntradas/{entradaId} {
+      allow read, write: if isSignedIn();
+    }
+
     match /usuarios/{userId} {
       allow read, write: if isSignedIn() && request.auth.uid == userId;
 

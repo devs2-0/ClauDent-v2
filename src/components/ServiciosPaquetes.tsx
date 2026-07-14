@@ -139,7 +139,7 @@ const ServiciosPaquetes: React.FC = () => {
       setFormData(prev => {
           const existingIndex = prev.serviciosIncluidos.findIndex(s => s.id === servicio.id);
           
-          let nuevosServicios = [...prev.serviciosIncluidos];
+          const nuevosServicios = [...prev.serviciosIncluidos];
           
           if (existingIndex >= 0) {
               // Si ya existe, incrementamos la cantidad

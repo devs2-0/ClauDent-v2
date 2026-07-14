@@ -73,7 +73,7 @@ const PatientAntecedentes: React.FC = () => {
         const historyRef = collection(db, 'pacientes', patientId, 'historia_clinica');
         const querySnapshot = await getDocs(historyRef);
         
-        let fullData: IHistoriaClinicaCompleta = JSON.parse(JSON.stringify(initialState)); // Copia profunda
+        const fullData: IHistoriaClinicaCompleta = JSON.parse(JSON.stringify(initialState)); // Copia profunda
         
         if (querySnapshot.empty) {
           console.log("No hay historia clínica inicial para este paciente.");

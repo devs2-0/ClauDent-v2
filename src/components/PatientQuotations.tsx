@@ -78,7 +78,11 @@ const PatientQuotations: React.FC<PatientQuotationsProps> = ({ patientId }) => {
 
   const handlePrint = (q: Quotation) => {
       const patient = patients.find(p => p.id === q.pacienteId);
-      generateQuotationPDF(q, patient);
+      if (!patient) {
+        toast.error("No se encontro el paciente para generar el PDF");
+        return;
+      }
+      generateQuotationPDF(patient, q);
   }
 
   // ¡MODIFICADO! Nuevos estados

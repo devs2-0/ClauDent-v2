@@ -278,7 +278,11 @@ const Cotizaciones: React.FC = () => {
     }
     const patient = patients.find(p => p.id === quotation.pacienteId);
     try {
-      generateQuotationPDF(quotation, patient);
+      if (!patient) {
+        toast.error("No se encontro el paciente para generar el PDF");
+        return;
+      }
+      generateQuotationPDF(patient, quotation);
     } catch (error) {
       console.error("Error al generar PDF: ", error);
       toast.error("Error al generar el PDF");

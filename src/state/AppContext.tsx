@@ -51,6 +51,7 @@ export interface UserSession {
   lastActive: any;
   isCurrent: boolean;
 }
+export interface Attachment { id: string; nombre: string; tipo: string; fecha: string; url: string; storagePath: string; subidoPor?: string; }
 export interface Patient { id: string; nombres: string; apellidos: string; fechaNacimiento: string; sexo: 'M' | 'F' | 'X'; telefonoPrincipal: string; telefonoContacto?: string; correo: string; curp?: string; direccion?: string; calle?: string; numeroExterior?: string; numeroInterior?: string; colonia?: string; municipio?: string; estadoDireccion?: string; estadoCivil?: string; estado: 'activo' | 'inactivo'; fechaRegistro: string; }
 export interface Service { id: string; codigo: string; nombre: string; descripcion: string; precio: number; categoria: string; estado: 'activo' | 'inactivo'; }
 export interface HistoryEntry { id: string; fecha: string; servicios: { servicioId: string; cantidad: number }[]; notas: string; total: number; }
@@ -142,8 +143,12 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // --- LOGICA DE BITÁCORA ---
   const addLog = async (accion: string, modulo: string, detalle: string) => {
     try {
+      const user = auth.currentUser;
+      const email = user?.email || 'Sistema';
       await addDoc(collection(db, 'bitacora'), {
-        usuarioEmail: auth.currentUser?.email || 'Sistema',
+        usuarioEmail: email,
+        usuarioNombre: user?.displayName || email || 'Admin',
+        usuarioId: user?.uid ?? null,
         accion, modulo, detalle, fecha: serverTimestamp(),
       });
     } catch (e) { console.error("Error bitácora:", e); }

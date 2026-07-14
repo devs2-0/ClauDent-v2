@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Home, Users, WalletCards, FileText, LogOut } from "lucide-react";
+import { Home, Users, WalletCards, LogOut, Package, ShoppingCart } from "lucide-react";
 import { useAuth } from "@/auth";
 import { cn } from "@/shared/utils/utils";
 import {
@@ -28,8 +28,9 @@ export function BottomNav() {
   const items = [
     { title: "Inicio", url: "/dashboard", icon: Home },
     { title: "Pacientes", url: "/pacientes", icon: Users },
-    { title: "Cotizaciones", url: "/cotizaciones", icon: FileText },
+    { title: "Ventas", url: "/ventas", icon: ShoppingCart },
     { title: "Caja", url: "/caja", icon: WalletCards },
+    { title: "Inventario", url: "/inventario", icon: Package },
   ];
 
   return (
@@ -43,14 +44,14 @@ export function BottomNav() {
             key={item.title}
             to={item.url}
             className={cn(
-              "flex flex-col items-center justify-center gap-1 w-full h-full text-[10px] font-medium transition-colors",
+              "flex min-w-0 flex-col items-center justify-center gap-1 w-full h-full text-[10px] font-medium transition-colors",
               isActive 
                 ? "text-primary" 
                 : "text-muted-foreground hover:text-foreground"
             )}
           >
             <Icon className={cn("h-5 w-5", isActive && "fill-current/20")} />
-            <span>{item.title}</span>
+            <span className="max-w-full truncate">{item.title}</span>
           </Link>
         );
       })}
@@ -58,10 +59,10 @@ export function BottomNav() {
       {/* Botón de Cerrar Sesión (Solo Móvil) */}
       <button
         onClick={() => setLogoutDialogOpen(true)}
-        className="flex flex-col items-center justify-center gap-1 w-full h-full text-[10px] font-medium text-destructive hover:text-destructive/80 transition-colors"
+        className="flex min-w-0 flex-col items-center justify-center gap-1 w-full h-full text-[10px] font-medium text-destructive hover:text-destructive/80 transition-colors"
       >
         <LogOut className="h-5 w-5" />
-        <span>Salir</span>
+        <span className="max-w-full truncate">Salir</span>
       </button>
 
       <AlertDialog open={logoutDialogOpen} onOpenChange={setLogoutDialogOpen}>

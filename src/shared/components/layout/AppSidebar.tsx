@@ -4,11 +4,13 @@ import {
   Users,
   FileText,
   LogOut,
+  Package,
   Stethoscope,
   WalletCards,
   PanelLeftClose,
   Menu,
   History,
+  ShoppingCart,
   ShieldCheck,
   X // Icono para cerrar en móvil
 } from 'lucide-react';
@@ -34,7 +36,9 @@ const items = [
   { title: "Dashboard", url: "/dashboard", icon: Home },
   { title: "Pacientes", url: "/pacientes", icon: Users },
   { title: "Cotizaciones", url: "/cotizaciones", icon: FileText },
+  { title: "Ventas", url: "/ventas", icon: ShoppingCart },
   { title: "Caja", url: "/caja", icon: WalletCards },
+  { title: "Inventario", url: "/inventario", icon: Package },
   { title: "Servicios", url: "/servicios", icon: Stethoscope },
   { title: "Bitácora", url: "/bitacora", icon: History },
   { title: "Seguridad", url: "/seguridad", icon: ShieldCheck },

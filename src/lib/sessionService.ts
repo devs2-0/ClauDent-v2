@@ -6,6 +6,12 @@ type BrowserInfo = {
   browserVersion: string;
 };
 
+type UserAgentData = {
+  brands?: { brand: string; version: string }[];
+  mobile?: boolean;
+  platform?: string;
+};
+
 type DeviceInfo = {
   deviceType: string;
   deviceLabel: string;
@@ -34,7 +40,7 @@ const getOsName = (ua: string, platform: string) => {
   return platform || 'Sistema desconocido';
 };
 
-const parseBrowserInfo = (ua: string, uaData?: NavigatorUAData): BrowserInfo => {
+const parseBrowserInfo = (ua: string, uaData?: UserAgentData): BrowserInfo => {
   const brands = uaData?.brands ?? [];
   const brandLookup = [
     { match: 'Microsoft Edge', label: 'Edge' },
@@ -68,8 +74,9 @@ const parseBrowserInfo = (ua: string, uaData?: NavigatorUAData): BrowserInfo => 
 
 // Detecta el hardware una sola vez
 export const getDeviceInfo = (): DeviceInfo => {
+  const nav = navigator as Navigator & { userAgentData?: UserAgentData };
   const ua = navigator.userAgent;
-  const uaData = navigator.userAgentData;
+  const uaData = nav.userAgentData;
   const platform = uaData?.platform || navigator.platform || 'Desconocido';
   const isTablet = /(tablet|ipad|playbook|silk)|(android(?!.*mobi))/i.test(ua);
   const isMobile = /Mobile|Android|iP(hone|od)|IEMobile|BlackBerry|Kindle|Silk-Accelerated/i.test(ua);

@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { Upload, Eye, Trash2, FileText, Image, File } from 'lucide-react';
 import { useApp } from '@/state/AppContext'; // Solo para 'currentUser'
 import { Attachment } from '@/state/AppContext'; // Importamos el tipo
-import { formatDate } from '@/lib/utils';
+import { cn, formatDate } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';

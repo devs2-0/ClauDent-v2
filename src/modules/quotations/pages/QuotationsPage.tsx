@@ -4,6 +4,7 @@ import { Plus, Download, Eye, FileText, Book, ClipboardPlus, Search, Printer, Ch
 import { usePatients } from '@/modules/patients';
 import { Quotation, QuotationItem, useQuotations } from '@/modules/quotations';
 import { Service, useDentalServices } from '@/modules/services';
+import { useCashRegister } from '@/modules/ventas';
 import { formatCurrency, formatDate } from '@/shared/utils/utils';
 import { Button } from '@/shared/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card';
@@ -58,6 +59,7 @@ const Cotizaciones: React.FC = () => {
   const { patients } = usePatients();
   const { services } = useDentalServices();
   const { quotations, quotationsLoading, addQuotation, updateQuotation, deleteQuotation } = useQuotations();
+  const { finalizeQuotationCheckout } = useCashRegister();
   
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [isCheckoutDialogOpen, setIsCheckoutDialogOpen] = useState(false);
@@ -65,6 +67,7 @@ const Cotizaciones: React.FC = () => {
   const [editingQuotationId, setEditingQuotationId] = useState<string | null>(null);
   const [checkoutQuotation, setCheckoutQuotation] = useState<Quotation | null>(null);
   const [checkoutMethod, setCheckoutMethod] = useState<'efectivo' | 'tarjeta' | 'transferencia'>('efectivo');
+  const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
   
   const [openPatientCombobox, setOpenPatientCombobox] = useState(false);
   const [openServiceIndex, setOpenServiceIndex] = useState<number | null>(null);
@@ -298,12 +301,25 @@ const Cotizaciones: React.FC = () => {
     setIsCheckoutDialogOpen(true);
   };
 
-  const handleConfirmCheckout = () => {
+  const handleConfirmCheckout = async () => {
     if (!checkoutQuotation) return;
 
-    toast.success('Front listo: pago enviado a caja, tratamiento e inventario preparados');
-    setIsCheckoutDialogOpen(false);
-    setCheckoutQuotation(null);
+    const patient = patients.find((p) => p.id === checkoutQuotation.pacienteId);
+
+    setIsCheckoutLoading(true);
+    try {
+      await finalizeQuotationCheckout({
+        quotation: checkoutQuotation,
+        pacienteNombre: patient ? `${patient.nombres} ${patient.apellidos}` : 'Paciente eliminado',
+        metodo: checkoutMethod,
+      });
+      setIsCheckoutDialogOpen(false);
+      setCheckoutQuotation(null);
+    } catch (error: any) {
+      toast.error(error.message || 'No se pudo finalizar el cobro');
+    } finally {
+      setIsCheckoutLoading(false);
+    }
   };
 
   const estadoBadgeVariant = (estado: string) => {
@@ -815,12 +831,12 @@ const Cotizaciones: React.FC = () => {
           )}
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setIsCheckoutDialogOpen(false)}>
+            <Button type="button" variant="outline" onClick={() => setIsCheckoutDialogOpen(false)} disabled={isCheckoutLoading}>
               Cancelar
             </Button>
-            <Button type="button" onClick={handleConfirmCheckout}>
+            <Button type="button" onClick={handleConfirmCheckout} disabled={isCheckoutLoading}>
               <WalletCards className="mr-2 h-4 w-4" />
-              Cobrar y finalizar
+              {isCheckoutLoading ? 'Cobrando...' : 'Cobrar y finalizar'}
             </Button>
           </DialogFooter>
         </DialogContent>

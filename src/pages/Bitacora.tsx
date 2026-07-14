@@ -37,6 +37,7 @@ const Bitacora: React.FC = () => {
     const term = filtro.toLowerCase();
     return logs.filter(l =>
       (l.detalle || "").toLowerCase().includes(term) ||
+      (l.usuarioNombre || "").toLowerCase().includes(term) ||
       (l.usuarioEmail || "").toLowerCase().includes(term) ||
       (l.modulo || "").toLowerCase().includes(term) ||
       (l.accion || "").toLowerCase().includes(term)
@@ -76,7 +77,9 @@ const Bitacora: React.FC = () => {
           minute: '2-digit',
         });
       }
-    } catch {}
+    } catch {
+      return 'Reciente';
+    }
     return 'Reciente';
   };
 
@@ -163,7 +166,7 @@ const Bitacora: React.FC = () => {
                 <div className="flex items-center gap-2 text-xs">
                   <Mail className="h-4 w-4 text-muted-foreground" />
                   <span className="truncate max-w-[220px] font-medium text-slate-700">
-                    {log.usuarioEmail || '—'}
+                    {log.usuarioNombre || log.usuarioEmail || '—'}
                   </span>
                 </div>
 
@@ -233,7 +236,7 @@ const Bitacora: React.FC = () => {
                   <TableCell className="text-sm font-medium text-slate-600">
                     {fmtFecha(log.fecha)}
                   </TableCell>
-                  <TableCell className="text-sm">{log.usuarioEmail}</TableCell>
+                  <TableCell className="text-sm">{log.usuarioNombre || log.usuarioEmail}</TableCell>
                   <TableCell>
                     <Badge variant="outline" className={`${getAccionColor(log.accion)} font-bold border shadow-sm`}>
                       {log.accion}

@@ -2,11 +2,12 @@ import React from "react";
 import { LoginPage, ResetPasswordPage } from "@/auth";
 import { AuditPage } from "@/modules/audit";
 import { DashboardPage } from "@/modules/dashboard";
+import { InventarioPage } from "@/modules/inventario";
 import { OdontogramEditorPage, PatientRecordPage, PatientsPage } from "@/modules/patients";
 import { QuotationsPage } from "@/modules/quotations";
 import { SecurityPage } from "@/modules/security";
 import { ServicesPage } from "@/modules/services";
-import { CajaPage } from "@/modules/ventas";
+import { CajaPage, VentasPage } from "@/modules/ventas";
 import { NotFoundPage } from "@/shared";
 
 export interface AppRouteConfig {
@@ -26,7 +27,9 @@ export const protectedRoutes: AppRouteConfig[] = [
   { path: "/pacientes/:patientId/odontograma/:odontogramId", element: <OdontogramEditorPage /> },
   { path: "/servicios", element: <ServicesPage /> },
   { path: "/cotizaciones", element: <QuotationsPage /> },
+  { path: "/ventas", element: <VentasPage /> },
   { path: "/caja", element: <CajaPage /> },
+  { path: "/inventario", element: <InventarioPage /> },
   { path: "/bitacora", element: <AuditPage /> },
   { path: "/seguridad", element: <SecurityPage /> },
 ];
