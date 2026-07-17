@@ -5,7 +5,9 @@ import { usePatients } from '@/modules/patients';
 import { Quotation, QuotationItem, useQuotations } from '@/modules/quotations';
 import { Service, useDentalServices } from '@/modules/services';
 import { useCashRegister } from '@/modules/ventas';
+import { DataPagination } from '@/shared/components/DataPagination';
 import { formatCurrency, formatDate } from '@/shared/utils/utils';
+import { usePagination } from '@/shared/hooks/usePagination';
 import { Button } from '@/shared/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card';
 import {
@@ -154,6 +156,9 @@ const Cotizaciones: React.FC = () => {
         return matchesText && matchesStart && matchesEnd;
     });
   }, [quotations, patients, mainSearch, dateFilterStart, dateFilterEnd]);
+  const quotationsPagination = usePagination(filteredQuotations, {
+    resetKeys: [mainSearch, dateFilterStart, dateFilterEnd],
+  });
 
   const handleOpenDialog = (quotation?: Quotation) => {
     if (quotation) {
@@ -428,7 +433,7 @@ const Cotizaciones: React.FC = () => {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filteredQuotations.map((quotation) => {
+                  quotationsPagination.paginatedItems.map((quotation) => {
                     const patient = patients.find((p) => p.id === quotation.pacienteId);
                     return (
                       <TableRow key={quotation.id}>
@@ -490,6 +495,21 @@ const Cotizaciones: React.FC = () => {
             </Table>
           </div>
         </CardContent>
+        {!quotationsLoading && filteredQuotations.length > 0 && (
+          <DataPagination
+            itemLabel="cotizaciones"
+            page={quotationsPagination.page}
+            pageSize={quotationsPagination.pageSize}
+            totalItems={quotationsPagination.totalItems}
+            startIndex={quotationsPagination.startIndex}
+            endIndex={quotationsPagination.endIndex}
+            canPreviousPage={quotationsPagination.canPreviousPage}
+            canNextPage={quotationsPagination.canNextPage}
+            onPageSizeChange={quotationsPagination.setPageSize}
+            onPreviousPage={quotationsPagination.previousPage}
+            onNextPage={quotationsPagination.nextPage}
+          />
+        )}
       </Card>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>

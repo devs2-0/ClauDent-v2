@@ -17,6 +17,23 @@
       ]
     },
     {
+      "collectionGroup": "inventarioMovimientos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tipo", "mode": "ASCENDING" },
+        { "fieldPath": "fecha", "mode": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "inventarioMovimientos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "productoId", "mode": "ASCENDING" },
+        { "fieldPath": "tipo", "mode": "ASCENDING" },
+        { "fieldPath": "fecha", "mode": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "inventarioEntradas",
       "queryScope": "COLLECTION",
       "fields": [

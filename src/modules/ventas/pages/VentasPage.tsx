@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { useInventory } from "@/modules/inventario";
 import { usePatients } from "@/modules/patients";
 import { useDentalServices } from "@/modules/services";
+import { DataPagination } from "@/shared/components/DataPagination";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/components/ui/card";
@@ -35,6 +36,7 @@ import {
 } from "@/shared/components/ui/table";
 import { Textarea } from "@/shared/components/ui/textarea";
 import { formatCurrency, formatDate } from "@/shared/utils/utils";
+import { usePagination } from "@/shared/hooks/usePagination";
 import { useCashRegister } from "../hooks/useCashRegister";
 import type { DirectSaleProductItem, DirectSaleServiceItem, PaymentMethod } from "../types/cash.types";
 
@@ -127,6 +129,9 @@ const VentasPage: React.FC = () => {
     () => payments.filter((payment) => payment.fecha === dateFilter && payment.estado === "activo"),
     [payments, dateFilter],
   );
+  const salesPagination = usePagination(salesForDate, {
+    resetKeys: [dateFilter],
+  });
 
   const salesTotalForDate = useMemo(
     () => salesForDate.reduce((total, payment) => total + payment.monto, 0),
@@ -639,7 +644,7 @@ const VentasPage: React.FC = () => {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  salesForDate.map((payment) => {
+                  salesPagination.paginatedItems.map((payment) => {
                     const MethodIcon = paymentMethodIcon[payment.metodo];
 
                     return (
@@ -664,6 +669,21 @@ const VentasPage: React.FC = () => {
             </Table>
           </div>
         </CardContent>
+        {!paymentsLoading && salesForDate.length > 0 && (
+          <DataPagination
+            itemLabel="ventas"
+            page={salesPagination.page}
+            pageSize={salesPagination.pageSize}
+            totalItems={salesPagination.totalItems}
+            startIndex={salesPagination.startIndex}
+            endIndex={salesPagination.endIndex}
+            canPreviousPage={salesPagination.canPreviousPage}
+            canNextPage={salesPagination.canNextPage}
+            onPageSizeChange={salesPagination.setPageSize}
+            onPreviousPage={salesPagination.previousPage}
+            onNextPage={salesPagination.nextPage}
+          />
+        )}
       </Card>
     </div>
   );

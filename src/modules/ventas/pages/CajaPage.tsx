@@ -2,20 +2,27 @@ import React, { useMemo, useState } from "react";
 import {
   AlertTriangle,
   Banknote,
+  BarChart3,
   CheckCircle2,
   CircleDollarSign,
   ClipboardCheck,
   CreditCard,
+  Download,
+  FileSpreadsheet,
   Landmark,
   Lock,
+  PackageCheck,
   Plus,
   Power,
   ReceiptText,
   Search,
+  TrendingDown,
+  TrendingUp,
   Unlock,
   WalletCards,
 } from "lucide-react";
 import { toast } from "sonner";
+import { DataPagination } from "@/shared/components/DataPagination";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/components/ui/card";
@@ -41,8 +48,18 @@ import {
 } from "@/shared/components/ui/table";
 import { Textarea } from "@/shared/components/ui/textarea";
 import { formatCurrency, formatDate } from "@/shared/utils/utils";
+import { usePagination } from "@/shared/hooks/usePagination";
+import { useInventory, type InventoryMovement } from "@/modules/inventario";
 import { useCashRegister } from "../hooks/useCashRegister";
-import type { CashClosureTotals, CashCutSummary, CashMovement, CashMovementType, PaymentMethod } from "../types/cash.types";
+import {
+  exportCashCutCsv,
+  exportCashCutPdf,
+  exportFinancialReportCsv,
+  exportFinancialReportPdf,
+  type CashCutExportData,
+  type FinancialReportExportData,
+} from "../services/financialReportExport";
+import type { CashClosureTotals, CashCutSummary, CashExpenseCategory, CashMovement, CashMovementType, PaymentMethod } from "../types/cash.types";
 
 const today = () => {
   const now = new Date();
@@ -50,7 +67,44 @@ const today = () => {
   return localDate.toISOString().split("T")[0];
 };
 
+const toLocalDateString = (date: Date) => {
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return localDate.toISOString().split("T")[0];
+};
+
+const startOfCurrentMonth = () => {
+  const now = new Date();
+  return toLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1));
+};
+
+const addDays = (date: string, days: number) => {
+  const parsedDate = new Date(`${date}T00:00:00`);
+  parsedDate.setDate(parsedDate.getDate() + days);
+  return toLocalDateString(parsedDate);
+};
+
+const getPreviousRange = (startDate: string, endDate: string) => {
+  const start = new Date(`${startDate}T00:00:00`);
+  const end = new Date(`${endDate}T00:00:00`);
+  const days = Math.max(1, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
+  const previousEnd = addDays(startDate, -1);
+  const previousStart = addDays(previousEnd, -(days - 1));
+  return { start: previousStart, end: previousEnd };
+};
+
+const isDateInRange = (date: string, startDate: string, endDate: string) => {
+  return date >= startDate && date <= endDate;
+};
+
+const calculateVariation = (current: number, previous: number) => {
+  if (!previous) return current > 0 ? 100 : 0;
+  return ((current - previous) / Math.abs(previous)) * 100;
+};
+
+const formatVariation = (value: number) => `${value > 0 ? "+" : ""}${value.toFixed(1)}%`;
+
 const paymentMethods: PaymentMethod[] = ["efectivo", "tarjeta", "transferencia"];
+const cashExpenseCategories: CashExpenseCategory[] = ["suministros", "servicios", "renta", "nomina", "mantenimiento", "otros"];
 
 const paymentMethodLabel: Record<PaymentMethod, string> = {
   efectivo: "Efectivo",
@@ -67,6 +121,19 @@ const paymentMethodIcon: Record<PaymentMethod, React.ElementType> = {
 const cashMovementLabel: Record<CashMovementType, string> = {
   ingreso: "Ingreso",
   egreso: "Egreso",
+};
+
+const cashExpenseCategoryLabel: Record<CashExpenseCategory, string> = {
+  suministros: "Suministros",
+  servicios: "Servicios",
+  renta: "Renta",
+  nomina: "Nomina",
+  mantenimiento: "Mantenimiento",
+  otros: "Otros",
+};
+
+const getExpenseCategoryLabel = (category?: CashExpenseCategory | null) => {
+  return category ? cashExpenseCategoryLabel[category] ?? "Otros" : "Sin categoria";
 };
 
 const emptyTotals: CashClosureTotals = {
@@ -94,6 +161,8 @@ const createEmptyCashSummary = (): CashCutSummary => ({
 const isOpeningCashMovement = (movement: Pick<CashMovement, "concepto" | "referenciaTipo">) => {
   return movement.referenciaTipo === "apertura" || movement.concepto.toLowerCase().includes("apertura");
 };
+
+const getUserDisplayName = (name?: string, email?: string) => name || email || "Admin";
 
 const buildCashSummary = (movements: CashMovement[]): CashCutSummary => {
   const summary = createEmptyCashSummary();
@@ -133,6 +202,90 @@ const buildCashSummary = (movements: CashMovement[]): CashCutSummary => {
   return summary;
 };
 
+const getInventoryMovementCost = (movement: InventoryMovement) => {
+  const storedCost = Number(movement.costoTotal) || 0;
+  if (storedCost) return storedCost;
+  return Math.abs(Number(movement.cantidad) || 0) * (Number(movement.costoUnitario) || 0);
+};
+
+const getInventoryMovementIncome = (movement: InventoryMovement) => {
+  const storedIncome = Number(movement.ingresoTotal) || 0;
+  if (storedIncome) return storedIncome;
+  return Math.abs(Number(movement.cantidad) || 0) * (Number(movement.precioUnitarioVenta) || 0);
+};
+
+const buildFinancialReportSnapshot = (
+  cashMovements: CashMovement[],
+  inventoryMovements: InventoryMovement[],
+  startDate: string,
+  endDate: string,
+) => {
+  const periodCashMovements = cashMovements.filter((movement) => {
+    return movement.estado === "activo" && !isOpeningCashMovement(movement) && isDateInRange(movement.fecha, startDate, endDate);
+  });
+  const periodInventorySales = inventoryMovements.filter((movement) => {
+    return movement.tipo === "venta" && isDateInRange(movement.fecha, startDate, endDate);
+  });
+
+  const ingresos = periodCashMovements
+    .filter((movement) => movement.tipo === "ingreso")
+    .reduce((total, movement) => total + (Number(movement.monto) || 0), 0);
+  const gastosOperativos = periodCashMovements
+    .filter((movement) => movement.tipo === "egreso")
+    .reduce((total, movement) => total + (Number(movement.monto) || 0), 0);
+  const costoMercaderia = periodInventorySales.reduce((total, movement) => total + getInventoryMovementCost(movement), 0);
+  const utilidadBruta = ingresos - costoMercaderia;
+  const utilidadNeta = utilidadBruta - gastosOperativos;
+  const margenNeto = ingresos > 0 ? (utilidadNeta / ingresos) * 100 : 0;
+
+  const expenseCategoryMap = new Map<CashExpenseCategory | "sin_categoria", { movimientos: number; total: number }>();
+  periodCashMovements
+    .filter((movement) => movement.tipo === "egreso")
+    .forEach((movement) => {
+      const category = movement.categoriaGasto ?? "sin_categoria";
+      const current = expenseCategoryMap.get(category) ?? { movimientos: 0, total: 0 };
+      current.movimientos += 1;
+      current.total += Number(movement.monto) || 0;
+      expenseCategoryMap.set(category, current);
+    });
+
+  const productSalesMap = new Map<string, FinancialReportExportData["ventasPorProducto"][number]>();
+  periodInventorySales.forEach((movement) => {
+    const productName = movement.productoNombre || "Producto sin nombre";
+    const current = productSalesMap.get(productName) ?? {
+      producto: productName,
+      unidades: 0,
+      ingreso: 0,
+      costo: 0,
+      utilidad: 0,
+    };
+    current.unidades += Math.abs(Number(movement.cantidad) || 0);
+    current.ingreso += getInventoryMovementIncome(movement);
+    current.costo += getInventoryMovementCost(movement);
+    current.utilidad = current.ingreso - current.costo;
+    productSalesMap.set(productName, current);
+  });
+
+  return {
+    periodCashMovements,
+    periodInventorySales,
+    ingresos,
+    gastosOperativos,
+    costoMercaderia,
+    utilidadBruta,
+    utilidadNeta,
+    margenNeto,
+    gastosPorCategoria: Array.from(expenseCategoryMap.entries())
+      .map(([category, value]) => ({
+        categoria: category === "sin_categoria" ? "Sin categoria" : getExpenseCategoryLabel(category),
+        movimientos: value.movimientos,
+        total: value.total,
+      }))
+      .sort((a, b) => b.total - a.total),
+    ventasPorProducto: Array.from(productSalesMap.values()).sort((a, b) => b.ingreso - a.ingreso),
+  };
+};
+
 const CajaPage: React.FC = () => {
   const {
     payments,
@@ -146,10 +299,16 @@ const CajaPage: React.FC = () => {
     closeCashRegister,
     autoCloseCashRegister,
   } = useCashRegister();
+  const {
+    movements: inventoryMovements,
+    movementsLoading: inventoryMovementsLoading,
+  } = useInventory();
 
   const [search, setSearch] = useState("");
   const [methodFilter, setMethodFilter] = useState<PaymentMethod | "todos">("todos");
-  const [dateFilter, setDateFilter] = useState(today());
+  const [dateFilter, setDateFilter] = useState(() => today());
+  const [reportStartDate, setReportStartDate] = useState(() => startOfCurrentMonth());
+  const [reportEndDate, setReportEndDate] = useState(() => today());
   const [activeTab, setActiveTab] = useState("pagos");
   const [selectedClosureId, setSelectedClosureId] = useState<string | null>(null);
 
@@ -184,6 +343,8 @@ const CajaPage: React.FC = () => {
   const [cashMovementForm, setCashMovementForm] = useState({
     tipo: "egreso" as CashMovementType,
     metodo: "efectivo" as PaymentMethod,
+    categoriaGasto: "otros" as CashExpenseCategory,
+    comprobanteUrl: "",
     concepto: "",
     monto: "",
     nota: "",
@@ -229,7 +390,7 @@ const CajaPage: React.FC = () => {
   const hasOpenCashForSelectedDate = openCashClosure?.fecha === dateFilter;
   const hasOpenCashForAnotherDate = Boolean(openCashClosure && openCashClosure.fecha !== dateFilter);
   const canOpenSelectedDate = !openCashClosure;
-  const openCashButtonLabel = openCashClosure ? "Caja abierta" : lastClosureForDate ? "Abrir nuevo turno" : "Abrir caja";
+  const openCashButtonLabel = openCashClosure ? "Caja abierta" : "Abrir caja";
 
   const selectedClosureForDetail = useMemo(() => {
     const explicitClosure = selectedClosureId
@@ -258,6 +419,71 @@ const CajaPage: React.FC = () => {
   const openCashSummary = useMemo(() => buildCashSummary(openCashMovements), [openCashMovements]);
   const cashSummary = useMemo(() => buildCashSummary(displayedCashMovements), [displayedCashMovements]);
   const cashSummaryForClosing = openCashClosure ? openCashSummary : cashSummary;
+  const normalizedReportStartDate = reportStartDate <= reportEndDate ? reportStartDate : reportEndDate;
+  const normalizedReportEndDate = reportStartDate <= reportEndDate ? reportEndDate : reportStartDate;
+  const previousReportRange = useMemo(
+    () => getPreviousRange(normalizedReportStartDate, normalizedReportEndDate),
+    [normalizedReportEndDate, normalizedReportStartDate],
+  );
+  const financialReport = useMemo(
+    () => buildFinancialReportSnapshot(cashMovements, inventoryMovements, normalizedReportStartDate, normalizedReportEndDate),
+    [cashMovements, inventoryMovements, normalizedReportEndDate, normalizedReportStartDate],
+  );
+  const previousFinancialReport = useMemo(
+    () => buildFinancialReportSnapshot(cashMovements, inventoryMovements, previousReportRange.start, previousReportRange.end),
+    [cashMovements, inventoryMovements, previousReportRange.end, previousReportRange.start],
+  );
+  const financialReportExportData = useMemo<FinancialReportExportData>(() => ({
+    fechaInicio: normalizedReportStartDate,
+    fechaFin: normalizedReportEndDate,
+    ingresos: financialReport.ingresos,
+    gastosOperativos: financialReport.gastosOperativos,
+    costoMercaderia: financialReport.costoMercaderia,
+    utilidadBruta: financialReport.utilidadBruta,
+    utilidadNeta: financialReport.utilidadNeta,
+    margenNeto: financialReport.margenNeto,
+    ingresosPeriodoAnterior: previousFinancialReport.ingresos,
+    utilidadPeriodoAnterior: previousFinancialReport.utilidadNeta,
+    variacionIngresos: calculateVariation(financialReport.ingresos, previousFinancialReport.ingresos),
+    variacionUtilidad: calculateVariation(financialReport.utilidadNeta, previousFinancialReport.utilidadNeta),
+    gastosPorCategoria: financialReport.gastosPorCategoria,
+    ventasPorProducto: financialReport.ventasPorProducto,
+    movimientos: financialReport.periodCashMovements.map((movement) => ({
+      fecha: movement.fecha,
+      tipo: isOpeningCashMovement(movement) ? "apertura" : movement.tipo,
+      concepto: movement.concepto,
+      metodo: paymentMethodLabel[movement.metodo],
+      categoria: movement.tipo === "egreso" ? getExpenseCategoryLabel(movement.categoriaGasto) : "-",
+      monto: movement.tipo === "egreso" ? -Math.abs(Number(movement.monto) || 0) : Number(movement.monto) || 0,
+      usuario: getUserDisplayName(movement.usuarioNombre, movement.usuarioEmail),
+    })),
+  }), [
+    financialReport.costoMercaderia,
+    financialReport.gastosOperativos,
+    financialReport.gastosPorCategoria,
+    financialReport.ingresos,
+    financialReport.margenNeto,
+    financialReport.periodCashMovements,
+    financialReport.utilidadBruta,
+    financialReport.utilidadNeta,
+    financialReport.ventasPorProducto,
+    normalizedReportEndDate,
+    normalizedReportStartDate,
+    previousFinancialReport.ingresos,
+    previousFinancialReport.utilidadNeta,
+  ]);
+  const paymentsPagination = usePagination(filteredPayments, {
+    resetKeys: [search, methodFilter, dateFilter],
+  });
+  const cashMovementsPagination = usePagination(displayedCashMovements, {
+    resetKeys: [selectedClosureForDetail?.id, dateFilter],
+  });
+  const reportProductSalesPagination = usePagination(financialReport.ventasPorProducto, {
+    resetKeys: [normalizedReportStartDate, normalizedReportEndDate],
+  });
+  const reportCashMovementsPagination = usePagination(financialReport.periodCashMovements, {
+    resetKeys: [normalizedReportStartDate, normalizedReportEndDate],
+  });
 
   const cashStatus = useMemo(() => {
     if (hasOpenCashForSelectedDate) {
@@ -265,7 +491,7 @@ const CajaPage: React.FC = () => {
         label: "ABIERTA",
         title: "Caja abierta",
         description: `El corte del ${formatDate(dateFilter)} esta activo y listo para recibir cobros.`,
-        nextAction: "Al final del turno cierra manual o automatico.",
+        nextAction: "Al final del dia cierra manual o automatico.",
         Icon: Unlock,
         cardClass: "border-emerald-300 bg-emerald-50",
         iconClass: "bg-emerald-600 text-white",
@@ -289,9 +515,9 @@ const CajaPage: React.FC = () => {
     if (lastClosureForDate) {
       return {
         label: "CERRADA",
-        title: "Turno cerrado",
+        title: "Caja cerrada",
         description: `Hay ${closedClosuresForDate.length} corte${closedClosuresForDate.length === 1 ? "" : "s"} cerrado${closedClosuresForDate.length === 1 ? "" : "s"} para el ${formatDate(dateFilter)}.`,
-        nextAction: canOpenSelectedDate ? "Puedes abrir otro turno para este dia." : "Consulta el resumen o selecciona otro dia.",
+        nextAction: canOpenSelectedDate ? "Puedes abrir caja nuevamente para este dia." : "Consulta el resumen o selecciona otro dia.",
         Icon: Lock,
         cardClass: "border-slate-300 bg-slate-50",
         iconClass: "bg-slate-700 text-white",
@@ -316,8 +542,41 @@ const CajaPage: React.FC = () => {
     ? closuresForDate.findIndex((closure) => closure.id === selectedClosureForDetail.id)
     : -1;
   const selectedClosureLabel = selectedClosureForDetail && selectedClosureIndex >= 0
-    ? `Turno ${closuresForDate.length - selectedClosureIndex}`
+    ? `Corte ${closuresForDate.length - selectedClosureIndex}`
     : "Fecha completa";
+  const cashCutExportData = useMemo<CashCutExportData>(() => ({
+    titulo: selectedClosureLabel,
+    fecha: selectedClosureForDetail?.fecha ?? dateFilter,
+    estado: selectedClosureForDetail?.estado ?? "sin corte",
+    abiertoPor: selectedClosureForDetail
+      ? getUserDisplayName(selectedClosureForDetail.usuarioAperturaNombre ?? selectedClosureForDetail.responsableNombre, selectedClosureForDetail.usuarioAperturaEmail ?? selectedClosureForDetail.responsableEmail)
+      : "-",
+    cerradoPor: selectedClosureForDetail?.estado === "cerrado"
+      ? getUserDisplayName(selectedClosureForDetail.usuarioCierreNombre, selectedClosureForDetail.usuarioCierreEmail)
+      : "Pendiente",
+    fondoInicial: cashSummary.fondoInicial,
+    totalIngresos: cashSummary.totalIngresos,
+    totalEgresos: cashSummary.totalEgresos,
+    balanceNeto: cashSummary.balanceNeto,
+    efectivoEsperado: cashSummary.efectivoFinal,
+    efectivoContado: selectedClosureForDetail?.estado === "cerrado" ? selectedClosureForDetail.efectivoContado : null,
+    diferenciaEfectivo: selectedClosureForDetail?.estado === "cerrado" ? selectedClosureForDetail.diferenciaEfectivo : null,
+    desgloseMetodos: cashSummary.desgloseMetodos.map((method) => ({
+      metodo: paymentMethodLabel[method.metodo],
+      ingresos: method.ingresos,
+      egresos: method.egresos,
+      neto: method.neto,
+    })),
+    movimientos: displayedCashMovements.map((movement) => ({
+      fecha: movement.fecha,
+      tipo: isOpeningCashMovement(movement) ? "apertura" : movement.tipo,
+      concepto: movement.concepto,
+      metodo: paymentMethodLabel[movement.metodo],
+      categoria: movement.tipo === "egreso" ? getExpenseCategoryLabel(movement.categoriaGasto) : "-",
+      monto: movement.tipo === "egreso" ? -Math.abs(Number(movement.monto) || 0) : Number(movement.monto) || 0,
+      usuario: getUserDisplayName(movement.usuarioNombre, movement.usuarioEmail),
+    })),
+  }), [cashSummary, dateFilter, displayedCashMovements, selectedClosureForDetail, selectedClosureLabel]);
 
   const handleAddPayment = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -400,9 +659,19 @@ const CajaPage: React.FC = () => {
         concepto: cashMovementForm.concepto.trim(),
         monto: Number(cashMovementForm.monto) || 0,
         nota: cashMovementForm.nota,
+        categoriaGasto: cashMovementForm.tipo === "egreso" ? cashMovementForm.categoriaGasto : null,
+        comprobanteUrl: cashMovementForm.comprobanteUrl,
         referenciaTipo: "manual",
       });
-      setCashMovementForm({ tipo: "egreso", metodo: "efectivo", concepto: "", monto: "", nota: "" });
+      setCashMovementForm({
+        tipo: "egreso",
+        metodo: "efectivo",
+        categoriaGasto: "otros",
+        comprobanteUrl: "",
+        concepto: "",
+        monto: "",
+        nota: "",
+      });
       setIsCashMovementDialogOpen(false);
     } catch (error: any) {
       toast.error(error.message || "No se pudo registrar el movimiento de caja");
@@ -458,6 +727,42 @@ const CajaPage: React.FC = () => {
     }
   };
 
+  const applyReportPreset = (preset: "hoy" | "semana" | "mes") => {
+    const currentDate = today();
+    if (preset === "hoy") {
+      setReportStartDate(currentDate);
+      setReportEndDate(currentDate);
+      return;
+    }
+    if (preset === "semana") {
+      setReportStartDate(addDays(currentDate, -6));
+      setReportEndDate(currentDate);
+      return;
+    }
+    setReportStartDate(startOfCurrentMonth());
+    setReportEndDate(currentDate);
+  };
+
+  const handleExportFinancialReportPdf = () => {
+    exportFinancialReportPdf(financialReportExportData);
+    toast.success("Reporte PDF generado");
+  };
+
+  const handleExportFinancialReportCsv = () => {
+    exportFinancialReportCsv(financialReportExportData);
+    toast.success("Reporte CSV generado");
+  };
+
+  const handleExportCashCutPdf = () => {
+    exportCashCutPdf(cashCutExportData);
+    toast.success("Corte PDF generado");
+  };
+
+  const handleExportCashCutCsv = () => {
+    exportCashCutCsv(cashCutExportData);
+    toast.success("Corte CSV generado");
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -467,7 +772,7 @@ const CajaPage: React.FC = () => {
             <Badge className={cashStatus.badgeClass}>{cashStatus.label}</Badge>
           </div>
           <p className="text-muted-foreground">
-            Controla cobros reales, turnos, cortes y movimientos contables.
+            Controla cobros reales, cortes y movimientos contables.
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
@@ -562,7 +867,7 @@ const CajaPage: React.FC = () => {
         </Card>
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">Turnos del dia</CardTitle>
+            <CardTitle className="text-sm font-medium text-muted-foreground">Cortes del dia</CardTitle>
             <ReceiptText className="h-5 w-5 text-amber-600" />
           </CardHeader>
           <CardContent>
@@ -590,7 +895,7 @@ const CajaPage: React.FC = () => {
                   <p className="font-medium">{formatDate(dateFilter)}</p>
                 </div>
                 <div>
-                  <p className="text-xs uppercase text-muted-foreground">Turno abierto</p>
+                  <p className="text-xs uppercase text-muted-foreground">Caja abierta</p>
                   <p className="font-medium">{openCashClosure ? formatDate(openCashClosure.fecha) : "Ninguno"}</p>
                 </div>
                 <div>
@@ -656,9 +961,10 @@ const CajaPage: React.FC = () => {
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid h-auto w-full grid-cols-2 md:w-fit">
+        <TabsList className="grid h-auto w-full grid-cols-3 md:w-fit">
           <TabsTrigger value="pagos">Pagos</TabsTrigger>
           <TabsTrigger value="corte">Corte</TabsTrigger>
+          <TabsTrigger value="reportes">Reportes</TabsTrigger>
         </TabsList>
 
         <TabsContent value="pagos" className="space-y-4">
@@ -722,7 +1028,7 @@ const CajaPage: React.FC = () => {
                           </TableCell>
                         </TableRow>
                       ) : (
-                        filteredPayments.map((payment) => {
+                        paymentsPagination.paginatedItems.map((payment) => {
                           const Icon = paymentMethodIcon[payment.metodo];
 
                           return (
@@ -753,6 +1059,21 @@ const CajaPage: React.FC = () => {
                   </Table>
                 </div>
               </CardContent>
+              {!paymentsLoading && filteredPayments.length > 0 && (
+                <DataPagination
+                  itemLabel="pagos"
+                  page={paymentsPagination.page}
+                  pageSize={paymentsPagination.pageSize}
+                  totalItems={paymentsPagination.totalItems}
+                  startIndex={paymentsPagination.startIndex}
+                  endIndex={paymentsPagination.endIndex}
+                  canPreviousPage={paymentsPagination.canPreviousPage}
+                  canNextPage={paymentsPagination.canNextPage}
+                  onPageSizeChange={paymentsPagination.setPageSize}
+                  onPreviousPage={paymentsPagination.previousPage}
+                  onNextPage={paymentsPagination.nextPage}
+                />
+              )}
             </Card>
 
             <Card>
@@ -853,9 +1174,30 @@ const CajaPage: React.FC = () => {
                             : "Sin caja abierta para la fecha seleccionada."}
                       </CardDescription>
                     </div>
-                    <Badge variant={selectedClosureForDetail?.estado === "abierto" ? "default" : "secondary"}>
-                      {selectedClosureForDetail?.estado === "abierto" ? "Abierta" : selectedClosureForDetail ? "Cerrada" : "Sin corte"}
-                    </Badge>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleExportCashCutCsv}
+                        disabled={displayedCashMovements.length === 0}
+                      >
+                        <FileSpreadsheet className="mr-2 h-4 w-4" />
+                        CSV
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={handleExportCashCutPdf}
+                        disabled={displayedCashMovements.length === 0}
+                      >
+                        <Download className="mr-2 h-4 w-4" />
+                        PDF
+                      </Button>
+                      <Badge variant={selectedClosureForDetail?.estado === "abierto" ? "default" : "secondary"}>
+                        {selectedClosureForDetail?.estado === "abierto" ? "Abierta" : selectedClosureForDetail ? "Cerrada" : "Sin corte"}
+                      </Badge>
+                    </div>
                   </div>
                 </CardHeader>
                 <CardContent>
@@ -916,6 +1258,20 @@ const CajaPage: React.FC = () => {
                         </p>
                       </div>
                       <div className="rounded-lg border bg-background p-3">
+                        <p className="text-xs text-muted-foreground">Abrio</p>
+                        <p className="text-lg font-semibold">
+                          {getUserDisplayName(selectedClosureForDetail.usuarioAperturaNombre ?? selectedClosureForDetail.responsableNombre, selectedClosureForDetail.usuarioAperturaEmail ?? selectedClosureForDetail.responsableEmail)}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border bg-background p-3">
+                        <p className="text-xs text-muted-foreground">Cerro</p>
+                        <p className="text-lg font-semibold">
+                          {selectedClosureForDetail.estado === "cerrado"
+                            ? getUserDisplayName(selectedClosureForDetail.usuarioCierreNombre, selectedClosureForDetail.usuarioCierreEmail)
+                            : "Pendiente"}
+                        </p>
+                      </div>
+                      <div className="rounded-lg border bg-background p-3">
                         <p className="text-xs text-muted-foreground">Movimientos</p>
                         <p className="text-lg font-semibold">{activeDisplayedCashMovements.length}</p>
                       </div>
@@ -934,7 +1290,7 @@ const CajaPage: React.FC = () => {
                 <CardHeader>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
-                      <CardTitle>Turnos del dia</CardTitle>
+                      <CardTitle>Cortes del dia</CardTitle>
                       <CardDescription>Aperturas y cierres registrados para la fecha seleccionada.</CardDescription>
                     </div>
                     {canOpenSelectedDate && (
@@ -948,8 +1304,8 @@ const CajaPage: React.FC = () => {
                 <CardContent className="space-y-3">
                   {closuresForDate.length === 0 ? (
                     <div className="rounded-lg border border-dashed p-6 text-center">
-                      <p className="font-medium">No hay turnos para este dia</p>
-                      <p className="mt-1 text-sm text-muted-foreground">Abre caja para iniciar el primer turno.</p>
+                      <p className="font-medium">No hay cortes para este dia</p>
+                      <p className="mt-1 text-sm text-muted-foreground">Abre caja para iniciar el corte del dia.</p>
                     </div>
                   ) : (
                     closuresForDate.map((closure, index) => {
@@ -958,6 +1314,7 @@ const CajaPage: React.FC = () => {
                       const closureIncome = isCurrentOpenClosure ? openCashSummary.totalIngresos : closure.totales.total;
                       const closureCashExpected = isCurrentOpenClosure ? openCashSummary.efectivoFinal : closure.efectivoEsperado;
                       const closureDifference = isCurrentOpenClosure ? 0 : closure.diferenciaEfectivo;
+                      const closureNumber = closuresForDate.length - index;
 
                       return (
                         <div
@@ -975,12 +1332,18 @@ const CajaPage: React.FC = () => {
                                     ? "Cerrado auto"
                                     : "Cerrado manual"}
                               </Badge>
-                              <p className="font-semibold">Turno {closuresForDate.length - index}</p>
+                              <p className="font-semibold">Corte {closureNumber}</p>
                               <p className="text-sm text-muted-foreground">
                                 Inicio {formatDate(closure.inicio)}
                                 {closure.fin ? ` - cierre ${formatDate(closure.fin)}` : ""}
                               </p>
                             </div>
+                            <p className="text-sm text-muted-foreground">
+                              Abre: {getUserDisplayName(closure.usuarioAperturaNombre ?? closure.responsableNombre, closure.usuarioAperturaEmail ?? closure.responsableEmail)}
+                              {closure.estado === "cerrado"
+                                ? ` | Cierra: ${getUserDisplayName(closure.usuarioCierreNombre, closure.usuarioCierreEmail)}`
+                                : ""}
+                            </p>
                             {closure.observaciones && (
                               <p className="text-sm text-muted-foreground">{closure.observaciones}</p>
                             )}
@@ -1071,6 +1434,7 @@ const CajaPage: React.FC = () => {
                           <TableHead>Concepto</TableHead>
                           <TableHead>Metodo</TableHead>
                           <TableHead>Referencia</TableHead>
+                          <TableHead>Usuario</TableHead>
                           <TableHead>Nota</TableHead>
                           <TableHead className="text-right">Monto</TableHead>
                         </TableRow>
@@ -1078,18 +1442,18 @@ const CajaPage: React.FC = () => {
                       <TableBody>
                         {cashMovementsLoading ? (
                           <TableRow>
-                            <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                            <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
                               Cargando movimientos de caja...
                             </TableCell>
                           </TableRow>
                         ) : displayedCashMovements.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                            <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
                               No hay movimientos de caja para esta fecha.
                             </TableCell>
                           </TableRow>
                         ) : (
-                          displayedCashMovements.map((movement) => (
+                          cashMovementsPagination.paginatedItems.map((movement) => (
                             <TableRow key={movement.id}>
                               <TableCell>{formatDate(movement.fecha)}</TableCell>
                               <TableCell>
@@ -1097,11 +1461,20 @@ const CajaPage: React.FC = () => {
                                   {isOpeningCashMovement(movement) ? "Apertura" : cashMovementLabel[movement.tipo]}
                                 </Badge>
                               </TableCell>
-                              <TableCell className="font-medium">{movement.concepto}</TableCell>
+                              <TableCell className="font-medium">
+                                <div>{movement.concepto}</div>
+                                {movement.tipo === "egreso" && (
+                                  <div className="mt-1 flex flex-wrap gap-1 text-xs text-muted-foreground">
+                                    <span>{getExpenseCategoryLabel(movement.categoriaGasto)}</span>
+                                    {movement.comprobanteUrl && <span>Comprobante: {movement.comprobanteUrl}</span>}
+                                  </div>
+                                )}
+                              </TableCell>
                               <TableCell>{paymentMethodLabel[movement.metodo]}</TableCell>
                               <TableCell>
                                 <Badge variant="outline">{movement.referenciaTipo}</Badge>
                               </TableCell>
+                              <TableCell>{getUserDisplayName(movement.usuarioNombre, movement.usuarioEmail)}</TableCell>
                               <TableCell className="max-w-[240px] truncate text-muted-foreground">{movement.nota || "-"}</TableCell>
                               <TableCell className={`text-right font-semibold ${movement.tipo === "egreso" ? "text-destructive" : "text-emerald-700"}`}>
                                 {movement.tipo === "egreso" ? "-" : "+"}
@@ -1114,6 +1487,21 @@ const CajaPage: React.FC = () => {
                     </Table>
                   </div>
                 </CardContent>
+                {!cashMovementsLoading && displayedCashMovements.length > 0 && (
+                  <DataPagination
+                    itemLabel="movimientos"
+                    page={cashMovementsPagination.page}
+                    pageSize={cashMovementsPagination.pageSize}
+                    totalItems={cashMovementsPagination.totalItems}
+                    startIndex={cashMovementsPagination.startIndex}
+                    endIndex={cashMovementsPagination.endIndex}
+                    canPreviousPage={cashMovementsPagination.canPreviousPage}
+                    canNextPage={cashMovementsPagination.canNextPage}
+                    onPageSizeChange={cashMovementsPagination.setPageSize}
+                    onPreviousPage={cashMovementsPagination.previousPage}
+                    onNextPage={cashMovementsPagination.nextPage}
+                  />
+                )}
               </Card>
             </div>
 
@@ -1121,7 +1509,7 @@ const CajaPage: React.FC = () => {
               <CardHeader>
                 <CardTitle>Acciones de caja</CardTitle>
                 <CardDescription>
-                  {openCashClosure ? `Cierre del corte ${formatDate(openCashClosure.fecha)}` : "Abre caja para empezar el turno."}
+                  {openCashClosure ? `Cierre del corte ${formatDate(openCashClosure.fecha)}` : "Abre caja para empezar a cobrar."}
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -1189,6 +1577,302 @@ const CajaPage: React.FC = () => {
           </div>
         </TabsContent>
 
+        <TabsContent value="reportes" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <BarChart3 className="h-5 w-5 text-primary" />
+                    Reporte financiero
+                  </CardTitle>
+                  <CardDescription>
+                    Balance por periodo con ingresos reales, gastos operativos y costo de productos vendidos.
+                  </CardDescription>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Button type="button" variant="outline" onClick={() => applyReportPreset("hoy")}>Hoy</Button>
+                  <Button type="button" variant="outline" onClick={() => applyReportPreset("semana")}>7 dias</Button>
+                  <Button type="button" variant="outline" onClick={() => applyReportPreset("mes")}>Mes</Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-3 lg:grid-cols-[1fr_1fr_auto_auto] lg:items-end">
+                <div className="space-y-2">
+                  <Label>Fecha inicio</Label>
+                  <Input
+                    type="date"
+                    value={reportStartDate}
+                    onChange={(event) => setReportStartDate(event.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Fecha fin</Label>
+                  <Input
+                    type="date"
+                    value={reportEndDate}
+                    onChange={(event) => setReportEndDate(event.target.value)}
+                  />
+                </div>
+                <Button type="button" variant="outline" onClick={handleExportFinancialReportCsv}>
+                  <FileSpreadsheet className="mr-2 h-4 w-4" />
+                  CSV
+                </Button>
+                <Button type="button" onClick={handleExportFinancialReportPdf}>
+                  <Download className="mr-2 h-4 w-4" />
+                  PDF
+                </Button>
+              </div>
+              <p className="mt-3 text-xs text-muted-foreground">
+                Comparado contra el periodo anterior: {previousReportRange.start} a {previousReportRange.end}.
+              </p>
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Ingresos</CardTitle>
+                <CircleDollarSign className="h-5 w-5 text-emerald-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{formatCurrency(financialReport.ingresos)}</div>
+                <p className="text-xs text-muted-foreground">{financialReport.periodCashMovements.length} movimientos</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Gastos</CardTitle>
+                <TrendingDown className="h-5 w-5 text-destructive" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{formatCurrency(financialReport.gastosOperativos)}</div>
+                <p className="text-xs text-muted-foreground">Egresos operativos</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Costo vendido</CardTitle>
+                <PackageCheck className="h-5 w-5 text-amber-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{formatCurrency(financialReport.costoMercaderia)}</div>
+                <p className="text-xs text-muted-foreground">{financialReport.periodInventorySales.length} salidas por venta</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Utilidad bruta</CardTitle>
+                <TrendingUp className="h-5 w-5 text-sky-600" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{formatCurrency(financialReport.utilidadBruta)}</div>
+                <p className="text-xs text-muted-foreground">Ingresos - costo vendido</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader className="flex flex-row items-center justify-between pb-2">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Utilidad neta</CardTitle>
+                <ReceiptText className="h-5 w-5 text-primary" />
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold">{formatCurrency(financialReport.utilidadNeta)}</div>
+                <p className="text-xs text-muted-foreground">Margen {financialReport.margenNeto.toFixed(1)}%</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid gap-4 xl:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Comparativa</CardTitle>
+                <CardDescription>Actual contra el periodo anterior del mismo tamano.</CardDescription>
+              </CardHeader>
+              <CardContent className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-lg border bg-muted/30 p-4">
+                  <p className="text-sm text-muted-foreground">Ingresos vs anterior</p>
+                  <p className="text-2xl font-bold">{formatVariation(financialReportExportData.variacionIngresos)}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Antes: {formatCurrency(previousFinancialReport.ingresos)}
+                  </p>
+                </div>
+                <div className="rounded-lg border bg-muted/30 p-4">
+                  <p className="text-sm text-muted-foreground">Utilidad neta vs anterior</p>
+                  <p className="text-2xl font-bold">{formatVariation(financialReportExportData.variacionUtilidad)}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Antes: {formatCurrency(previousFinancialReport.utilidadNeta)}
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Gastos por categoria</CardTitle>
+                <CardDescription>Suministros, servicios y otros egresos del periodo.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {financialReport.gastosPorCategoria.length === 0 ? (
+                  <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                    No hay gastos registrados en este periodo.
+                  </div>
+                ) : (
+                  financialReport.gastosPorCategoria.map((row) => (
+                    <div key={row.categoria} className="grid gap-2 rounded-lg border p-3 sm:grid-cols-[1fr_auto_auto] sm:items-center">
+                      <div>
+                        <p className="font-medium">{row.categoria}</p>
+                        <p className="text-xs text-muted-foreground">{row.movimientos} movimientos</p>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        {financialReport.gastosOperativos > 0 ? `${((row.total / financialReport.gastosOperativos) * 100).toFixed(1)}%` : "0%"}
+                      </p>
+                      <p className="font-semibold text-destructive">{formatCurrency(row.total)}</p>
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          <Card className="overflow-hidden">
+            <CardHeader>
+              <CardTitle>Ventas por producto</CardTitle>
+              <CardDescription>Productos descontados de inventario por venta en el periodo seleccionado.</CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Producto</TableHead>
+                      <TableHead className="text-right">Unidades</TableHead>
+                      <TableHead className="text-right">Ingreso</TableHead>
+                      <TableHead className="text-right">Costo</TableHead>
+                      <TableHead className="text-right">Utilidad</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {inventoryMovementsLoading ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
+                          Cargando ventas de inventario...
+                        </TableCell>
+                      </TableRow>
+                    ) : financialReport.ventasPorProducto.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
+                          No hay ventas de productos en este periodo.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      reportProductSalesPagination.paginatedItems.map((row) => (
+                        <TableRow key={row.producto}>
+                          <TableCell className="font-medium">{row.producto}</TableCell>
+                          <TableCell className="text-right">{row.unidades}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(row.ingreso)}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(row.costo)}</TableCell>
+                          <TableCell className={`text-right font-semibold ${row.utilidad < 0 ? "text-destructive" : "text-emerald-700"}`}>
+                            {formatCurrency(row.utilidad)}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+            {!inventoryMovementsLoading && financialReport.ventasPorProducto.length > 0 && (
+              <DataPagination
+                itemLabel="productos"
+                page={reportProductSalesPagination.page}
+                pageSize={reportProductSalesPagination.pageSize}
+                totalItems={reportProductSalesPagination.totalItems}
+                startIndex={reportProductSalesPagination.startIndex}
+                endIndex={reportProductSalesPagination.endIndex}
+                canPreviousPage={reportProductSalesPagination.canPreviousPage}
+                canNextPage={reportProductSalesPagination.canNextPage}
+                onPageSizeChange={reportProductSalesPagination.setPageSize}
+                onPreviousPage={reportProductSalesPagination.previousPage}
+                onNextPage={reportProductSalesPagination.nextPage}
+              />
+            )}
+          </Card>
+
+          <Card className="overflow-hidden">
+            <CardHeader>
+              <CardTitle>Movimientos del periodo</CardTitle>
+              <CardDescription>Base del reporte: cobros, ingresos manuales y gastos operativos.</CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Fecha</TableHead>
+                      <TableHead>Tipo</TableHead>
+                      <TableHead>Concepto</TableHead>
+                      <TableHead>Metodo</TableHead>
+                      <TableHead>Categoria</TableHead>
+                      <TableHead>Usuario</TableHead>
+                      <TableHead className="text-right">Monto</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {cashMovementsLoading ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                          Cargando movimientos...
+                        </TableCell>
+                      </TableRow>
+                    ) : financialReport.periodCashMovements.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                          No hay movimientos de caja en este periodo.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      reportCashMovementsPagination.paginatedItems.map((movement) => (
+                        <TableRow key={movement.id}>
+                          <TableCell>{formatDate(movement.fecha)}</TableCell>
+                          <TableCell>
+                            <Badge variant={movement.tipo === "ingreso" ? "default" : "destructive"}>
+                              {cashMovementLabel[movement.tipo]}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="font-medium">{movement.concepto}</TableCell>
+                          <TableCell>{paymentMethodLabel[movement.metodo]}</TableCell>
+                          <TableCell>{movement.tipo === "egreso" ? getExpenseCategoryLabel(movement.categoriaGasto) : "-"}</TableCell>
+                          <TableCell>{getUserDisplayName(movement.usuarioNombre, movement.usuarioEmail)}</TableCell>
+                          <TableCell className={`text-right font-semibold ${movement.tipo === "egreso" ? "text-destructive" : "text-emerald-700"}`}>
+                            {movement.tipo === "egreso" ? "-" : "+"}
+                            {formatCurrency(movement.monto)}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+            {!cashMovementsLoading && financialReport.periodCashMovements.length > 0 && (
+              <DataPagination
+                itemLabel="movimientos"
+                page={reportCashMovementsPagination.page}
+                pageSize={reportCashMovementsPagination.pageSize}
+                totalItems={reportCashMovementsPagination.totalItems}
+                startIndex={reportCashMovementsPagination.startIndex}
+                endIndex={reportCashMovementsPagination.endIndex}
+                canPreviousPage={reportCashMovementsPagination.canPreviousPage}
+                canNextPage={reportCashMovementsPagination.canNextPage}
+                onPageSizeChange={reportCashMovementsPagination.setPageSize}
+                onPreviousPage={reportCashMovementsPagination.previousPage}
+                onNextPage={reportCashMovementsPagination.nextPage}
+              />
+            )}
+          </Card>
+        </TabsContent>
+
       </Tabs>
 
       <Card className="border-primary/30 bg-primary/5">
@@ -1200,7 +1884,7 @@ const CajaPage: React.FC = () => {
             <div>
               <p className="font-semibold">Flujo separado</p>
               <p className="text-sm text-muted-foreground">
-                Caja solo registra dinero real: cobros, ingresos, egresos, aperturas y cierres de turno.
+                Caja solo registra dinero real: cobros, ingresos, egresos, aperturas y cierres.
               </p>
             </div>
           </div>
@@ -1217,7 +1901,7 @@ const CajaPage: React.FC = () => {
             <DialogTitle>Nuevo cobro</DialogTitle>
             <DialogDescription>
               {hasOpenCashForSelectedDate
-                ? `El cobro entrara al turno abierto del ${formatDate(dateFilter)}.`
+                ? `El cobro entrara a la caja abierta del ${formatDate(dateFilter)}.`
                 : openCashClosure
                   ? `La caja abierta es del ${formatDate(openCashClosure.fecha)}. Cambia a esa fecha para cobrar.`
                   : "Abre caja antes de registrar cobros."}
@@ -1301,7 +1985,7 @@ const CajaPage: React.FC = () => {
             <DialogTitle>Abrir caja</DialogTitle>
             <DialogDescription>
               {hasAnyClosureForDate
-                ? `Abrir nuevo turno para el ${formatDate(dateFilter)}.`
+                ? `Abrir caja nuevamente para el ${formatDate(dateFilter)}.`
                 : `Registra el fondo inicial para el ${formatDate(dateFilter)}.`}
             </DialogDescription>
           </DialogHeader>
@@ -1324,7 +2008,7 @@ const CajaPage: React.FC = () => {
                 rows={3}
                 value={openCashForm.observaciones}
                 onChange={(event) => setOpenCashForm({ ...openCashForm, observaciones: event.target.value })}
-                placeholder="Caja inicial, responsable o notas del turno"
+                placeholder="Caja inicial, responsable o notas de apertura"
                 disabled={isOpeningCash}
               />
             </div>
@@ -1346,7 +2030,7 @@ const CajaPage: React.FC = () => {
             <DialogTitle>Movimiento de caja</DialogTitle>
             <DialogDescription>
               {hasOpenCashForSelectedDate
-                ? "Registra ingresos o egresos manuales del turno."
+                ? "Registra ingresos o egresos manuales de la caja abierta."
                 : openCashClosure
                   ? `La caja abierta es del ${formatDate(openCashClosure.fecha)}. Cambia a esa fecha para registrar movimientos.`
                   : "Abre caja antes de registrar movimientos."}
@@ -1409,13 +2093,45 @@ const CajaPage: React.FC = () => {
                 disabled={isSavingCashMovement}
               />
             </div>
+            {cashMovementForm.tipo === "egreso" && (
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label>Categoria de gasto</Label>
+                  <Select
+                    value={cashMovementForm.categoriaGasto}
+                    onValueChange={(value) => setCashMovementForm({ ...cashMovementForm, categoriaGasto: value as CashExpenseCategory })}
+                    disabled={isSavingCashMovement}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {cashExpenseCategories.map((category) => (
+                        <SelectItem key={category} value={category}>
+                          {cashExpenseCategoryLabel[category]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label>Comprobante opcional</Label>
+                  <Input
+                    value={cashMovementForm.comprobanteUrl}
+                    onChange={(event) => setCashMovementForm({ ...cashMovementForm, comprobanteUrl: event.target.value })}
+                    placeholder="URL, folio o referencia"
+                    disabled={isSavingCashMovement}
+                  />
+                </div>
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Nota</Label>
               <Textarea
                 rows={3}
                 value={cashMovementForm.nota}
                 onChange={(event) => setCashMovementForm({ ...cashMovementForm, nota: event.target.value })}
-                placeholder="Detalle del movimiento"
+                placeholder="Detalle opcional del movimiento"
                 disabled={isSavingCashMovement}
               />
             </div>

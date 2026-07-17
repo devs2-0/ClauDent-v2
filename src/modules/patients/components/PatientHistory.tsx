@@ -9,6 +9,7 @@ import { Label } from '@/shared/components/ui/label';
 import { Textarea } from '@/shared/components/ui/textarea';
 import { Input } from '@/shared/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/shared/components/ui/card';
+import { DataPagination } from '@/shared/components/DataPagination';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/shared/components/ui/dialog';
 import { toast } from 'sonner';
 // Importaciones de Firebase
@@ -30,6 +31,7 @@ import {
   PopoverTrigger,
 } from "@/shared/components/ui/popover"
 import { cn } from "@/shared/utils/utils"
+import { usePagination } from '@/shared/hooks/usePagination';
 
 interface PatientHistoryProps {
   patientId: string;
@@ -208,6 +210,10 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
     }
   };
 
+  const historialPagination = usePagination(historial, {
+    resetKeys: [patientId],
+  });
+
   const HistoryLoadingSkeleton = () => (
     <Card>
       <CardHeader>
@@ -245,7 +251,7 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
             </CardContent>
           </Card>
         ) : (
-          historial.map((entry) => (
+          historialPagination.paginatedItems.map((entry) => (
             <Card key={entry.id} className="hover:shadow-sm transition-shadow relative group">
               <CardHeader className="pb-2">
                 <div className="flex justify-between items-start">
@@ -286,6 +292,22 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
               </CardContent>
             </Card>
           ))
+        )}
+        {!historialLoading && historial.length > 0 && (
+          <DataPagination
+            className="rounded-lg border"
+            itemLabel="entradas"
+            page={historialPagination.page}
+            pageSize={historialPagination.pageSize}
+            totalItems={historialPagination.totalItems}
+            startIndex={historialPagination.startIndex}
+            endIndex={historialPagination.endIndex}
+            canPreviousPage={historialPagination.canPreviousPage}
+            canNextPage={historialPagination.canNextPage}
+            onPageSizeChange={historialPagination.setPageSize}
+            onPreviousPage={historialPagination.previousPage}
+            onNextPage={historialPagination.nextPage}
+          />
         )}
       </div>
 

@@ -115,6 +115,7 @@ const Seguridad: React.FC = () => {
               No hay sesiones registradas.
             </div>
           )}
+
         </CardContent>
       </Card>
 
