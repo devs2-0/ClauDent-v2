@@ -8,27 +8,31 @@ import { buttonVariants } from "@/shared/components/ui/button";
 export type CalendarProps = React.ComponentProps<typeof DayPicker>;
 
 function Calendar({ className, classNames, showOutsideDays = true, ...props }: CalendarProps) {
+  const hasDropdownCaption = props.captionLayout?.startsWith("dropdown");
+
   return (
     <DayPicker
       showOutsideDays={showOutsideDays}
       className={cn("p-3", className)}
       classNames={{
+        vhidden: "sr-only",
         months: "flex flex-col sm:flex-row space-y-4 sm:space-x-4 sm:space-y-0",
         month: "space-y-4",
-        caption: "flex justify-center pt-1 relative items-center",
+        caption: cn("flex justify-center pt-1 relative items-center", hasDropdownCaption && "px-0"),
         caption_label: "text-sm font-medium",
-        caption_dropdowns: "flex items-center justify-center gap-2",
+        caption_dropdowns: "flex w-full items-center justify-center gap-2 px-8",
         dropdown:
-          "h-8 rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none focus:border-primary",
+          "h-8 min-w-[104px] rounded-md border border-input bg-background px-2 text-sm text-foreground outline-none focus:border-primary focus:ring-2 focus:ring-primary/20",
         dropdown_month: "space-x-2",
         dropdown_year: "space-x-2",
-        nav: "space-x-1 flex items-center",
+        dropdown_icon: "ml-1 h-3.5 w-3.5 opacity-60",
+        nav: cn("space-x-1 flex items-center", hasDropdownCaption && "hidden"),
         nav_button: cn(
           buttonVariants({ variant: "outline" }),
           "h-7 w-7 bg-transparent p-0 opacity-50 hover:opacity-100",
         ),
-        nav_button_previous: "absolute left-1",
-        nav_button_next: "absolute right-1",
+        nav_button_previous: hasDropdownCaption ? "hidden" : "absolute left-1",
+        nav_button_next: hasDropdownCaption ? "hidden" : "absolute right-1",
         table: "w-full border-collapse space-y-1",
         head_row: "flex",
         head_cell: "text-muted-foreground rounded-md w-9 font-normal text-[0.8rem]",
