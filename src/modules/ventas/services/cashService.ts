@@ -13,7 +13,7 @@ import {
   where,
   writeBatch,
 } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
 import { addAuditLog } from "@/modules/audit/services/auditService";
 import {
   INVENTORY_MOVEMENTS_COLLECTION,
@@ -65,6 +65,16 @@ const formatInventoryProductName = (name: string, brand?: string) => {
   return cleanBrand ? `${cleanName} (${cleanBrand})` : cleanName;
 };
 
+const getCurrentUserStamp = () => {
+  const user = auth.currentUser;
+  const email = user?.email || "Sistema";
+  return {
+    usuarioEmail: email,
+    usuarioNombre: user?.displayName || email || "Admin",
+    usuarioId: user?.uid ?? null,
+  };
+};
+
 const formatSignedQuantity = (quantity: number) => {
   return quantity > 0 ? `+${quantity}` : String(quantity);
 };
@@ -104,6 +114,10 @@ const mapPayment = (id: string, data: any): Payment => ({
   origen: data.origen ?? "venta_directa",
   estado: data.estado ?? "activo",
   notas: data.notas ?? "",
+  costoProductos: Number(data.costoProductos) || 0,
+  usuarioId: data.usuarioId ?? null,
+  usuarioNombre: data.usuarioNombre ?? data.usuarioEmail ?? "Sistema",
+  usuarioEmail: data.usuarioEmail ?? "",
 });
 
 const mapCashClosure = (id: string, data: any): CashClosure => {
@@ -133,6 +147,15 @@ const mapCashClosure = (id: string, data: any): CashClosure => {
     observaciones: data.observaciones ?? "",
     estado: data.estado ?? data.status ?? "cerrado",
     tipoCierre: data.tipoCierre ?? null,
+    responsableId: data.responsableId ?? data.usuarioAperturaId ?? null,
+    responsableNombre: data.responsableNombre ?? data.usuarioAperturaNombre ?? data.usuarioAperturaEmail ?? "Sistema",
+    responsableEmail: data.responsableEmail ?? data.usuarioAperturaEmail ?? "",
+    usuarioAperturaId: data.usuarioAperturaId ?? data.responsableId ?? null,
+    usuarioAperturaNombre: data.usuarioAperturaNombre ?? data.responsableNombre ?? data.usuarioAperturaEmail ?? "Sistema",
+    usuarioAperturaEmail: data.usuarioAperturaEmail ?? data.responsableEmail ?? "",
+    usuarioCierreId: data.usuarioCierreId ?? null,
+    usuarioCierreNombre: data.usuarioCierreNombre ?? data.usuarioCierreEmail ?? "",
+    usuarioCierreEmail: data.usuarioCierreEmail ?? "",
   };
 };
 
@@ -147,7 +170,13 @@ const mapCashMovement = (id: string, data: any): CashMovement => ({
   referenciaTipo: data.referenciaTipo ?? "manual",
   referenciaId: data.referenciaId ?? null,
   nota: data.nota ?? "",
+  categoriaGasto: data.categoriaGasto ?? null,
+  comprobanteUrl: data.comprobanteUrl ?? "",
+  costoProductos: Number(data.costoProductos) || 0,
   estado: data.estado ?? "activo",
+  usuarioId: data.usuarioId ?? null,
+  usuarioNombre: data.usuarioNombre ?? data.usuarioEmail ?? "Sistema",
+  usuarioEmail: data.usuarioEmail ?? "",
 });
 
 const calculateCashCutSummary = (movements: CashMovement[]): CashCutSummary => {
@@ -247,6 +276,8 @@ const createCashMovementPayload = ({
   referenciaTipo,
   referenciaId,
   nota,
+  categoriaGasto,
+  comprobanteUrl,
 }: CreateCashMovementInput & { corteId: string | null; referenciaTipo: CashReferenceType }) => cleanData({
   corteId,
   fecha: toFirestoreDate(fecha),
@@ -257,7 +288,10 @@ const createCashMovementPayload = ({
   referenciaTipo,
   referenciaId: referenciaId ?? null,
   nota: nota ?? "",
+  categoriaGasto: tipo === "egreso" ? categoriaGasto ?? "otros" : null,
+  comprobanteUrl: comprobanteUrl?.trim() ?? "",
   estado: "activo",
+  ...getCurrentUserStamp(),
   createdAt: serverTimestamp(),
   updatedAt: serverTimestamp(),
 });
@@ -308,6 +342,7 @@ export const cashService = {
     const closureRef = doc(collection(db, CASH_CLOSURES_COLLECTION));
     const movementRef = doc(collection(db, CASH_MOVEMENTS_COLLECTION));
     const fondoInicial = Number(input.fondoInicial) || 0;
+    const openingUser = getCurrentUserStamp();
 
     batch.set(closureRef, cleanData({
       fecha: toFirestoreDate(input.fecha),
@@ -323,6 +358,12 @@ export const cashService = {
       observaciones: input.observaciones ?? "",
       estado: "abierto",
       status: "abierto",
+      responsableId: openingUser.usuarioId,
+      responsableNombre: openingUser.usuarioNombre,
+      responsableEmail: openingUser.usuarioEmail,
+      usuarioAperturaId: openingUser.usuarioId,
+      usuarioAperturaNombre: openingUser.usuarioNombre,
+      usuarioAperturaEmail: openingUser.usuarioEmail,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     }));
@@ -379,12 +420,14 @@ export const cashService = {
     const paymentRef = doc(collection(db, PAYMENTS_COLLECTION));
     const movementRef = doc(collection(db, CASH_MOVEMENTS_COLLECTION));
     const paymentAmount = Number(payment.monto) || 0;
+    const paymentUser = getCurrentUserStamp();
 
     batch.set(paymentRef, cleanData({
       ...payment,
       fecha: toFirestoreDate(payment.fecha),
       monto: paymentAmount,
       estado: payment.estado ?? "activo",
+      ...paymentUser,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     }));
@@ -432,6 +475,7 @@ export const cashService = {
     }
 
     const concepto = buildDirectSaleConcept({ ...input, servicios, productos });
+    const movementUser = getCurrentUserStamp();
 
     const saleResult = await runTransaction(db, async (transaction) => {
       const inventoryProducts = [];
@@ -448,8 +492,14 @@ export const cashService = {
           id: productSnap.id,
           nombre: formatInventoryProductName(data.nombre ?? item.nombre ?? "", data.marca ?? ""),
           stock: Number(data.stock) || 0,
+          costoUnitario: Number(data.costoUnitario) || 0,
+          precioVenta: data.precioVenta === null || data.precioVenta === undefined ? 0 : Number(data.precioVenta) || 0,
         });
       }
+
+      const costoProductos = inventoryProducts.reduce((totalCost, product) => {
+        return totalCost + Math.abs(Number(product.request.cantidad) || 0) * product.costoUnitario;
+      }, 0);
 
       const paymentRef = doc(collection(db, PAYMENTS_COLLECTION));
       const cashMovementRef = doc(collection(db, CASH_MOVEMENTS_COLLECTION));
@@ -474,8 +524,10 @@ export const cashService = {
         subtotalServicios,
         subtotalProductos,
         descuento,
+        costoProductos,
         servicios,
         productos,
+        ...movementUser,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       }));
@@ -490,7 +542,9 @@ export const cashService = {
         referenciaTipo: "pago",
         referenciaId: paymentRef.id,
         nota: input.notas ?? "Venta directa",
+        costoProductos,
         estado: "activo",
+        ...movementUser,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       }));
@@ -526,6 +580,10 @@ export const cashService = {
       inventoryProducts.forEach((product) => {
         const quantity = resolveMovementQuantity("venta", product.request.cantidad);
         const nextStock = product.stock + quantity;
+        const absoluteQuantity = Math.abs(quantity);
+        const precioUnitarioVenta = Number(product.request.precioUnitario) || product.precioVenta || 0;
+        const costoTotal = absoluteQuantity * product.costoUnitario;
+        const ingresoTotal = absoluteQuantity * precioUnitarioVenta;
 
         if (nextStock < 0) {
           throw new Error(`No hay stock suficiente para ${product.nombre}.`);
@@ -547,6 +605,11 @@ export const cashService = {
           motivo: `Venta directa: ${product.nombre}`,
           referenciaTipo: "pago",
           referenciaId: paymentRef.id,
+          costoUnitario: product.costoUnitario,
+          costoTotal,
+          precioUnitarioVenta,
+          ingresoTotal,
+          ...movementUser,
           createdAt: serverTimestamp(),
         }));
 
@@ -570,8 +633,12 @@ export const cashService = {
 
   cancelPayment: async (id: string) => {
     const batch = writeBatch(db);
+    const cancelUser = getCurrentUserStamp();
     batch.update(doc(db, PAYMENTS_COLLECTION, id), cleanData({
       estado: "cancelado",
+      usuarioCancelacionId: cancelUser.usuarioId,
+      usuarioCancelacionNombre: cancelUser.usuarioNombre,
+      usuarioCancelacionEmail: cancelUser.usuarioEmail,
       updatedAt: serverTimestamp(),
     }));
 
@@ -579,6 +646,9 @@ export const cashService = {
     movementSnapshot.docs.forEach((movementDoc) => {
       batch.update(movementDoc.ref, cleanData({
         estado: "cancelado",
+        usuarioCancelacionId: cancelUser.usuarioId,
+        usuarioCancelacionNombre: cancelUser.usuarioNombre,
+        usuarioCancelacionEmail: cancelUser.usuarioEmail,
         updatedAt: serverTimestamp(),
       }));
     });
@@ -595,6 +665,7 @@ export const cashService = {
     const tipoCierre = input.tipoCierre ?? "manual";
     const efectivoContado = tipoCierre === "automatico" ? summary.efectivoFinal : Number(input.efectivoContado) || 0;
     const diferenciaEfectivo = efectivoContado - summary.efectivoFinal;
+    const closingUser = getCurrentUserStamp();
 
     await updateDoc(doc(db, CASH_CLOSURES_COLLECTION, openCash.id), cleanData({
       fecha: toFirestoreDate(openCashDate),
@@ -610,6 +681,9 @@ export const cashService = {
       estado: "cerrado",
       status: "cerrado",
       tipoCierre,
+      usuarioCierreId: closingUser.usuarioId,
+      usuarioCierreNombre: closingUser.usuarioNombre,
+      usuarioCierreEmail: closingUser.usuarioEmail,
       updatedAt: serverTimestamp(),
     }));
 
@@ -631,6 +705,7 @@ export const cashService = {
     const openCashDate = getClosureDate(openCash);
     const paymentDate = input.fechaPago ?? openCashDate;
     ensureDateMatchesOpenCash(openCash, paymentDate);
+    const movementUser = getCurrentUserStamp();
 
     const checkoutResult = await runTransaction(db, async (transaction) => {
       const inventoryRequests = [
@@ -649,6 +724,8 @@ export const cashService = {
           id: productSnap.id,
           nombre: formatInventoryProductName(data.nombre ?? "", data.marca ?? ""),
           stock: Number(data.stock) || 0,
+          costoUnitario: Number(data.costoUnitario) || 0,
+          precioVenta: data.precioVenta === null || data.precioVenta === undefined ? 0 : Number(data.precioVenta) || 0,
         };
       }));
 
@@ -660,6 +737,10 @@ export const cashService = {
       const fecha = toFirestoreDate(paymentDate);
       const concepto = input.quotation.items.map((item) => item.nombre).join(", ");
       const total = Number(input.quotation.total) || 0;
+      const costoProductos = inventoryProducts.reduce((totalCost, product) => {
+        if (product.request.tipo !== "venta") return totalCost;
+        return totalCost + Math.abs(Number(product.request.cantidad) || 0) * product.costoUnitario;
+      }, 0);
 
       transaction.set(paymentRef, cleanData({
         pacienteId: input.quotation.pacienteId,
@@ -672,6 +753,8 @@ export const cashService = {
         origen: "cotizacion",
         estado: "activo",
         notas: input.notas ?? "",
+        costoProductos,
+        ...movementUser,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       }));
@@ -686,7 +769,9 @@ export const cashService = {
         referenciaTipo: "cotizacion",
         referenciaId: paymentRef.id,
         nota: input.notas ?? `Cobro de cotizacion ${input.quotation.id}`,
+        costoProductos,
         estado: "activo",
+        ...movementUser,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
       }));
@@ -728,6 +813,10 @@ export const cashService = {
       inventoryProducts.forEach((product) => {
         const quantity = resolveMovementQuantity(product.request.tipo, product.request.cantidad);
         const nextStock = product.stock + quantity;
+        const absoluteQuantity = Math.abs(quantity);
+        const precioUnitarioVenta = product.request.tipo === "venta" ? product.precioVenta : 0;
+        const costoTotal = absoluteQuantity * product.costoUnitario;
+        const ingresoTotal = product.request.tipo === "venta" ? absoluteQuantity * precioUnitarioVenta : 0;
 
         if (nextStock < 0) {
           throw new Error(`No hay stock suficiente para ${product.nombre}.`);
@@ -749,6 +838,11 @@ export const cashService = {
           motivo: product.request.motivo ?? `Checkout cotizacion ${input.quotation.id}`,
           referenciaTipo: product.request.tipo === "venta" ? "pago" : "tratamiento",
           referenciaId: product.request.tipo === "venta" ? paymentRef.id : treatmentRef.id,
+          costoUnitario: product.costoUnitario,
+          costoTotal,
+          precioUnitarioVenta,
+          ingresoTotal,
+          ...movementUser,
           createdAt: serverTimestamp(),
         }));
 

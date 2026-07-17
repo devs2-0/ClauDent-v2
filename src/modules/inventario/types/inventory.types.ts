@@ -40,10 +40,17 @@ export interface InventoryMovement {
   motivo: string;
   referenciaTipo: InventoryReferenceType;
   referenciaId?: string | null;
+  usuarioId?: string | null;
+  usuarioNombre?: string;
+  usuarioEmail?: string;
   lote?: string;
   fechaVencimiento?: string | null;
   proveedor?: string;
   documentoCompra?: string;
+  costoUnitario?: number;
+  costoTotal?: number;
+  precioUnitarioVenta?: number;
+  ingresoTotal?: number;
 }
 
 export type CreateInventoryProductInput = Omit<InventoryProduct, "id">;
@@ -64,6 +71,10 @@ export interface RegisterInventoryMovementInput {
   fechaVencimiento?: string | null;
   proveedor?: string;
   documentoCompra?: string;
+  costoUnitario?: number;
+  costoTotal?: number;
+  precioUnitarioVenta?: number;
+  ingresoTotal?: number;
 }
 
 export interface InventoryStockEntryItem {

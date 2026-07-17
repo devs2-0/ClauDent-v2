@@ -7,8 +7,15 @@ export type CashMovementType = "ingreso" | "egreso";
 export type CashReferenceType = "apertura" | "pago" | "cotizacion" | "tratamiento" | "manual";
 export type CashClosureStatus = "abierto" | "cerrado";
 export type CashClosureMode = "manual" | "automatico";
+export type CashExpenseCategory = "suministros" | "servicios" | "renta" | "nomina" | "mantenimiento" | "otros";
 
-export interface Payment {
+export interface CashUserStamp {
+  usuarioId?: string | null;
+  usuarioNombre?: string;
+  usuarioEmail?: string;
+}
+
+export interface Payment extends CashUserStamp {
   id: string;
   pacienteId?: string | null;
   pacienteNombre: string;
@@ -20,6 +27,7 @@ export interface Payment {
   origen: PaymentOrigin;
   estado: PaymentStatus;
   notas?: string;
+  costoProductos?: number;
 }
 
 export interface CashClosureTotals {
@@ -61,9 +69,18 @@ export interface CashClosure {
   observaciones?: string;
   estado: CashClosureStatus;
   tipoCierre?: CashClosureMode | null;
+  responsableId?: string | null;
+  responsableNombre?: string;
+  responsableEmail?: string;
+  usuarioAperturaId?: string | null;
+  usuarioAperturaNombre?: string;
+  usuarioAperturaEmail?: string;
+  usuarioCierreId?: string | null;
+  usuarioCierreNombre?: string;
+  usuarioCierreEmail?: string;
 }
 
-export interface CashMovement {
+export interface CashMovement extends CashUserStamp {
   id: string;
   corteId?: string | null;
   fecha: string;
@@ -74,6 +91,9 @@ export interface CashMovement {
   referenciaTipo: CashReferenceType;
   referenciaId?: string | null;
   nota?: string;
+  categoriaGasto?: CashExpenseCategory | null;
+  comprobanteUrl?: string;
+  costoProductos?: number;
   estado: PaymentStatus;
 }
 
@@ -102,6 +122,8 @@ export interface CreateCashMovementInput {
   concepto: string;
   monto: number;
   nota?: string;
+  categoriaGasto?: CashExpenseCategory | null;
+  comprobanteUrl?: string;
   referenciaTipo?: CashReferenceType;
   referenciaId?: string | null;
 }

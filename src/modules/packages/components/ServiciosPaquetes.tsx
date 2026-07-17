@@ -3,8 +3,11 @@ import React, { useState, useMemo } from 'react';
 import { Plus, Search, Edit, Trash2, X, Check, History, ChevronsUpDown, Minus } from 'lucide-react';
 import { Paquete, usePackages } from '@/modules/packages';
 import { Service, useDentalServices } from '@/modules/services';
+import { DataPagination } from '@/shared/components/DataPagination';
 import { formatCurrency, formatDate } from '@/shared/utils/utils';
+import { usePagination } from '@/shared/hooks/usePagination';
 import { Button } from '@/shared/components/ui/button';
+import { DatePickerField } from '@/shared/components/DatePickerField';
 import { Input } from '@/shared/components/ui/input';
 import { Card, CardContent } from '@/shared/components/ui/card';
 import {
@@ -79,6 +82,9 @@ const ServiciosPaquetes: React.FC = () => {
       paquete.nombre.toLowerCase().includes(searchQuery.toLowerCase())
     );
   }, [paquetes, searchQuery]);
+  const paquetesPagination = usePagination(filteredPaquetes, {
+    resetKeys: [searchQuery],
+  });
 
   const modalFilteredServices = useMemo(() => {
      if (!serviceSearch.trim()) {
@@ -185,6 +191,9 @@ const ServiciosPaquetes: React.FC = () => {
     e.preventDefault();
     if (!formData.nombre || !formData.fechaInicio || !formData.fechaFin) {
       return toast.error("Nombre y fechas son obligatorios.");
+    }
+    if (formData.fechaFin < formData.fechaInicio) {
+      return toast.error("La fecha fin no puede ser anterior a la fecha inicio.");
     }
     if (formData.serviciosIncluidos.length === 0) {
       return toast.error("Debe incluir al menos un servicio.");
@@ -297,7 +306,7 @@ const ServiciosPaquetes: React.FC = () => {
                       </TableCell>
                     </TableRow>
                 ) : (
-                  filteredPaquetes.map((paquete) => (
+                  paquetesPagination.paginatedItems.map((paquete) => (
                     <TableRow key={paquete.id}>
                       <TableCell className="font-medium whitespace-nowrap">{paquete.nombre}</TableCell>
                       <TableCell className="whitespace-nowrap">{formatCurrency(paquete.precioTotal)}</TableCell>
@@ -338,6 +347,21 @@ const ServiciosPaquetes: React.FC = () => {
             </Table>
           </div>
         </CardContent>
+        {!paquetesLoading && filteredPaquetes.length > 0 && (
+          <DataPagination
+            itemLabel="paquetes"
+            page={paquetesPagination.page}
+            pageSize={paquetesPagination.pageSize}
+            totalItems={paquetesPagination.totalItems}
+            startIndex={paquetesPagination.startIndex}
+            endIndex={paquetesPagination.endIndex}
+            canPreviousPage={paquetesPagination.canPreviousPage}
+            canNextPage={paquetesPagination.canNextPage}
+            onPageSizeChange={paquetesPagination.setPageSize}
+            onPreviousPage={paquetesPagination.previousPage}
+            onNextPage={paquetesPagination.nextPage}
+          />
+        )}
       </Card>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -373,24 +397,26 @@ const ServiciosPaquetes: React.FC = () => {
                     required
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="paquete-inicio">Fecha Inicio *</Label>
-                    <Input
-                      id="paquete-inicio"
-                      type="date"
+                    <Label>Fecha Inicio *</Label>
+                    <DatePickerField
                       value={formData.fechaInicio}
-                      onChange={(e) => setFormData({ ...formData, fechaInicio: e.target.value })}
+                      onChange={(fechaInicio) => setFormData({ ...formData, fechaInicio })}
+                      fromYear={new Date().getFullYear() - 1}
+                      toYear={new Date().getFullYear() + 5}
+                      placeholder="Inicio"
                       required
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="paquete-fin">Fecha Fin *</Label>
-                    <Input
-                      id="paquete-fin"
-                      type="date"
+                    <Label>Fecha Fin *</Label>
+                    <DatePickerField
                       value={formData.fechaFin}
-                      onChange={(e) => setFormData({ ...formData, fechaFin: e.target.value })}
+                      onChange={(fechaFin) => setFormData({ ...formData, fechaFin })}
+                      fromYear={new Date().getFullYear() - 1}
+                      toYear={new Date().getFullYear() + 5}
+                      placeholder="Fin"
                       required
                     />
                   </div>

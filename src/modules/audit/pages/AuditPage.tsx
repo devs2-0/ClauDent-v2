@@ -16,13 +16,12 @@ import {
 import { Input } from "@/shared/components/ui/input";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
-
-const PAGE_SIZE = 10;
+import { DataPagination } from "@/shared/components/DataPagination";
+import { usePagination } from "@/shared/hooks/usePagination";
 
 const Bitacora: React.FC = () => {
   const [logs, setLogs] = useState<any[]>([]);
   const [filtro, setFiltro] = useState("");
-  const [page, setPage] = useState(1);
 
   useEffect(() => {
     const q = query(collection(db, 'bitacora'), orderBy('fecha', 'desc'));
@@ -45,11 +44,13 @@ const Bitacora: React.FC = () => {
   }, [logs, filtro]);
 
   // Reset de página cuando cambia el filtro (para que no quede en página vacía)
-  useEffect(() => {
-    setPage(1);
-  }, [filtro]);
-
   // Paginación
+  const logsPagination = usePagination(logsFiltrados, {
+    resetKeys: [filtro],
+  });
+  const page = logsPagination.page;
+  const setPage = logsPagination.setPage;
+  const PAGE_SIZE = logsPagination.pageSize;
   const total = logsFiltrados.length;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -203,7 +204,7 @@ const Bitacora: React.FC = () => {
 
         {/* Paginador abajo (opcional, pero útil en móvil) */}
         {total > 0 && (
-          <div className="flex items-center justify-between pt-2">
+          <div className="hidden">
             <span className="text-xs text-muted-foreground font-medium">{rangeText}</span>
             <div className="flex gap-2">
               <Button variant="outline" size="sm" onClick={goPrev} disabled={!canPrev}>
@@ -214,6 +215,22 @@ const Bitacora: React.FC = () => {
               </Button>
             </div>
           </div>
+        )}
+        {total > 0 && (
+          <DataPagination
+            className="rounded-lg border"
+            itemLabel="registros"
+            page={logsPagination.page}
+            pageSize={logsPagination.pageSize}
+            totalItems={logsPagination.totalItems}
+            startIndex={logsPagination.startIndex}
+            endIndex={logsPagination.endIndex}
+            canPreviousPage={logsPagination.canPreviousPage}
+            canNextPage={logsPagination.canNextPage}
+            onPageSizeChange={logsPagination.setPageSize}
+            onPreviousPage={logsPagination.previousPage}
+            onNextPage={logsPagination.nextPage}
+          />
         )}
       </div>
 
@@ -269,7 +286,7 @@ const Bitacora: React.FC = () => {
 
         {/* Footer paginador (PC) */}
         {total > 0 && (
-          <div className="flex items-center justify-end gap-2 px-4 py-3 border-t bg-card">
+          <div className="hidden">
             <span className="text-xs text-muted-foreground font-medium">{rangeText}</span>
             <Button variant="ghost" size="icon" onClick={goPrev} disabled={!canPrev} className="h-9 w-9">
               <ChevronLeft className="h-5 w-5" />
@@ -278,6 +295,21 @@ const Bitacora: React.FC = () => {
               <ChevronRight className="h-5 w-5" />
             </Button>
           </div>
+        )}
+        {total > 0 && (
+          <DataPagination
+            itemLabel="registros"
+            page={logsPagination.page}
+            pageSize={logsPagination.pageSize}
+            totalItems={logsPagination.totalItems}
+            startIndex={logsPagination.startIndex}
+            endIndex={logsPagination.endIndex}
+            canPreviousPage={logsPagination.canPreviousPage}
+            canNextPage={logsPagination.canNextPage}
+            onPageSizeChange={logsPagination.setPageSize}
+            onPreviousPage={logsPagination.previousPage}
+            onNextPage={logsPagination.nextPage}
+          />
         )}
       </Card>
     </div>

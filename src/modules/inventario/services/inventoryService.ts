@@ -15,7 +15,7 @@ import {
   where,
   writeBatch,
 } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { auth, db } from "@/lib/firebase";
 import { addAuditLog } from "@/modules/audit/services/auditService";
 import { cleanData, safeDate } from "@/shared/utils/firestoreData";
 import type {
@@ -67,6 +67,16 @@ const formatSignedQuantity = (quantity: number) => {
 const compactAuditItems = (items: string[]) => {
   if (items.length <= 4) return items.join("; ");
   return `${items.slice(0, 4).join("; ")}; +${items.length - 4} mas`;
+};
+
+const getMovementUser = () => {
+  const user = auth.currentUser;
+  const email = user?.email || "Sistema";
+  return {
+    usuarioEmail: email,
+    usuarioNombre: user?.displayName || email || "Admin",
+    usuarioId: user?.uid ?? null,
+  };
 };
 
 const toFirestoreDate = (date: string) => new Date(`${date}T00:00:00`);
@@ -127,10 +137,17 @@ const mapMovement = (id: string, data: any): InventoryMovement => ({
   motivo: data.motivo ?? "",
   referenciaTipo: data.referenciaTipo ?? "manual",
   referenciaId: data.referenciaId ?? null,
+  usuarioId: data.usuarioId ?? null,
+  usuarioNombre: data.usuarioNombre ?? data.usuarioEmail ?? "Sistema",
+  usuarioEmail: data.usuarioEmail ?? "",
   lote: data.lote ?? "",
   fechaVencimiento: safeOptionalDate(data.fechaVencimiento),
   proveedor: data.proveedor ?? "",
   documentoCompra: data.documentoCompra ?? "",
+  costoUnitario: Number(data.costoUnitario) || 0,
+  costoTotal: Number(data.costoTotal) || 0,
+  precioUnitarioVenta: Number(data.precioUnitarioVenta) || 0,
+  ingresoTotal: Number(data.ingresoTotal) || 0,
 });
 
 const mapStockEntry = (id: string, data: any): InventoryStockEntry => ({
@@ -315,9 +332,11 @@ export const inventoryService = {
     const productRef = doc(collection(db, INVENTORY_PRODUCTS_COLLECTION));
     const batch = writeBatch(db);
     batch.set(productRef, payload);
+    const movementUser = getMovementUser();
 
     if (initialStock > 0) {
       const movementRef = doc(collection(db, INVENTORY_MOVEMENTS_COLLECTION));
+      const initialCost = Number(product.costoUnitario) || 0;
       batch.set(movementRef, cleanData({
         productoId: productRef.id,
         productoNombre: formatProductDisplayName(name, brand),
@@ -329,7 +348,10 @@ export const inventoryService = {
         motivo: "Stock inicial",
         referenciaTipo: "manual",
         referenciaId: productRef.id,
+        ...movementUser,
         proveedor: product.proveedor?.trim() ?? "",
+        costoUnitario: initialCost,
+        costoTotal: initialStock * initialCost,
         createdAt: serverTimestamp(),
       }));
     }
@@ -419,6 +441,8 @@ export const inventoryService = {
       throw new Error("El ajuste no puede ser cero.");
     }
 
+    const movementUser = getMovementUser();
+
     const movementResult = await runTransaction(db, async (transaction) => {
       const productRef = doc(db, INVENTORY_PRODUCTS_COLLECTION, input.productoId);
       const productSnap = await transaction.get(productRef);
@@ -430,6 +454,9 @@ export const inventoryService = {
       const product = mapProduct(productSnap.id, productSnap.data());
       const quantity = resolveMovementQuantity(input.tipo, input.cantidad);
       const nextStock = product.stock + quantity;
+      const absoluteQuantity = Math.abs(quantity);
+      const costoUnitario = Number(input.costoUnitario ?? product.costoUnitario) || 0;
+      const precioUnitarioVenta = Number(input.precioUnitarioVenta ?? product.precioVenta ?? 0) || 0;
 
       if (nextStock < 0) {
         throw new Error("No hay stock suficiente para registrar este movimiento.");
@@ -451,10 +478,15 @@ export const inventoryService = {
         motivo: input.motivo,
         referenciaTipo: input.referenciaTipo ?? "manual",
         referenciaId: input.referenciaId ?? null,
+        ...movementUser,
         lote: input.lote ?? "",
         fechaVencimiento: input.fechaVencimiento ? toFirestoreDate(input.fechaVencimiento) : null,
         proveedor: input.proveedor ?? "",
         documentoCompra: input.documentoCompra ?? "",
+        costoUnitario,
+        costoTotal: absoluteQuantity * costoUnitario,
+        precioUnitarioVenta: input.tipo === "venta" ? precioUnitarioVenta : 0,
+        ingresoTotal: input.tipo === "venta" ? absoluteQuantity * precioUnitarioVenta : 0,
         createdAt: serverTimestamp(),
       }));
 
@@ -481,6 +513,8 @@ export const inventoryService = {
       if ((Number(item.cantidad) || 0) <= 0) throw new Error("Las cantidades de reabastecimiento deben ser positivas.");
       if (!item.lote.trim()) throw new Error("Escribe el lote de todos los productos.");
     });
+
+    const movementUser = getMovementUser();
 
     const entryResult = await runTransaction(db, async (transaction) => {
       const products = [];
@@ -526,6 +560,7 @@ export const inventoryService = {
         const nextStock = product.stock + quantity;
         const movementRef = doc(collection(db, INVENTORY_MOVEMENTS_COLLECTION));
         const productName = formatProductDisplayName(product.nombre, product.marca);
+        const costoUnitario = Number(product.costoUnitario) || 0;
 
         transaction.update(ref, {
           stock: nextStock,
@@ -543,10 +578,13 @@ export const inventoryService = {
           motivo: `Reabastecimiento ${documentNumber} - lote ${item.lote.trim()}`,
           referenciaTipo: "entrada_stock",
           referenciaId: entryRef.id,
+          ...movementUser,
           lote: item.lote.trim(),
           fechaVencimiento: item.fechaVencimiento ? toFirestoreDate(item.fechaVencimiento) : null,
           proveedor: provider,
           documentoCompra: documentNumber,
+          costoUnitario,
+          costoTotal: quantity * costoUnitario,
           createdAt: serverTimestamp(),
         }));
 

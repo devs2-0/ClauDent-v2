@@ -15,6 +15,7 @@ import {
   Truck,
 } from "lucide-react";
 import { toast } from "sonner";
+import { DataPagination } from "@/shared/components/DataPagination";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/components/ui/card";
@@ -40,6 +41,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/components/ui/tabs";
 import { Textarea } from "@/shared/components/ui/textarea";
 import { formatCurrency, formatDate } from "@/shared/utils/utils";
+import { usePagination } from "@/shared/hooks/usePagination";
 import { useInventory } from "../hooks/useInventory";
 import type {
   InventoryCategory,
@@ -66,6 +68,16 @@ const movementLabel: Record<InventoryMovementType, string> = {
   ajuste: "Ajuste",
 };
 
+const movementFilterOptions: InventoryMovementType[] = [
+  "entrada",
+  "venta",
+  "uso_clinico",
+  "devolucion",
+  "merma",
+  "caducidad",
+  "ajuste",
+];
+
 const defaultManualMovementType: InventoryMovementType = "merma";
 
 const manualMovementDescriptions: Partial<Record<InventoryMovementType, string>> = {
@@ -75,8 +87,6 @@ const manualMovementDescriptions: Partial<Record<InventoryMovementType, string>>
   caducidad: "Producto vencido que debe salir del stock.",
   ajuste: "Correccion por conteo fisico; puede sumar o restar.",
 };
-
-const categoryPageSize = 6;
 
 const emptyProductForm = {
   nombre: "",
@@ -124,9 +134,16 @@ const InventarioPage: React.FC = () => {
 
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<InventoryCategory | "todos">("todos");
+  const [productProviderFilter, setProductProviderFilter] = useState("todos");
+  const [productStatusFilter, setProductStatusFilter] = useState<"todos" | "activos" | "bajo_minimo" | "inactivos" | "vendibles" | "no_vendibles">("todos");
   const [dateFilter, setDateFilter] = useState(today());
-  const [categoryPage, setCategoryPage] = useState(1);
-
+  const [movementDateFilter, setMovementDateFilter] = useState(today());
+  const [movementProductFilter, setMovementProductFilter] = useState("todos");
+  const [movementTypeFilter, setMovementTypeFilter] = useState<InventoryMovementType | "todos">("todos");
+  const [replenishmentSearch, setReplenishmentSearch] = useState("");
+  const [replenishmentCategoryFilter, setReplenishmentCategoryFilter] = useState<InventoryCategory | "todos">("todos");
+  const [replenishmentProviderFilter, setReplenishmentProviderFilter] = useState("todos");
+  const [replenishmentStockFilter, setReplenishmentStockFilter] = useState<"todos" | "bajo_minimo" | "sin_proveedor">("todos");
   const [isSavingProduct, setIsSavingProduct] = useState(false);
   const [isSavingCategory, setIsSavingCategory] = useState(false);
   const [isSavingMovement, setIsSavingMovement] = useState(false);
@@ -171,6 +188,10 @@ const InventarioPage: React.FC = () => {
     [products],
   );
 
+  const productProviders = useMemo(() => {
+    return Array.from(new Set(products.map((product) => product.proveedor?.trim()).filter(Boolean) as string[])).sort();
+  }, [products]);
+
   const categoryById = useMemo(() => {
     return new Map(categories.map((category) => [category.id, category]));
   }, [categories]);
@@ -188,15 +209,33 @@ const InventarioPage: React.FC = () => {
 
     return products.filter((product) => {
       const searchableText = `${product.nombre} ${product.marca ?? ""}`.toLowerCase();
+      const provider = product.proveedor?.trim() || "";
+      const isLowStock = product.estado === "activo" && product.stock <= product.stockMinimo;
+      const isSellable = product.precioVenta !== null;
       const matchesText = !term || searchableText.includes(term);
       const matchesCategory = categoryFilter === "todos" || product.categoria === categoryFilter;
-      return matchesText && matchesCategory;
+      const matchesProvider = productProviderFilter === "todos" || (productProviderFilter === "sin_proveedor" ? !provider : provider === productProviderFilter);
+      const matchesStatus =
+        productStatusFilter === "todos"
+        || (productStatusFilter === "activos" && product.estado === "activo")
+        || (productStatusFilter === "bajo_minimo" && isLowStock)
+        || (productStatusFilter === "inactivos" && product.estado === "inactivo")
+        || (productStatusFilter === "vendibles" && isSellable)
+        || (productStatusFilter === "no_vendibles" && !isSellable);
+
+      return matchesText && matchesCategory && matchesProvider && matchesStatus;
     });
-  }, [products, search, categoryFilter]);
+  }, [products, search, categoryFilter, productProviderFilter, productStatusFilter]);
 
   const filteredMovements = useMemo(() => {
-    return movements.filter((movement) => !dateFilter || movement.fecha === dateFilter);
-  }, [movements, dateFilter]);
+    return movements.filter((movement) => {
+      const matchesDate = !movementDateFilter || movement.fecha === movementDateFilter;
+      const matchesProduct = movementProductFilter === "todos" || movement.productoId === movementProductFilter;
+      const matchesType = movementTypeFilter === "todos" || movement.tipo === movementTypeFilter;
+
+      return matchesDate && matchesProduct && matchesType;
+    });
+  }, [movements, movementDateFilter, movementProductFilter, movementTypeFilter]);
 
   const lowStockProducts = useMemo(
     () => activeProducts.filter((product) => product.stock <= product.stockMinimo),
@@ -211,6 +250,34 @@ const InventarioPage: React.FC = () => {
     }),
     [activeProducts],
   );
+
+  const replenishmentProviders = useMemo(() => {
+    return Array.from(new Set(activeProducts.map((product) => product.proveedor?.trim()).filter(Boolean) as string[])).sort();
+  }, [activeProducts]);
+
+  const filteredReplenishmentProducts = useMemo(() => {
+    const term = replenishmentSearch.toLowerCase().trim();
+
+    return replenishmentProducts.filter((product) => {
+      const searchableText = `${product.nombre} ${product.marca ?? ""}`.toLowerCase();
+      const provider = product.proveedor?.trim() || "";
+      const matchesText = !term || searchableText.includes(term);
+      const matchesCategory = replenishmentCategoryFilter === "todos" || product.categoria === replenishmentCategoryFilter;
+      const matchesProvider = replenishmentProviderFilter === "todos" || provider === replenishmentProviderFilter;
+      const matchesStock =
+        replenishmentStockFilter === "todos"
+        || (replenishmentStockFilter === "bajo_minimo" && product.stock <= product.stockMinimo)
+        || (replenishmentStockFilter === "sin_proveedor" && !provider);
+
+      return matchesText && matchesCategory && matchesProvider && matchesStock;
+    });
+  }, [
+    replenishmentProducts,
+    replenishmentSearch,
+    replenishmentCategoryFilter,
+    replenishmentProviderFilter,
+    replenishmentStockFilter,
+  ]);
 
   const sellableProducts = useMemo(
     () => activeProducts.filter((product) => product.precioVenta !== null),
@@ -234,8 +301,15 @@ const InventarioPage: React.FC = () => {
     }, new Map<string, number>());
   }, [products]);
 
-  const totalCategoryPages = Math.max(1, Math.ceil(categories.length / categoryPageSize));
-  const paginatedCategories = categories.slice((categoryPage - 1) * categoryPageSize, categoryPage * categoryPageSize);
+  const productsPagination = usePagination(filteredProducts, {
+    resetKeys: [search, categoryFilter, productProviderFilter, productStatusFilter],
+  });
+  const replenishmentPagination = usePagination(filteredReplenishmentProducts, {
+    resetKeys: [replenishmentSearch, replenishmentCategoryFilter, replenishmentProviderFilter, replenishmentStockFilter],
+  });
+  const movementsPagination = usePagination(filteredMovements, {
+    resetKeys: [movementDateFilter, movementProductFilter, movementTypeFilter],
+  });
 
   const selectedEntryProduct = activeProducts.find((product) => product.id === entryItemForm.productoId);
   const entryTotalUnits = entryItems.reduce((total, item) => total + item.cantidad, 0);
@@ -563,8 +637,15 @@ const InventarioPage: React.FC = () => {
                   <CardTitle>Productos de inventario</CardTitle>
                   <CardDescription>Catalogo editable de productos, materiales y medicamentos.</CardDescription>
                 </div>
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <div className="relative sm:w-64">
+                <Button type="button" onClick={() => openProductDialog()}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Producto
+                </Button>
+              </div>
+              <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(220px,1fr)_180px_180px_170px_auto] lg:items-end">
+                <div className="space-y-1">
+                  <Label>Producto</Label>
+                  <div className="relative">
                     <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                     <Input
                       value={search}
@@ -573,8 +654,11 @@ const InventarioPage: React.FC = () => {
                       className="pl-9"
                     />
                   </div>
+                </div>
+                <div className="space-y-1">
+                  <Label>Categoria</Label>
                   <Select value={categoryFilter} onValueChange={(value) => setCategoryFilter(value as InventoryCategory | "todos")}>
-                    <SelectTrigger className="sm:w-48">
+                    <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -586,11 +670,55 @@ const InventarioPage: React.FC = () => {
                       ))}
                     </SelectContent>
                   </Select>
-                  <Button type="button" onClick={() => openProductDialog()}>
-                    <Plus className="mr-2 h-4 w-4" />
-                    Producto
-                  </Button>
                 </div>
+                <div className="space-y-1">
+                  <Label>Proveedor</Label>
+                  <Select value={productProviderFilter} onValueChange={setProductProviderFilter}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todos">Todos</SelectItem>
+                      <SelectItem value="sin_proveedor">Sin proveedor</SelectItem>
+                      {productProviders.map((provider) => (
+                        <SelectItem key={provider} value={provider}>
+                          {provider}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label>Estado</Label>
+                  <Select
+                    value={productStatusFilter}
+                    onValueChange={(value) => setProductStatusFilter(value as "todos" | "activos" | "bajo_minimo" | "inactivos" | "vendibles" | "no_vendibles")}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todos">Todos</SelectItem>
+                      <SelectItem value="activos">Activos</SelectItem>
+                      <SelectItem value="bajo_minimo">Bajo minimo</SelectItem>
+                      <SelectItem value="inactivos">Inactivos</SelectItem>
+                      <SelectItem value="vendibles">Vendibles</SelectItem>
+                      <SelectItem value="no_vendibles">No vendibles</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setSearch("");
+                    setCategoryFilter("todos");
+                    setProductProviderFilter("todos");
+                    setProductStatusFilter("todos");
+                  }}
+                >
+                  Limpiar filtros
+                </Button>
               </div>
             </CardHeader>
             <CardContent className="p-0">
@@ -622,7 +750,7 @@ const InventarioPage: React.FC = () => {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      filteredProducts.map((product) => (
+                      productsPagination.paginatedItems.map((product) => (
                         <TableRow key={product.id}>
                           <TableCell>
                             <p className="font-medium">{getProductDisplayName(product)}</p>
@@ -674,6 +802,21 @@ const InventarioPage: React.FC = () => {
                 </Table>
               </div>
             </CardContent>
+            {!productsLoading && filteredProducts.length > 0 && (
+              <DataPagination
+                itemLabel="productos"
+                page={productsPagination.page}
+                pageSize={productsPagination.pageSize}
+                totalItems={productsPagination.totalItems}
+                startIndex={productsPagination.startIndex}
+                endIndex={productsPagination.endIndex}
+                canPreviousPage={productsPagination.canPreviousPage}
+                canNextPage={productsPagination.canNextPage}
+                onPageSizeChange={productsPagination.setPageSize}
+                onPreviousPage={productsPagination.previousPage}
+                onNextPage={productsPagination.nextPage}
+              />
+            )}
           </Card>
         </TabsContent>
 
@@ -688,6 +831,83 @@ const InventarioPage: React.FC = () => {
                 <Button onClick={() => setIsStockEntryDialogOpen(true)}>
                   <Truck className="mr-2 h-4 w-4" />
                   Reabastecer
+                </Button>
+              </div>
+              <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(220px,1fr)_180px_180px_170px_auto] lg:items-end">
+                <div className="space-y-1">
+                  <Label>Producto</Label>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={replenishmentSearch}
+                      onChange={(event) => setReplenishmentSearch(event.target.value)}
+                      placeholder="Buscar producto..."
+                      className="pl-9"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <Label>Categoria</Label>
+                  <Select
+                    value={replenishmentCategoryFilter}
+                    onValueChange={(value) => setReplenishmentCategoryFilter(value as InventoryCategory | "todos")}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todos">Todas</SelectItem>
+                      {activeCategories.map((category) => (
+                        <SelectItem key={category.id} value={category.id}>
+                          {category.nombre}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label>Proveedor</Label>
+                  <Select value={replenishmentProviderFilter} onValueChange={setReplenishmentProviderFilter}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todos">Todos</SelectItem>
+                      {replenishmentProviders.map((provider) => (
+                        <SelectItem key={provider} value={provider}>
+                          {provider}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label>Stock</Label>
+                  <Select
+                    value={replenishmentStockFilter}
+                    onValueChange={(value) => setReplenishmentStockFilter(value as "todos" | "bajo_minimo" | "sin_proveedor")}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todos">Todos</SelectItem>
+                      <SelectItem value="bajo_minimo">Bajo minimo</SelectItem>
+                      <SelectItem value="sin_proveedor">Sin proveedor</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setReplenishmentSearch("");
+                    setReplenishmentCategoryFilter("todos");
+                    setReplenishmentProviderFilter("todos");
+                    setReplenishmentStockFilter("todos");
+                  }}
+                >
+                  Limpiar filtros
                 </Button>
               </div>
             </CardHeader>
@@ -712,14 +932,14 @@ const InventarioPage: React.FC = () => {
                           Cargando reabastecimiento...
                         </TableCell>
                       </TableRow>
-                    ) : replenishmentProducts.length === 0 ? (
+                    ) : filteredReplenishmentProducts.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
-                          No hay productos registrados para reabastecer.
+                          No hay productos para esos filtros.
                         </TableCell>
                       </TableRow>
                     ) : (
-                      replenishmentProducts.map((product) => {
+                      replenishmentPagination.paginatedItems.map((product) => {
                         const shortage = Math.max(product.stockMinimo - product.stock, 0);
 
                         return (
@@ -760,6 +980,21 @@ const InventarioPage: React.FC = () => {
                 </Table>
               </div>
             </CardContent>
+            {!productsLoading && filteredReplenishmentProducts.length > 0 && (
+              <DataPagination
+                itemLabel="productos"
+                page={replenishmentPagination.page}
+                pageSize={replenishmentPagination.pageSize}
+                totalItems={replenishmentPagination.totalItems}
+                startIndex={replenishmentPagination.startIndex}
+                endIndex={replenishmentPagination.endIndex}
+                canPreviousPage={replenishmentPagination.canPreviousPage}
+                canNextPage={replenishmentPagination.canNextPage}
+                onPageSizeChange={replenishmentPagination.setPageSize}
+                onPreviousPage={replenishmentPagination.previousPage}
+                onNextPage={replenishmentPagination.nextPage}
+              />
+            )}
           </Card>
         </TabsContent>
 
@@ -796,14 +1031,14 @@ const InventarioPage: React.FC = () => {
                           Cargando categorias...
                         </TableCell>
                       </TableRow>
-                    ) : paginatedCategories.length === 0 ? (
+                    ) : categories.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
                           No hay categorias registradas.
                         </TableCell>
                       </TableRow>
                     ) : (
-                      paginatedCategories.map((category) => {
+                      categories.map((category) => {
                         const productCount = productCountByCategory.get(category.id) ?? 0;
 
                         return (
@@ -848,31 +1083,6 @@ const InventarioPage: React.FC = () => {
                   </TableBody>
                 </Table>
               </div>
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-muted-foreground">
-                  Pagina {categoryPage} de {totalCategoryPages}
-                </p>
-                <div className="flex gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCategoryPage((page) => Math.max(1, page - 1))}
-                    disabled={categoryPage === 1}
-                  >
-                    Anterior
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCategoryPage((page) => Math.min(totalCategoryPages, page + 1))}
-                    disabled={categoryPage === totalCategoryPages}
-                  >
-                    Siguiente
-                  </Button>
-                </div>
-              </div>
             </CardContent>
           </Card>
         </TabsContent>
@@ -900,6 +1110,61 @@ const InventarioPage: React.FC = () => {
                   </p>
                 </div>
               </div>
+              <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(220px,1fr)_180px_170px_auto_auto] lg:items-end">
+                <div className="space-y-1">
+                  <Label>Producto</Label>
+                  <Select value={movementProductFilter} onValueChange={setMovementProductFilter}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todos">Todos los productos</SelectItem>
+                      {products.map((product) => (
+                        <SelectItem key={product.id} value={product.id}>
+                          {getProductDisplayName(product)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label>Tipo</Label>
+                  <Select
+                    value={movementTypeFilter}
+                    onValueChange={(value) => setMovementTypeFilter(value as InventoryMovementType | "todos")}
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todos">Todos los tipos</SelectItem>
+                      {movementFilterOptions.map((type) => (
+                        <SelectItem key={type} value={type}>
+                          {movementLabel[type]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label>Fecha</Label>
+                  <Input type="date" value={movementDateFilter} onChange={(event) => setMovementDateFilter(event.target.value)} />
+                </div>
+                <Button type="button" variant="outline" onClick={() => setMovementDateFilter("")}>
+                  Todas las fechas
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setMovementDateFilter(today());
+                    setMovementProductFilter("todos");
+                    setMovementTypeFilter("todos");
+                  }}
+                >
+                  Limpiar filtros
+                </Button>
+              </div>
             </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-auto">
@@ -909,6 +1174,7 @@ const InventarioPage: React.FC = () => {
                       <TableHead>Fecha</TableHead>
                       <TableHead>Producto</TableHead>
                       <TableHead>Tipo</TableHead>
+                      <TableHead>Usuario</TableHead>
                       <TableHead>Cantidad</TableHead>
                       <TableHead>Stock</TableHead>
                       <TableHead>Lote</TableHead>
@@ -919,18 +1185,18 @@ const InventarioPage: React.FC = () => {
                   <TableBody>
                     {movementsLoading ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
+                        <TableCell colSpan={9} className="py-10 text-center text-muted-foreground">
                           Cargando movimientos...
                         </TableCell>
                       </TableRow>
                     ) : filteredMovements.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
-                          No hay movimientos para la fecha seleccionada.
+                        <TableCell colSpan={9} className="py-10 text-center text-muted-foreground">
+                          No hay movimientos con esos filtros.
                         </TableCell>
                       </TableRow>
                     ) : (
-                      filteredMovements.map((movement) => (
+                      movementsPagination.paginatedItems.map((movement) => (
                         <TableRow key={movement.id}>
                           <TableCell>{formatDate(movement.fecha)}</TableCell>
                           <TableCell className="font-medium">{movement.productoNombre}</TableCell>
@@ -944,6 +1210,7 @@ const InventarioPage: React.FC = () => {
                               {movementLabel[movement.tipo]}
                             </Badge>
                           </TableCell>
+                          <TableCell>{movement.usuarioNombre || movement.usuarioEmail || "-"}</TableCell>
                           <TableCell className={movement.cantidad > 0 ? "text-emerald-700" : "text-destructive"}>
                             {movement.cantidad > 0 ? `+${movement.cantidad}` : movement.cantidad}
                           </TableCell>
@@ -958,6 +1225,21 @@ const InventarioPage: React.FC = () => {
                 </Table>
               </div>
             </CardContent>
+            {!movementsLoading && filteredMovements.length > 0 && (
+              <DataPagination
+                itemLabel="movimientos"
+                page={movementsPagination.page}
+                pageSize={movementsPagination.pageSize}
+                totalItems={movementsPagination.totalItems}
+                startIndex={movementsPagination.startIndex}
+                endIndex={movementsPagination.endIndex}
+                canPreviousPage={movementsPagination.canPreviousPage}
+                canNextPage={movementsPagination.canNextPage}
+                onPageSizeChange={movementsPagination.setPageSize}
+                onPreviousPage={movementsPagination.previousPage}
+                onNextPage={movementsPagination.nextPage}
+              />
+            )}
           </Card>
         </TabsContent>
 
