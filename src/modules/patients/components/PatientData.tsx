@@ -5,7 +5,6 @@ import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
 import { Label } from '@/shared/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/components/ui/select';
-import { DatePickerField } from '@/shared/components/DatePickerField';
 import { toast } from 'sonner';
 import { Separator } from '@/shared/components/ui/separator';
 
@@ -42,11 +41,6 @@ const PatientData: React.FC<PatientDataProps> = ({ patient }) => {
   const [formData, setFormData] = useState(mapPatientToFormData(patient));
 
   const handleSave = async () => {
-    if (!formData.nombres || !formData.apellidos || !formData.fechaNacimiento) {
-      toast.error('Nombres, apellidos y fecha de nacimiento requeridos');
-      return;
-    }
-
     try {
       await updatePatient(patient.id, formData);
       setIsEditing(false);
@@ -107,14 +101,7 @@ const PatientData: React.FC<PatientDataProps> = ({ patient }) => {
             </div>
             <div className="space-y-2">
               <Label htmlFor="fechaNacimiento">Fecha de Nacimiento *</Label>
-              <DatePickerField
-                value={formData.fechaNacimiento}
-                onChange={(fechaNacimiento) => setFormData((current) => ({ ...current, fechaNacimiento }))}
-                max={new Date().toISOString().split('T')[0]}
-                toYear={new Date().getFullYear()}
-                placeholder="Seleccionar nacimiento"
-                required
-              />
+              <Input id="fechaNacimiento" type="date" value={formData.fechaNacimiento} onChange={handleFormChange} required />
             </div>
             <div className="space-y-2">
               <Label htmlFor="sexo">Sexo *</Label>

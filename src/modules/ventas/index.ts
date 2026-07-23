@@ -1,20 +1,3 @@
-export { useCashRegister } from "./hooks/useCashRegister";
-export { default as CajaPage } from "./pages/CajaPage";
+// Exportaciones públicas del módulo Ventas.
+// Agregar aquí páginas, hooks, tipos o servicios que otros módulos puedan usar.
 export { default as VentasPage } from "./pages/VentasPage";
-export { cashService } from "./services/cashService";
-export { CashProvider } from "./store/CashProvider";
-export type {
-  CashClosure,
-  CashClosureTotals,
-  CheckoutInventoryItem,
-  CloseCashRegisterInput,
-  CreatePaymentInput,
-  DirectSaleProductItem,
-  DirectSaleServiceItem,
-  FinalizeQuotationCheckoutInput,
-  Payment,
-  PaymentMethod,
-  PaymentOrigin,
-  PaymentStatus,
-  RegisterDirectSaleInput,
-} from "./types/cash.types";
