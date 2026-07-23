@@ -2,9 +2,7 @@
 import React, { useState, useMemo } from 'react';
 import { Plus, Search, Edit, Trash2 } from 'lucide-react';
 import { useDentalServices } from '@/modules/services';
-import { DataPagination } from '@/shared/components/DataPagination';
 import { formatCurrency } from '@/shared/utils/utils';
-import { usePagination } from '@/shared/hooks/usePagination';
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
 import { Card, CardContent } from '@/shared/components/ui/card';
@@ -62,9 +60,6 @@ const ServiciosIndividuales: React.FC = () => {
       (service.categoria && service.categoria.toLowerCase().includes(searchQuery.toLowerCase()))
     );
   }, [services, searchQuery]);
-  const servicesPagination = usePagination(filteredServices, {
-    resetKeys: [searchQuery],
-  });
 
   const handleOpenDialog = (serviceId?: string) => {
     if (serviceId) {
@@ -197,7 +192,7 @@ const ServiciosIndividuales: React.FC = () => {
                       </TableCell>
                     </TableRow>
                 ) : (
-                  servicesPagination.paginatedItems.map((service) => (
+                  filteredServices.map((service) => (
                     <TableRow key={service.id}>
                       <TableCell className="font-mono text-sm whitespace-nowrap">{service.codigo}</TableCell>
                       <TableCell>
@@ -242,21 +237,6 @@ const ServiciosIndividuales: React.FC = () => {
             </Table>
           </div>
         </CardContent>
-        {!servicesLoading && filteredServices.length > 0 && (
-          <DataPagination
-            itemLabel="servicios"
-            page={servicesPagination.page}
-            pageSize={servicesPagination.pageSize}
-            totalItems={servicesPagination.totalItems}
-            startIndex={servicesPagination.startIndex}
-            endIndex={servicesPagination.endIndex}
-            canPreviousPage={servicesPagination.canPreviousPage}
-            canNextPage={servicesPagination.canNextPage}
-            onPageSizeChange={servicesPagination.setPageSize}
-            onPreviousPage={servicesPagination.previousPage}
-            onNextPage={servicesPagination.nextPage}
-          />
-        )}
       </Card>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
