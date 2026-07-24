@@ -1,6 +1,6 @@
 import React from "react";
 
-import { LoginPage, ResetPasswordPage, RolesPage } from "@/auth";
+import { LoginPage, ResetPasswordPage, RolesPage, UsersPage } from "@/auth";
 import { AuditPage } from "@/modules/audit";
 import { AgendaPage } from "@/modules/agenda";
 import { DashboardPage } from "@/modules/dashboard";
@@ -74,6 +74,11 @@ export const protectedRoutes: AppRouteConfig[] = [
     path: "/ventas",
     element: <VentasPage />,
     permission: "sales.view",
+  },
+  {
+  path: "/usuarios",
+  element: <UsersPage />,
+  permission: "users.view",
   },
   {
     path: "/roles",
