@@ -10,6 +10,7 @@ import {
   Tags,
   UserCog,
   Users,
+  UsersRound
 } from "lucide-react";
 
 import type { PermissionKey } from "@/auth";
@@ -75,6 +76,12 @@ export const navigationItems: NavigationItem[] = [
     url: "/paquetes",
     icon: Tags,
     permission: "packages.view",
+  },
+  {
+  title: "Usuarios",
+  url: "/usuarios",
+  icon: UsersRound,
+  permission: "users.view",
   },
   {
     title: "Roles",

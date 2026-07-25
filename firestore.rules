@@ -1,9 +1,39 @@
-rules_version='2'
+rules_version='2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
     function isSignedIn() {
       return request.auth != null;
+    }
+
+    function currentUserPath() {
+      return /databases/$(database)/documents/usuarios/$(request.auth.uid);
+    }
+
+    function currentUserData() {
+      return get(currentUserPath()).data;
+    }
+
+    function isActiveUser() {
+      return isSignedIn()
+        && exists(currentUserPath())
+        && currentUserData().status == "active";
+    }
+
+    function isAdmin() {
+      return isActiveUser()
+        && currentUserData().isAdmin == true;
+    }
+
+    function hasPermission(permission) {
+      return isActiveUser()
+        && (
+          isAdmin()
+          || (
+            currentUserData().permissions is list
+            && currentUserData().permissions.hasAny([permission])
+          )
+        );
     }
 
     function hasPatientAttachmentFields(patientId) {
@@ -12,6 +42,47 @@ service cloud.firestore {
         && request.resource.data.url is string
         && request.resource.data.storagePath is string
         && request.resource.data.storagePath.matches('^pacientes/' + patientId + '/.+');
+    }
+
+    function isSafeSelfUserCreate(userId) {
+      return isSignedIn()
+        && request.auth.uid == userId
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.isAdmin != true
+        && (
+          !request.resource.data.keys().hasAny(["permissions"])
+          || request.resource.data.permissions.size() == 0
+        )
+        && (
+          !request.resource.data.keys().hasAny(["roleIds"])
+          || request.resource.data.roleIds.size() == 0
+        );
+    }
+
+    function isSafeSelfUserUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        "displayName",
+        "photoURL",
+        "phone",
+        "lastLoginAt",
+        "updatedAt"
+      ]);
+    }
+
+    match /roles/{roleId} {
+      allow read: if hasPermission("roles.view");
+
+      allow create: if hasPermission("roles.create")
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.permissions is list
+        && request.resource.data.isSystem == false;
+
+      allow update: if hasPermission("roles.update")
+        && resource.data.isSystem != true;
+
+      allow delete: if hasPermission("roles.delete")
+        && resource.data.isSystem != true;
     }
 
     match /pacientes/{patientId} {
@@ -42,46 +113,25 @@ service cloud.firestore {
       allow read, write: if isSignedIn();
     }
 
-    match /pagos/{pagoId} {
-      allow read, write: if isSignedIn();
-    }
-
-    match /cortesCaja/{corteId} {
-      allow read, write: if isSignedIn();
-    }
-
-    match /cajaMovimientos/{movimientoId} {
-      allow read, write: if isSignedIn();
-    }
-
-    match /tratamientos/{tratamientoId} {
-      allow read, write: if isSignedIn();
-    }
-
-    match /bitacora/{logId} {
-      allow read, create: if isSignedIn();
-      allow update, delete: if false;
-    }
-
-    match /inventarioProductos/{productoId} {
-      allow read, write: if isSignedIn();
-    }
-
-    match /inventarioCategorias/{categoriaId} {
-      allow read, write: if isSignedIn();
-    }
-
-    match /inventarioMovimientos/{movimientoId} {
-      allow read, create: if isSignedIn();
-      allow update, delete: if false;
-    }
-
-    match /inventarioEntradas/{entradaId} {
-      allow read, write: if isSignedIn();
-    }
-
     match /usuarios/{userId} {
-      allow read, write: if isSignedIn() && request.auth.uid == userId;
+      allow read: if request.auth.uid == userId
+        || hasPermission("users.view")
+        || hasPermission("roles.view")
+        || hasPermission("roles.update")
+        || hasPermission("roles.assign");
+
+      allow create: if isSafeSelfUserCreate(userId)
+        || hasPermission("users.create");
+
+      allow update: if (
+          request.auth.uid == userId
+          && isSafeSelfUserUpdate()
+        )
+        || hasPermission("users.update")
+        || hasPermission("roles.assign")
+        || hasPermission("roles.update");
+
+      allow delete: if hasPermission("users.delete");
 
       match /sesiones/{sessionId} {
         allow read, write: if isSignedIn() && request.auth.uid == userId;

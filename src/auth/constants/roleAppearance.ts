@@ -1,0 +1,52 @@
+export const ROLE_COLORS = [
+  "#2563EB", // azul
+  "#1D4ED8",
+  "#0EA5E9",
+  "#0891B2",
+  "#14B8A6",
+  "#16A34A",
+  "#22C55E",
+  "#84CC16",
+  "#EAB308",
+  "#F59E0B",
+  "#EA580C",
+  "#DC2626",
+  "#BE123C",
+  "#E11D48",
+  "#DB2777",
+  "#C026D3",
+  "#9333EA",
+  "#7C3AED",
+  "#4F46E5",
+  "#64748B",
+  "#475569",
+  "#1F2937",
+] as const;
+
+export const ROLE_EMOJIS = [
+  "🛡️",
+  "👑",
+  "🦷",
+  "👩‍⚕️",
+  "👨‍⚕️",
+  "📅",
+  "🕒",
+  "🧾",
+  "💵",
+  "💳",
+  "📦",
+  "🧴",
+  "🛒",
+  "📊",
+  "📋",
+  "📝",
+  "🔔",
+  "🔐",
+  "⚙️",
+  "🧪",
+  "🧰",
+  "✨",
+] as const;
+
+export const DEFAULT_ROLE_COLOR = "#2563EB";
+export const DEFAULT_ROLE_EMOJI = "🛡️";
