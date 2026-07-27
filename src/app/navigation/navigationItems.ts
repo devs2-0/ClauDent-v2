@@ -10,7 +10,8 @@ import {
   Tags,
   UserCog,
   Users,
-  UsersRound
+  UsersRound,
+  WalletCards,
 } from "lucide-react";
 
 import type { PermissionKey } from "@/auth";
@@ -70,6 +71,12 @@ export const navigationItems: NavigationItem[] = [
     url: "/ventas",
     icon: ShoppingCart,
     permission: "sales.view",
+  },
+  {
+    title: "Caja",
+    url: "/caja",
+    icon: WalletCards,
+    permission: "sales.cashShift.open",
   },
   {
     title: "Paquetes",
