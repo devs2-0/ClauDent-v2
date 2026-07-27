@@ -147,3 +147,36 @@ service cloud.firestore {
     }
   }
 }
+
+match /pagos/{pagoId} {
+  allow read, write: if isSignedIn();
+}
+
+match /cortesCaja/{corteId} {
+  allow read, write: if isSignedIn();
+}
+
+match /cajaMovimientos/{movimientoId} {
+  allow read, write: if isSignedIn();
+}
+
+match /tratamientos/{tratamientoId} {
+  allow read, write: if isSignedIn();
+}
+
+match /inventarioProductos/{productoId} {
+  allow read, write: if isSignedIn();
+}
+
+match /inventarioCategorias/{categoriaId} {
+  allow read, write: if isSignedIn();
+}
+
+match /inventarioMovimientos/{movimientoId} {
+  allow read, create: if isSignedIn();
+  allow update, delete: if false;
+}
+
+match /inventarioEntradas/{entradaId} {
+  allow read, write: if isSignedIn();
+}
