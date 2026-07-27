@@ -13,8 +13,9 @@ import {
 import { QuotationsPage } from "@/modules/quotations";
 import { SecurityPage } from "@/modules/security";
 import { ServicesPage } from "@/modules/services";
-import { VentasPage } from "@/modules/ventas";
+import { CajaPage, VentasPage } from "@/modules/ventas";
 import { NotFoundPage } from "@/shared";
+
 
 import type { PermissionKey } from "@/auth";
 
@@ -74,6 +75,11 @@ export const protectedRoutes: AppRouteConfig[] = [
     path: "/ventas",
     element: <VentasPage />,
     permission: "sales.view",
+  },
+  {
+    path: "/caja",
+    element: <CajaPage />,
+    permission: "sales.cashShift.open",
   },
   {
   path: "/usuarios",
