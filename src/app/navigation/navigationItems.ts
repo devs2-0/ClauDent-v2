@@ -4,14 +4,11 @@ import {
   Home,
   History,
   PackageSearch,
-  ShieldCheck,
   ShoppingCart,
   Stethoscope,
-  Tags,
-  UserCog,
   Users,
-  UsersRound,
   WalletCards,
+  Settings,
 } from "lucide-react";
 
 import type { PermissionKey } from "@/auth";
@@ -79,33 +76,15 @@ export const navigationItems: NavigationItem[] = [
     permission: "sales.cashShift.open",
   },
   {
-    title: "Paquetes",
-    url: "/paquetes",
-    icon: Tags,
-    permission: "packages.view",
-  },
-  {
-  title: "Usuarios",
-  url: "/usuarios",
-  icon: UsersRound,
-  permission: "users.view",
-  },
-  {
-    title: "Roles",
-    url: "/roles",
-    icon: UserCog,
-    permission: "roles.view",
-  },
-  {
     title: "Bitácora",
     url: "/bitacora",
     icon: History,
     permission: "audit.view",
   },
   {
-    title: "Seguridad",
-    url: "/seguridad",
-    icon: ShieldCheck,
-    permission: "security.sessions.view",
+  title: "Administración",
+  url: "/administracion",
+  icon: Settings,
+  permission: "users.view",
   },
 ];
