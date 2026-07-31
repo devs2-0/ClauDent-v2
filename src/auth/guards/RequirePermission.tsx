@@ -1,17 +1,24 @@
 import React from "react";
-import { Navigate, Outlet } from "react-router-dom";
-import { usePermissions } from "../hooks/usePermissions";
+
+import { ProtectedRouteByPermission } from "./ProtectedRouteByPermission";
 import type { PermissionKey } from "../types/permission.types";
 
 interface RequirePermissionProps {
-  permission?: PermissionKey;
+  permission?: PermissionKey | null;
   children?: React.ReactNode;
 }
 
-export const RequirePermission: React.FC<RequirePermissionProps> = ({ permission, children }) => {
-  const { hasPermission } = usePermissions();
-
-  if (!hasPermission(permission)) return <Navigate to="/dashboard" replace />;
-
-  return <>{children ?? <Outlet />}</>;
+/**
+ * Alias de compatibilidad.
+ * Para rutas nuevas se recomienda usar ProtectedRouteByPermission.
+ */
+export const RequirePermission = ({
+  permission,
+  children,
+}: RequirePermissionProps) => {
+  return (
+    <ProtectedRouteByPermission permission={permission}>
+      {children}
+    </ProtectedRouteByPermission>
+  );
 };

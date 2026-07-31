@@ -1,6 +1,6 @@
 // RF01: Login page (CON RECUPERACIÓN INTEGRADA)
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Stethoscope, Eye, EyeOff } from 'lucide-react'; 
 import { motion } from 'framer-motion';
 // Importamos sendPasswordResetEmail
@@ -120,6 +120,14 @@ const Login: React.FC = () => {
                 >
                   ¿Olvidaste tu contraseña?
                 </button>
+                <div className="mt-4 text-center">
+                  <Link
+                    to="/primer-acceso"
+                    className="text-sm font-medium text-primary underline-offset-4 hover:underline"
+                  >
+                    ¿Es tu primer acceso? Crear contraseña
+                  </Link>
+                </div>
               </div>
               
               <div className="relative">

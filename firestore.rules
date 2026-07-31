@@ -1,9 +1,101 @@
-rules_version='2'
+rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
     function isSignedIn() {
       return request.auth != null;
+    }
+
+    function currentUserPath() {
+      return /databases/$(database)/documents/usuarios/$(request.auth.uid);
+    }
+
+    function currentUserExists() {
+      return isSignedIn() && exists(currentUserPath());
+    }
+
+    function currentUserData() {
+      return get(currentUserPath()).data;
+    }
+
+    function isActiveUser() {
+      return currentUserExists()
+        && currentUserData().status == "active";
+    }
+
+    function isAdmin() {
+      return isActiveUser()
+        && currentUserData().isAdmin == true;
+    }
+
+    function hasPermission(permission) {
+      return isActiveUser()
+        && (
+          isAdmin()
+          || (
+            currentUserData().permissions is list
+            && currentUserData().permissions.hasAny([permission])
+          )
+        );
+    }
+
+    function invitationPath(email) {
+      return /databases/$(database)/documents/invitacionesUsuarios/$(email);
+    }
+
+    function invitationData(email) {
+      return get(invitationPath(email)).data;
+    }
+
+    function isPendingInvitationForSignedInEmail(inviteEmail) {
+      return isSignedIn()
+        && request.auth.token.email == inviteEmail
+        && resource.data.email == inviteEmail
+        && resource.data.consumed == false
+        && resource.data.cancelled != true;
+    }
+
+    function hasPendingInvitation(email) {
+      return isSignedIn()
+        && email is string
+        && request.auth.token.email == email
+        && exists(invitationPath(email))
+        && invitationData(email).email == email
+        && invitationData(email).consumed == false
+        && invitationData(email).cancelled != true;
+    }
+
+    function isInviteConsumptionByOwner(inviteEmail) {
+      return isSignedIn()
+        && request.auth.token.email == inviteEmail
+        && resource.data.email == inviteEmail
+        && resource.data.consumed == false
+        && resource.data.cancelled != true
+        && request.resource.data.consumed == true
+        && request.resource.data.consumedBy == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "consumed",
+          "consumedAt",
+          "consumedBy",
+          "updatedAt"
+        ]);
+    }
+
+    function isInvitedSelfUserCreate(userId) {
+      return isSignedIn()
+        && request.auth.uid == userId
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.email == request.auth.token.email
+        && hasPendingInvitation(request.resource.data.email)
+        && request.resource.data.displayName == invitationData(request.resource.data.email).displayName
+        && request.resource.data.phone == invitationData(request.resource.data.email).phone
+        && request.resource.data.status == invitationData(request.resource.data.email).status
+        && request.resource.data.roleIds == invitationData(request.resource.data.email).roleIds
+        && request.resource.data.primaryRoleId == invitationData(request.resource.data.email).primaryRoleId
+        && request.resource.data.permissions == invitationData(request.resource.data.email).permissions
+        && request.resource.data.isAdmin == invitationData(request.resource.data.email).isAdmin
+        && request.resource.data.invitationId == request.resource.data.email
+        && request.resource.data.visible == true;
     }
 
     function hasPatientAttachmentFields(patientId) {
@@ -14,44 +106,181 @@ service cloud.firestore {
         && request.resource.data.storagePath.matches('^pacientes/' + patientId + '/.+');
     }
 
+    function isSafeSelfUserCreate(userId) {
+      return isSignedIn()
+        && request.auth.uid == userId
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.isAdmin != true
+        && (
+          !request.resource.data.keys().hasAny(["permissions"])
+          || request.resource.data.permissions.size() == 0
+        )
+        && (
+          !request.resource.data.keys().hasAny(["roleIds"])
+          || request.resource.data.roleIds.size() == 0
+        );
+    }
+
+    function isSafeSelfUserUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        "displayName",
+        "photoURL",
+        "phone",
+        "lastLoginAt",
+        "updatedAt"
+      ]);
+    }
+
+    match /invitacionesUsuarios/{inviteEmail} {
+      allow get: if hasPermission("users.view")
+        || hasPermission("users.create")
+        || isPendingInvitationForSignedInEmail(inviteEmail);
+
+      allow list: if hasPermission("users.view")
+        || hasPermission("users.create");
+
+      allow create: if hasPermission("users.create")
+        && request.resource.data.email == inviteEmail
+        && request.resource.data.displayName is string
+        && request.resource.data.displayName.size() > 0
+        && request.resource.data.roleIds is list
+        && request.resource.data.permissions is list
+        && request.resource.data.consumed == false
+        && request.resource.data.cancelled == false;
+
+      allow update: if hasPermission("users.update")
+        || hasPermission("users.create")
+        || isInviteConsumptionByOwner(inviteEmail);
+
+      allow delete: if hasPermission("users.delete");
+    }
+
+    match /roles/{roleId} {
+      allow read: if hasPermission("roles.view")
+        || hasPermission("roles.assign")
+        || hasPermission("roles.update")
+        || hasPermission("users.view")
+        || hasPermission("users.create");
+
+      allow create: if hasPermission("roles.create")
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.permissions is list
+        && request.resource.data.isSystem == false;
+
+      allow update: if hasPermission("roles.update")
+        && resource.data.isSystem != true;
+
+      allow delete: if hasPermission("roles.delete")
+        && resource.data.isSystem != true;
+    }
+
+    match /usuarios/{userId} {
+      allow read: if request.auth.uid == userId
+        || hasPermission("users.view")
+        || hasPermission("roles.view")
+        || hasPermission("roles.update")
+        || hasPermission("roles.assign")
+        || hasPermission("security.sessions.view");
+
+      allow create: if isSafeSelfUserCreate(userId)
+        || isInvitedSelfUserCreate(userId)
+        || hasPermission("users.create");
+
+      allow update: if (
+          request.auth.uid == userId
+          && isSafeSelfUserUpdate()
+        )
+        || hasPermission("users.update")
+        || hasPermission("users.delete")
+        || hasPermission("roles.assign")
+        || hasPermission("roles.update");
+
+      allow delete: if hasPermission("users.delete");
+
+      match /sesiones/{sessionId} {
+        allow read, write: if isSignedIn()
+          && request.auth.uid == userId;
+      }
+
+      match /dispositivos/{deviceId} {
+        allow read, write: if isSignedIn()
+          && request.auth.uid == userId;
+      }
+    }
+
     match /pacientes/{patientId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isActiveUser();
 
       match /historial/{entryId} {
-        allow read, write: if isSignedIn();
+        allow read, write: if isActiveUser();
+      }
+
+      match /historia_clinica/{formId} {
+        allow read, write: if isActiveUser();
       }
 
       match /odontograma/{odontogramId} {
-        allow read, write: if isSignedIn();
+        allow read, write: if isActiveUser();
       }
 
       match /adjuntos/{attachmentId} {
-        allow read, write: if isSignedIn() && hasPatientAttachmentFields(patientId);
+        allow read: if isActiveUser();
+        allow create, update: if isActiveUser()
+          && hasPatientAttachmentFields(patientId);
+        allow delete: if isActiveUser();
       }
     }
 
     match /servicios/{serviceId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isActiveUser();
     }
 
     match /cotizaciones/{cotizacionId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isActiveUser();
     }
 
     match /paquetes/{paqueteId} {
-      allow read, write: if isSignedIn();
+      allow read, write: if isActiveUser();
     }
 
-    match /usuarios/{userId} {
-      allow read, write: if isSignedIn() && request.auth.uid == userId;
+    match /pagos/{pagoId} {
+      allow read, write: if isActiveUser();
+    }
 
-      match /sesiones/{sessionId} {
-        allow read, write: if isSignedIn() && request.auth.uid == userId;
-      }
+    match /cortesCaja/{corteId} {
+      allow read, write: if isActiveUser();
+    }
 
-      match /dispositivos/{deviceId} {
-        allow read, write: if isSignedIn() && request.auth.uid == userId;
-      }
+    match /cajaMovimientos/{movimientoId} {
+      allow read, write: if isActiveUser();
+    }
+
+    match /tratamientos/{tratamientoId} {
+      allow read, write: if isActiveUser();
+    }
+
+    match /inventarioProductos/{productoId} {
+      allow read, write: if isActiveUser();
+    }
+
+    match /inventarioCategorias/{categoriaId} {
+      allow read, write: if isActiveUser();
+    }
+
+    match /inventarioMovimientos/{movimientoId} {
+      allow read, create: if isActiveUser();
+      allow update, delete: if false;
+    }
+
+    match /inventarioEntradas/{entradaId} {
+      allow read, write: if isActiveUser();
+    }
+
+    match /bitacora/{logId} {
+      allow read: if hasPermission("audit.view");
+      allow create: if isSignedIn();
+      allow update, delete: if false;
     }
 
     match /{document=**} {

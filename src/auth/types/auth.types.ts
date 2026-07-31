@@ -1,3 +1,5 @@
+import type { AppUser } from "./user.types";
+
 export interface UserSession {
   id: string;
   deviceType: string;
@@ -10,10 +12,8 @@ export interface UserSession {
   isCurrent: boolean;
 }
 
-export interface UserProfile {
-  id: string;
-  email: string;
-  displayName?: string;
-  roleIds?: string[];
-  permissions?: string[];
-}
+/**
+ * Alias temporal para no romper imports existentes.
+ * A futuro se puede migrar todo a AppUser.
+ */
+export type UserProfile = AppUser;
