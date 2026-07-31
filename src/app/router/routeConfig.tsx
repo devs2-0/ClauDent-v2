@@ -1,6 +1,6 @@
 import React from "react";
 
-import { LoginPage, ResetPasswordPage, RolesPage, UsersPage } from "@/auth";
+import { AdminPanelPage, LoginPage, ResetPasswordPage, FirstAccessPage } from "@/auth";
 import { AuditPage } from "@/modules/audit";
 import { AgendaPage } from "@/modules/agenda";
 import { DashboardPage } from "@/modules/dashboard";
@@ -11,13 +11,13 @@ import {
   PatientsPage,
 } from "@/modules/patients";
 import { QuotationsPage } from "@/modules/quotations";
-import { SecurityPage } from "@/modules/security";
 import { ServicesPage } from "@/modules/services";
 import { CajaPage, VentasPage } from "@/modules/ventas";
 import { NotFoundPage } from "@/shared";
 
 
 import type { PermissionKey } from "@/auth";
+
 
 export interface AppRouteConfig {
   path: string;
@@ -28,6 +28,10 @@ export interface AppRouteConfig {
 export const publicRoutes: AppRouteConfig[] = [
   { path: "/login", element: <LoginPage /> },
   { path: "/reset-password", element: <ResetPasswordPage /> },
+  {
+  path: "/primer-acceso",
+  element: <FirstAccessPage />,
+  },
 ];
 
 export const protectedRoutes: AppRouteConfig[] = [
@@ -82,24 +86,13 @@ export const protectedRoutes: AppRouteConfig[] = [
     permission: "sales.cashShift.open",
   },
   {
-  path: "/usuarios",
-  element: <UsersPage />,
-  permission: "users.view",
-  },
-  {
-    path: "/roles",
-    element: <RolesPage />,
-    permission: "roles.view",
-  },
-  {
     path: "/bitacora",
     element: <AuditPage />,
     permission: "audit.view",
   },
   {
-    path: "/seguridad",
-    element: <SecurityPage />,
-    permission: "security.sessions.view",
+  path: "/administracion",
+  element: <AdminPanelPage />,
   },
 ];
 

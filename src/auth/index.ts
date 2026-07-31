@@ -45,3 +45,5 @@ export type {
 export { ProtectedRouteByPermission } from "./guards/ProtectedRouteByPermission";
 export { default as RolesPage } from "./pages/RolesPage";
 export { default as UsersPage } from "./pages/UsersPage";
+export { default as AdminPanelPage } from "./pages/AdminPanelPage";
+export { default as FirstAccessPage } from "./pages/FirstAccessPage";

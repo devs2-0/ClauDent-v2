@@ -92,6 +92,23 @@ const RolesPage = () => {
     );
   }, []);
 
+  const blurActiveElement = () => {
+    const activeElement = document.activeElement;
+
+    if (activeElement instanceof HTMLElement) {
+      activeElement.blur();
+    }
+  };
+
+  const handleDialogCloseAutoFocus = (event: Event) => {
+    event.preventDefault();
+    blurActiveElement();
+
+    window.requestAnimationFrame(() => {
+      blurActiveElement();
+    });
+  };
+
   const loadRoles = async () => {
     setLoading(true);
 
@@ -132,6 +149,7 @@ const RolesPage = () => {
   const closeDialog = () => {
     if (saving) return;
 
+    blurActiveElement();
     setDialogOpen(false);
     setEditingRole(null);
     setForm(emptyForm);
@@ -474,11 +492,20 @@ const RolesPage = () => {
       <Dialog
         open={dialogOpen}
         onOpenChange={(open) => {
-          if (!open) closeDialog();
-          else setDialogOpen(true);
+          if (open) {
+            setDialogOpen(true);
+            return;
+          }
+
+          closeDialog();
         }}
       >
-        <DialogContent className="max-h-[90vh] max-w-4xl overflow-y-auto">
+        <DialogContent
+          className="max-h-[90vh] max-w-4xl overflow-y-auto"
+          onCloseAutoFocus={handleDialogCloseAutoFocus}
+          onEscapeKeyDown={blurActiveElement}
+          onPointerDownOutside={blurActiveElement}
+        >
           <DialogHeader>
             <DialogTitle>
               {editingRole ? "Editar rol" : "Crear rol personalizado"}
