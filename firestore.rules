@@ -359,7 +359,8 @@ service cloud.firestore {
         || hasPermission("roles.assign")
         || hasPermission("roles.update")
         || hasPermission("users.view")
-        || hasPermission("users.create");
+        || hasPermission("users.create")
+        || hasPermission("security.sessions.view");
 
       allow create: if hasPermission("roles.create")
         && request.resource.data.name is string
