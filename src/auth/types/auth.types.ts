@@ -21,6 +21,12 @@ export interface UserSession {
   startedAt?: any;
   updatedAt?: any;
   lastActive: any;
+  status?: "active" | "revoked";
+  revokedAt?: any;
+  revokedByUid?: string | null;
+  revokedByEmail?: string | null;
+  revokedByName?: string | null;
+  revokeReason?: string | null;
   isCurrent: boolean;
 }
 

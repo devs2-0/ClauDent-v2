@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { collection, collectionGroup, deleteDoc, doc, onSnapshot } from "firebase/firestore";
+import { collection, doc, onSnapshot, serverTimestamp, updateDoc, writeBatch } from "firebase/firestore";
 import {
   CheckCircle2,
   Clock,
@@ -19,6 +19,17 @@ import { toast } from "sonner";
 
 import { useAuth, usePermissions, type AppUser, type UserSession } from "@/auth";
 import { db } from "@/lib/firebase";
+import { addAuditLog } from "@/modules/audit/services/auditService";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/shared/components/ui/alert-dialog";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/components/ui/card";
@@ -95,16 +106,25 @@ const SecurityPage: React.FC = () => {
   const canRevokeAnySession = hasPermission("security.sessions.revoke");
 
   const [users, setUsers] = useState<Record<string, AppUser>>({});
-  const [globalSessions, setGlobalSessions] = useState<SessionWithUser[]>([]);
+  const [globalSessionsByUser, setGlobalSessionsByUser] = useState<Record<string, SessionWithUser[]>>({});
   const [isLoadingGlobalSessions, setIsLoadingGlobalSessions] = useState(false);
   const [search, setSearch] = useState("");
+  const [sessionToRevoke, setSessionToRevoke] = useState<SessionWithUser | null>(null);
+  const [isBulkRevokeOpen, setIsBulkRevokeOpen] = useState(false);
+  const [isRevoking, setIsRevoking] = useState(false);
 
   const currentSessionId = sessions.find((session) => session.isCurrent)?.id ?? null;
 
   useEffect(() => {
-    if (!canViewAllSessions) return;
+    if (!canViewAllSessions) {
+      setUsers({});
+      setGlobalSessionsByUser({});
+      setIsLoadingGlobalSessions(false);
+      return;
+    }
 
     setIsLoadingGlobalSessions(true);
+    const sessionUnsubscribers: Array<() => void> = [];
 
     const unsubscribeUsers = onSnapshot(collection(db, "usuarios"), (snapshot) => {
       const nextUsers: Record<string, AppUser> = {};
@@ -115,52 +135,82 @@ const SecurityPage: React.FC = () => {
         } as AppUser;
       });
       setUsers(nextUsers);
+
+      sessionUnsubscribers.splice(0).forEach((unsubscribe) => unsubscribe());
+      setGlobalSessionsByUser({});
+
+      if (snapshot.empty) {
+        setGlobalSessionsByUser({});
+        setIsLoadingGlobalSessions(false);
+        return;
+      }
+
+      snapshot.docs.forEach((userDoc) => {
+        const user = {
+          uid: userDoc.id,
+          ...userDoc.data(),
+        } as AppUser;
+
+        const unsubscribeSessions = onSnapshot(
+          collection(db, "usuarios", userDoc.id, "sesiones"),
+          { includeMetadataChanges: true },
+          (sessionSnapshot) => {
+            if (sessionSnapshot.metadata.fromCache) return;
+
+            const nextSessions = sessionSnapshot.docs
+              .filter((sessionDoc) => {
+                const data = sessionDoc.data();
+                return data.status !== "revoked" && !data.revokedAt;
+              })
+              .map((sessionDoc) => {
+                const data = sessionDoc.data();
+
+                return {
+                  id: sessionDoc.id,
+                  userId: data.userId ?? userDoc.id,
+                  userEmail: data.userEmail ?? user.email ?? "",
+                  userName: data.userName ?? user.displayName ?? user.email ?? "Usuario",
+                  deviceType: data.deviceType ?? "Computadora",
+                  deviceLabel: data.deviceLabel ?? data.deviceType ?? "Dispositivo",
+                  browser: data.browser ?? "Navegador",
+                  browserVersion: data.browserVersion ?? "",
+                  os: data.os ?? "",
+                  platform: data.platform ?? "",
+                  language: data.language ?? "",
+                  timezone: data.timezone ?? "",
+                  screen: data.screen ?? "",
+                  viewport: data.viewport ?? "",
+                  userAgent: data.userAgent ?? "",
+                  online: data.online === true,
+                  visibility: data.visibility ?? "",
+                  startedAt: data.startedAt ?? null,
+                  updatedAt: data.updatedAt ?? null,
+                  lastActive: data.lastActive ?? null,
+                  status: data.status ?? "active",
+                  revokedAt: data.revokedAt ?? null,
+                  isCurrent: userDoc.id === currentUser?.uid && sessionDoc.id === currentSessionId,
+                } as SessionWithUser;
+              });
+
+            setGlobalSessionsByUser((current) => ({
+              ...current,
+              [userDoc.id]: nextSessions,
+            }));
+            setIsLoadingGlobalSessions(false);
+          },
+          (error) => {
+            setIsLoadingGlobalSessions(false);
+            toast.error(error.message || `No se pudieron cargar sesiones de ${user.email ?? userDoc.id}`);
+          },
+        );
+
+        sessionUnsubscribers.push(unsubscribeSessions);
+      });
     });
-
-    const unsubscribeSessions = onSnapshot(
-      collectionGroup(db, "sesiones"),
-      (snapshot) => {
-        const nextSessions = snapshot.docs.map((sessionDoc) => {
-          const inferredUserId = sessionDoc.ref.parent.parent?.id ?? "";
-          const data = sessionDoc.data();
-
-          return {
-            id: sessionDoc.id,
-            userId: data.userId ?? inferredUserId,
-            userEmail: data.userEmail ?? "",
-            userName: data.userName ?? data.userEmail ?? "Usuario",
-            deviceType: data.deviceType ?? "Computadora",
-            deviceLabel: data.deviceLabel ?? data.deviceType ?? "Dispositivo",
-            browser: data.browser ?? "Navegador",
-            browserVersion: data.browserVersion ?? "",
-            os: data.os ?? "",
-            platform: data.platform ?? "",
-            language: data.language ?? "",
-            timezone: data.timezone ?? "",
-            screen: data.screen ?? "",
-            viewport: data.viewport ?? "",
-            userAgent: data.userAgent ?? "",
-            online: data.online === true,
-            visibility: data.visibility ?? "",
-            startedAt: data.startedAt ?? null,
-            updatedAt: data.updatedAt ?? null,
-            lastActive: data.lastActive ?? null,
-            isCurrent: data.userId === currentUser?.uid && sessionDoc.id === currentSessionId,
-          } as SessionWithUser;
-        });
-
-        setGlobalSessions(nextSessions);
-        setIsLoadingGlobalSessions(false);
-      },
-      (error) => {
-        setIsLoadingGlobalSessions(false);
-        toast.error(error.message || "No se pudieron cargar las sesiones globales");
-      },
-    );
 
     return () => {
       unsubscribeUsers();
-      unsubscribeSessions();
+      sessionUnsubscribers.forEach((unsubscribe) => unsubscribe());
     };
   }, [canViewAllSessions, currentSessionId, currentUser?.uid]);
 
@@ -174,7 +224,9 @@ const SecurityPage: React.FC = () => {
   }, [currentUser, sessions]);
 
   const enrichedSessions = useMemo(() => {
-    const source = canViewAllSessions ? globalSessions : ownSessions;
+    const source = canViewAllSessions
+      ? Object.values(globalSessionsByUser).flat()
+      : ownSessions;
 
     return source
       .map((session) => {
@@ -193,7 +245,7 @@ const SecurityPage: React.FC = () => {
         const dateB = toDate(b.lastActive)?.getTime() ?? 0;
         return dateB - dateA;
       });
-  }, [canViewAllSessions, currentSessionId, currentUser?.uid, globalSessions, ownSessions, users]);
+  }, [canViewAllSessions, currentSessionId, currentUser?.uid, globalSessionsByUser, ownSessions, users]);
 
   const filteredSessions = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -205,6 +257,31 @@ const SecurityPage: React.FC = () => {
   const uniqueUserCount = new Set(enrichedSessions.map((session) => session.userId)).size;
   const remoteSessionCount = enrichedSessions.filter((session) => !session.isCurrent).length;
 
+  const buildRevokedSessionPayload = (reason: string) => ({
+    status: "revoked",
+    online: false,
+    revokedAt: serverTimestamp(),
+    revokedByUid: currentUser?.uid ?? null,
+    revokedByEmail: currentUser?.email ?? null,
+    revokedByName: currentUser?.displayName || currentUser?.email || null,
+    revokeReason: reason,
+    updatedAt: serverTimestamp(),
+  });
+
+  const removeSessionsFromGlobalState = (sessionsToRemove: SessionWithUser[]) => {
+    if (sessionsToRemove.length === 0) return;
+
+    setGlobalSessionsByUser((current) => {
+      const next = { ...current };
+
+      sessionsToRemove.forEach((session) => {
+        next[session.userId] = (next[session.userId] ?? []).filter((item) => item.id !== session.id);
+      });
+
+      return next;
+    });
+  };
+
   const revokeGlobalSession = async (session: SessionWithUser) => {
     if (session.isCurrent) return;
 
@@ -213,13 +290,79 @@ const SecurityPage: React.FC = () => {
       return;
     }
 
+    setIsRevoking(true);
     if (session.userId === currentUser?.uid) {
-      await revokeSession(session.id);
+      try {
+        await revokeSession(session.id);
+        await addAuditLog(
+          "REVOKE_SESSION",
+          "seguridad",
+          `Sesion propia revocada: ${session.id} | ${session.browser} | ${session.os || session.platform || "Sin sistema"}`,
+        );
+      } finally {
+        setIsRevoking(false);
+        setSessionToRevoke(null);
+      }
       return;
     }
 
-    await deleteDoc(doc(db, "usuarios", session.userId, "sesiones", session.id));
-    toast.success("Sesion remota cerrada");
+    try {
+      await updateDoc(
+        doc(db, "usuarios", session.userId, "sesiones", session.id),
+        buildRevokedSessionPayload("Sesion cerrada por administrador"),
+      );
+      removeSessionsFromGlobalState([session]);
+      await addAuditLog(
+        "REVOKE_SESSION",
+        "seguridad",
+        `Sesion de usuario revocada: ${session.userName} <${session.userEmail}> | UID: ${session.userId} | Sesion: ${session.id} | ${session.browser} | ${session.os || session.platform || "Sin sistema"}`,
+      );
+      toast.success("Sesion remota cerrada");
+    } finally {
+      setIsRevoking(false);
+      setSessionToRevoke(null);
+    }
+  };
+
+  const revokeAllRemoteSessions = async () => {
+    const sessionsToClose = enrichedSessions.filter((session) => !session.isCurrent);
+    if (sessionsToClose.length === 0) return;
+
+    if (canViewAllSessions && !canRevokeAnySession) {
+      toast.error("Necesitas security.sessions.revoke para cerrar sesiones de otros usuarios");
+      return;
+    }
+
+    setIsRevoking(true);
+    try {
+      if (canViewAllSessions && canRevokeAnySession) {
+        const batch = writeBatch(db);
+        sessionsToClose.forEach((session) => {
+          batch.update(
+            doc(db, "usuarios", session.userId, "sesiones", session.id),
+            buildRevokedSessionPayload("Cierre masivo de sesiones por administrador"),
+          );
+        });
+        await batch.commit();
+        removeSessionsFromGlobalState(sessionsToClose);
+        await addAuditLog(
+          "REVOKE_ALL_SESSIONS",
+          "seguridad",
+          `Cierre masivo de sesiones remotas: ${sessionsToClose.length} sesion(es) cerrada(s). Navegador actual conservado.`,
+        );
+        toast.success("Sesiones remotas cerradas");
+      } else {
+        await closeAllOtherSessions();
+        await addAuditLog(
+          "REVOKE_ALL_SESSIONS",
+          "seguridad",
+          `Cierre de sesiones propias remotas: ${sessionsToClose.length} sesion(es) cerrada(s).`,
+        );
+      }
+    } finally {
+      setIsRevoking(false);
+      setIsBulkRevokeOpen(false);
+    }
   };
 
   return (
@@ -235,10 +378,10 @@ const SecurityPage: React.FC = () => {
           </p>
         </div>
 
-        {remoteSessionCount > 0 && !canViewAllSessions && (
-          <Button variant="destructive" onClick={closeAllOtherSessions}>
+        {remoteSessionCount > 0 && (
+          <Button variant="destructive" onClick={() => setIsBulkRevokeOpen(true)}>
             <LogOut className="mr-2 h-4 w-4" />
-            Cerrar mis otras sesiones
+            {canViewAllSessions ? "Cerrar sesiones remotas" : "Cerrar mis otras sesiones"}
           </Button>
         )}
       </div>
@@ -401,7 +544,7 @@ const SecurityPage: React.FC = () => {
                     {!session.isCurrent && (
                       <Button
                         variant="outline"
-                        onClick={() => revokeGlobalSession(session)}
+                        onClick={() => setSessionToRevoke(session)}
                         disabled={!canCloseSession}
                         title={canCloseSession ? "Cerrar esta sesion" : "Necesitas security.sessions.revoke"}
                       >
@@ -423,6 +566,54 @@ const SecurityPage: React.FC = () => {
           Este panel usa informacion real disponible desde el cliente y la ultima actividad registrada en Firestore.
         </CardContent>
       </Card>
+
+      <AlertDialog open={Boolean(sessionToRevoke)} onOpenChange={(open) => !open && setSessionToRevoke(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cerrar sesion remota</AlertDialogTitle>
+            <AlertDialogDescription>
+              {sessionToRevoke
+                ? `Se cerrara la sesion de ${sessionToRevoke.userName} (${sessionToRevoke.userEmail}) en ${sessionToRevoke.browser}. Esta accion quedara registrada en bitacora.`
+                : "Esta accion cerrara una sesion remota."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isRevoking}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isRevoking || !sessionToRevoke}
+              onClick={(event) => {
+                event.preventDefault();
+                if (sessionToRevoke) revokeGlobalSession(sessionToRevoke);
+              }}
+            >
+              {isRevoking ? "Cerrando..." : "Si, cerrar sesion"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={isBulkRevokeOpen} onOpenChange={setIsBulkRevokeOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cerrar sesiones remotas</AlertDialogTitle>
+            <AlertDialogDescription>
+              Se cerraran {remoteSessionCount} sesion(es) remota(s) y se conservara este navegador. La accion quedara registrada en bitacora.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isRevoking}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={isRevoking}
+              onClick={(event) => {
+                event.preventDefault();
+                revokeAllRemoteSessions();
+              }}
+            >
+              {isRevoking ? "Cerrando..." : "Si, cerrar sesiones"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };

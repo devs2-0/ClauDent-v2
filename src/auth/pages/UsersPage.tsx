@@ -597,7 +597,12 @@ const UsersPage = () => {
                           </p>
 
                           <div className="flex flex-wrap gap-2">
-                            {assignedRoles.length > 0 ? (
+                            {user.isAdmin ? (
+                              <span className="inline-flex items-center gap-2 rounded-full border border-primary/30 bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
+                                <ShieldCheck className="h-4 w-4" />
+                                Administrador del sistema
+                              </span>
+                            ) : assignedRoles.length > 0 ? (
                               assignedRoles.map((role) => (
                                 <span
                                   key={role.id}
@@ -625,7 +630,9 @@ const UsersPage = () => {
                         </div>
 
                         <p className="text-xs text-muted-foreground">
-                          {user.permissions.length} permiso(s) efectivo(s)
+                          {user.isAdmin
+                            ? "Acceso total de administrador"
+                            : `${user.permissions.length} permiso(s) efectivo(s)`}
                         </p>
                       </div>
 
