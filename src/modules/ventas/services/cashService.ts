@@ -13,7 +13,7 @@ import {
   where,
   writeBatch,
 } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
+import { db } from "@/lib/firebase";
 import { addAuditLog } from "@/modules/audit/services/auditService";
 import {
   INVENTORY_MOVEMENTS_COLLECTION,
@@ -21,6 +21,7 @@ import {
   resolveMovementQuantity,
 } from "@/modules/inventario/services/inventoryService";
 import { cleanData, safeDate } from "@/shared/utils/firestoreData";
+import { getCurrentUserIdentity, type CurrentUserIdentity } from "@/shared/services/currentUserIdentity";
 import type {
   CashClosure,
   CashClosureTotals,
@@ -65,16 +66,6 @@ const formatInventoryProductName = (name: string, brand?: string) => {
   return cleanBrand ? `${cleanName} (${cleanBrand})` : cleanName;
 };
 
-const getCurrentUserStamp = () => {
-  const user = auth.currentUser;
-  const email = user?.email || "Sistema";
-  return {
-    usuarioEmail: email,
-    usuarioNombre: user?.displayName || email || "Admin",
-    usuarioId: user?.uid ?? null,
-  };
-};
-
 const formatSignedQuantity = (quantity: number) => {
   return quantity > 0 ? `+${quantity}` : String(quantity);
 };
@@ -104,14 +95,19 @@ const isOpeningMovement = (movement: Pick<CashMovement, "concepto" | "referencia
 
 const mapPayment = (id: string, data: any): Payment => ({
   id,
+  corteId: data.corteId ?? null,
   pacienteId: data.pacienteId ?? null,
   pacienteNombre: data.pacienteNombre ?? "",
+  citaId: data.citaId ?? null,
   cotizacionId: data.cotizacionId ?? null,
+  tratamientoId: data.tratamientoId ?? null,
+  ventaId: data.ventaId ?? id,
   fecha: safeDate(data.fecha),
   metodo: normalizePaymentMethod(data.metodo),
   monto: Number(data.monto) || 0,
   concepto: data.concepto ?? "",
   origen: data.origen ?? "venta_directa",
+  tipoIngreso: data.tipoIngreso ?? null,
   estado: data.estado ?? "activo",
   notas: data.notas ?? "",
   costoProductos: Number(data.costoProductos) || 0,
@@ -147,6 +143,10 @@ const mapCashClosure = (id: string, data: any): CashClosure => {
     observaciones: data.observaciones ?? "",
     estado: data.estado ?? data.status ?? "cerrado",
     tipoCierre: data.tipoCierre ?? null,
+    turnoId: data.turnoId ?? null,
+    turnoNombre: data.turnoNombre ?? "",
+    horaInicioProgramada: data.horaInicioProgramada ?? "",
+    horaFinProgramada: data.horaFinProgramada ?? "",
     responsableId: data.responsableId ?? data.usuarioAperturaId ?? null,
     responsableNombre: data.responsableNombre ?? data.usuarioAperturaNombre ?? data.usuarioAperturaEmail ?? "Sistema",
     responsableEmail: data.responsableEmail ?? data.usuarioAperturaEmail ?? "",
@@ -169,6 +169,10 @@ const mapCashMovement = (id: string, data: any): CashMovement => ({
   monto: Number(data.monto) || 0,
   referenciaTipo: data.referenciaTipo ?? "manual",
   referenciaId: data.referenciaId ?? null,
+  citaId: data.citaId ?? null,
+  tratamientoId: data.tratamientoId ?? null,
+  ventaId: data.ventaId ?? data.referenciaId ?? null,
+  tipoIngreso: data.tipoIngreso ?? null,
   nota: data.nota ?? "",
   categoriaGasto: data.categoriaGasto ?? null,
   comprobanteUrl: data.comprobanteUrl ?? "",
@@ -273,12 +277,17 @@ const createCashMovementPayload = ({
   metodo,
   concepto,
   monto,
+  userStamp,
   referenciaTipo,
   referenciaId,
+  citaId,
+  tratamientoId,
+  ventaId,
+  tipoIngreso,
   nota,
   categoriaGasto,
   comprobanteUrl,
-}: CreateCashMovementInput & { corteId: string | null; referenciaTipo: CashReferenceType }) => cleanData({
+}: CreateCashMovementInput & { corteId: string | null; referenciaTipo: CashReferenceType; userStamp: CurrentUserIdentity }) => cleanData({
   corteId,
   fecha: toFirestoreDate(fecha),
   tipo,
@@ -287,11 +296,15 @@ const createCashMovementPayload = ({
   monto: Number(monto) || 0,
   referenciaTipo,
   referenciaId: referenciaId ?? null,
+  citaId: citaId ?? null,
+  tratamientoId: tratamientoId ?? null,
+  ventaId: ventaId ?? referenciaId ?? null,
+  tipoIngreso: tipoIngreso ?? null,
   nota: nota ?? "",
   categoriaGasto: tipo === "egreso" ? categoriaGasto ?? "otros" : null,
   comprobanteUrl: comprobanteUrl?.trim() ?? "",
   estado: "activo",
-  ...getCurrentUserStamp(),
+  ...userStamp,
   createdAt: serverTimestamp(),
   updatedAt: serverTimestamp(),
 });
@@ -342,7 +355,7 @@ export const cashService = {
     const closureRef = doc(collection(db, CASH_CLOSURES_COLLECTION));
     const movementRef = doc(collection(db, CASH_MOVEMENTS_COLLECTION));
     const fondoInicial = Number(input.fondoInicial) || 0;
-    const openingUser = getCurrentUserStamp();
+    const openingUser = await getCurrentUserIdentity();
 
     batch.set(closureRef, cleanData({
       fecha: toFirestoreDate(input.fecha),
@@ -358,6 +371,10 @@ export const cashService = {
       observaciones: input.observaciones ?? "",
       estado: "abierto",
       status: "abierto",
+      turnoId: input.turnoId ?? null,
+      turnoNombre: input.turnoNombre ?? "",
+      horaInicioProgramada: input.horaInicioProgramada ?? "",
+      horaFinProgramada: input.horaFinProgramada ?? "",
       responsableId: openingUser.usuarioId,
       responsableNombre: openingUser.usuarioNombre,
       responsableEmail: openingUser.usuarioEmail,
@@ -377,6 +394,7 @@ export const cashService = {
       monto: fondoInicial,
       referenciaTipo: "apertura",
       referenciaId: closureRef.id,
+      userStamp: openingUser,
       nota: input.observaciones || "Fondo inicial",
     }));
 
@@ -402,10 +420,12 @@ export const cashService = {
       }
     }
 
+    const movementUser = await getCurrentUserIdentity();
     const movementRef = await addDoc(collection(db, CASH_MOVEMENTS_COLLECTION), createCashMovementPayload({
       ...input,
       corteId: openCash.id,
       referenciaTipo: input.referenciaTipo ?? "manual",
+      userStamp: movementUser,
     }));
 
     await addAuditLog("CREATE", "caja", `Movimiento de caja: ${input.concepto}`);
@@ -420,13 +440,18 @@ export const cashService = {
     const paymentRef = doc(collection(db, PAYMENTS_COLLECTION));
     const movementRef = doc(collection(db, CASH_MOVEMENTS_COLLECTION));
     const paymentAmount = Number(payment.monto) || 0;
-    const paymentUser = getCurrentUserStamp();
+    const paymentUser = await getCurrentUserIdentity();
 
     batch.set(paymentRef, cleanData({
       ...payment,
+      corteId: openCash.id,
       fecha: toFirestoreDate(payment.fecha),
       monto: paymentAmount,
       estado: payment.estado ?? "activo",
+      citaId: payment.citaId ?? null,
+      tratamientoId: payment.tratamientoId ?? null,
+      ventaId: payment.ventaId ?? paymentRef.id,
+      tipoIngreso: payment.tipoIngreso ?? (payment.origen === "abono" ? "abono" : "manual"),
       ...paymentUser,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
@@ -441,6 +466,11 @@ export const cashService = {
       monto: paymentAmount,
       referenciaTipo: payment.origen === "cotizacion" ? "cotizacion" : "pago",
       referenciaId: paymentRef.id,
+      citaId: payment.citaId ?? null,
+      tratamientoId: payment.tratamientoId ?? null,
+      ventaId: payment.ventaId ?? paymentRef.id,
+      tipoIngreso: payment.tipoIngreso ?? (payment.origen === "abono" ? "abono" : "manual"),
+      userStamp: paymentUser,
       nota: payment.notas ?? "",
     }));
 
@@ -475,7 +505,7 @@ export const cashService = {
     }
 
     const concepto = buildDirectSaleConcept({ ...input, servicios, productos });
-    const movementUser = getCurrentUserStamp();
+    const movementUser = await getCurrentUserIdentity();
 
     const saleResult = await runTransaction(db, async (transaction) => {
       const inventoryProducts = [];
@@ -511,14 +541,19 @@ export const cashService = {
       const fecha = toFirestoreDate(input.fecha);
 
       transaction.set(paymentRef, cleanData({
+        corteId: openCash.id,
         pacienteId: input.pacienteId ?? null,
         pacienteNombre,
+        citaId: input.citaId ?? null,
         cotizacionId: null,
+        tratamientoId: treatmentRef?.id ?? null,
+        ventaId: paymentRef.id,
         fecha,
         metodo: input.metodo,
         monto: total,
         concepto,
         origen: "venta_directa",
+        tipoIngreso: servicios.length > 0 && productos.length > 0 ? "venta_mixta" : servicios.length > 0 ? "tratamiento" : "venta_productos",
         estado: "activo",
         notas: input.notas ?? "",
         subtotalServicios,
@@ -541,6 +576,10 @@ export const cashService = {
         monto: total,
         referenciaTipo: "pago",
         referenciaId: paymentRef.id,
+        citaId: input.citaId ?? null,
+        tratamientoId: treatmentRef?.id ?? null,
+        ventaId: paymentRef.id,
+        tipoIngreso: servicios.length > 0 && productos.length > 0 ? "venta_mixta" : servicios.length > 0 ? "tratamiento" : "venta_productos",
         nota: input.notas ?? "Venta directa",
         costoProductos,
         estado: "activo",
@@ -553,8 +592,10 @@ export const cashService = {
         transaction.set(treatmentRef, cleanData({
           pacienteId: input.pacienteId ?? null,
           pacienteNombre,
+          citaId: input.citaId ?? null,
           cotizacionId: null,
           pagoId: paymentRef.id,
+          ventaId: paymentRef.id,
           fecha,
           items: servicios,
           total: subtotalServicios,
@@ -572,6 +613,9 @@ export const cashService = {
           notas: input.notas || `Venta directa: ${servicios.map((item) => item.nombre).join(", ")}`,
           total: subtotalServicios,
           pagoId: paymentRef.id,
+          citaId: input.citaId ?? null,
+          tratamientoId: treatmentRef?.id ?? null,
+          ventaId: paymentRef.id,
         }));
       }
 
@@ -633,7 +677,7 @@ export const cashService = {
 
   cancelPayment: async (id: string) => {
     const batch = writeBatch(db);
-    const cancelUser = getCurrentUserStamp();
+    const cancelUser = await getCurrentUserIdentity();
     batch.update(doc(db, PAYMENTS_COLLECTION, id), cleanData({
       estado: "cancelado",
       usuarioCancelacionId: cancelUser.usuarioId,
@@ -665,7 +709,7 @@ export const cashService = {
     const tipoCierre = input.tipoCierre ?? "manual";
     const efectivoContado = tipoCierre === "automatico" ? summary.efectivoFinal : Number(input.efectivoContado) || 0;
     const diferenciaEfectivo = efectivoContado - summary.efectivoFinal;
-    const closingUser = getCurrentUserStamp();
+    const closingUser = await getCurrentUserIdentity();
 
     await updateDoc(doc(db, CASH_CLOSURES_COLLECTION, openCash.id), cleanData({
       fecha: toFirestoreDate(openCashDate),
@@ -705,7 +749,7 @@ export const cashService = {
     const openCashDate = getClosureDate(openCash);
     const paymentDate = input.fechaPago ?? openCashDate;
     ensureDateMatchesOpenCash(openCash, paymentDate);
-    const movementUser = getCurrentUserStamp();
+    const movementUser = await getCurrentUserIdentity();
 
     const checkoutResult = await runTransaction(db, async (transaction) => {
       const inventoryRequests = [
@@ -743,14 +787,19 @@ export const cashService = {
       }, 0);
 
       transaction.set(paymentRef, cleanData({
+        corteId: openCash.id,
         pacienteId: input.quotation.pacienteId,
         pacienteNombre: input.pacienteNombre,
+        citaId: input.citaId ?? null,
         cotizacionId: input.quotation.id,
+        tratamientoId: treatmentRef.id,
+        ventaId: paymentRef.id,
         fecha,
         metodo: input.metodo,
         monto: total,
         concepto,
         origen: "cotizacion",
+        tipoIngreso: "tratamiento",
         estado: "activo",
         notas: input.notas ?? "",
         costoProductos,
@@ -768,6 +817,10 @@ export const cashService = {
         monto: total,
         referenciaTipo: "cotizacion",
         referenciaId: paymentRef.id,
+        citaId: input.citaId ?? null,
+        tratamientoId: treatmentRef.id,
+        ventaId: paymentRef.id,
+        tipoIngreso: "tratamiento",
         nota: input.notas ?? `Cobro de cotizacion ${input.quotation.id}`,
         costoProductos,
         estado: "activo",
@@ -779,8 +832,10 @@ export const cashService = {
       transaction.set(treatmentRef, cleanData({
         pacienteId: input.quotation.pacienteId,
         pacienteNombre: input.pacienteNombre,
+        citaId: input.citaId ?? null,
         cotizacionId: input.quotation.id,
         pagoId: paymentRef.id,
+        ventaId: paymentRef.id,
         fecha,
         items: input.quotation.items,
         total,
@@ -796,7 +851,10 @@ export const cashService = {
         notas: input.notas || `Tratamiento cobrado desde cotizacion ${input.quotation.id}`,
         total,
         pagoId: paymentRef.id,
+        citaId: input.citaId ?? null,
         cotizacionId: input.quotation.id,
+        tratamientoId: treatmentRef.id,
+        ventaId: paymentRef.id,
       }));
 
       transaction.update(quotationRef, cleanData({

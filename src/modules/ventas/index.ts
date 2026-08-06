@@ -7,6 +7,9 @@ export { CashProvider } from "./store/CashProvider";
 export type {
   CashClosure,
   CashClosureTotals,
+  CashShiftDefinition,
+  CashShiftSettings,
+  CashShiftMode,
   CheckoutInventoryItem,
   CloseCashRegisterInput,
   CreatePaymentInput,

@@ -16,7 +16,7 @@ interface PatientsContextValue {
   addPatient: (patient: Omit<Patient, "id" | "fechaRegistro">) => Promise<string>;
   updatePatient: (id: string, patient: Partial<Patient>) => Promise<void>;
   deletePatient: (id: string) => Promise<void>;
-  addHistoryEntry: (patientId: string, entry: Omit<HistoryEntry, "id">) => Promise<void>;
+  addHistoryEntry: (patientId: string, entry: Omit<HistoryEntry, "id">) => Promise<string>;
   updateHistoryEntry: (patientId: string, entryId: string, updates: Partial<HistoryEntry>) => Promise<void>;
   deleteHistoryEntry: (patientId: string, entryId: string) => Promise<void>;
   addOdontogram: (patientId: string, tipo: "adulto" | "niño" | "mixto", nombre?: string) => Promise<void>;
@@ -70,8 +70,9 @@ export const PatientsProvider: React.FC<{ children: ReactNode }> = ({ children }
   };
 
   const addHistoryEntry = async (patientId: string, entry: Omit<HistoryEntry, "id">) => {
-    await addDoc(collection(db, "pacientes", patientId, "historial"), cleanData({ ...entry, fecha: new Date(entry.fecha + "T00:00:00") }));
+    const id = (await addDoc(collection(db, "pacientes", patientId, "historial"), cleanData({ ...entry, fecha: new Date(entry.fecha + "T00:00:00") }))).id;
     toast.success("Historial agregado");
+    return id;
   };
 
   const updateHistoryEntry = async (patientId: string, entryId: string, updates: Partial<HistoryEntry>) => {

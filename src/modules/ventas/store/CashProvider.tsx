@@ -1,10 +1,12 @@
-import React, { createContext, ReactNode, useContext, useEffect, useState } from "react";
+import React, { createContext, ReactNode, useCallback, useContext, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { useAuth } from "@/auth";
 import { cashService } from "../services/cashService";
+import { cashShiftSettingsService, defaultCashShiftSettings } from "../services/cashShiftSettingsService";
 import type {
   CashClosure,
   CashMovement,
+  CashShiftSettings,
   CloseCashRegisterInput,
   CreateCashMovementInput,
   CreatePaymentInput,
@@ -21,6 +23,8 @@ interface CashContextValue {
   cashClosuresLoading: boolean;
   cashMovements: CashMovement[];
   cashMovementsLoading: boolean;
+  cashShiftSettings: CashShiftSettings;
+  cashShiftSettingsLoading: boolean;
   openCashRegister: (input: OpenCashRegisterInput) => Promise<string>;
   createCashMovement: (input: CreateCashMovementInput) => Promise<string>;
   createPayment: (payment: CreatePaymentInput) => Promise<string>;
@@ -29,6 +33,7 @@ interface CashContextValue {
   autoCloseCashRegister: (observaciones?: string) => Promise<string>;
   finalizeQuotationCheckout: (input: FinalizeQuotationCheckoutInput) => Promise<string>;
   registerDirectSale: (input: RegisterDirectSaleInput) => Promise<string>;
+  updateCashShiftSettings: (settings: CashShiftSettings) => Promise<void>;
 }
 
 const CashContext = createContext<CashContextValue | undefined>(undefined);
@@ -38,9 +43,11 @@ export const CashProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [payments, setPayments] = useState<Payment[]>([]);
   const [cashClosures, setCashClosures] = useState<CashClosure[]>([]);
   const [cashMovements, setCashMovements] = useState<CashMovement[]>([]);
+  const [cashShiftSettings, setCashShiftSettings] = useState<CashShiftSettings>(defaultCashShiftSettings);
   const [paymentsLoading, setPaymentsLoading] = useState(false);
   const [cashClosuresLoading, setCashClosuresLoading] = useState(false);
   const [cashMovementsLoading, setCashMovementsLoading] = useState(false);
+  const [cashShiftSettingsLoading, setCashShiftSettingsLoading] = useState(false);
 
   useEffect(() => {
     if (!currentUser) {
@@ -53,6 +60,20 @@ export const CashProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return cashService.listenPayments((nextPayments) => {
       setPayments(nextPayments);
       setPaymentsLoading(false);
+    });
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (!currentUser) {
+      setCashShiftSettings(defaultCashShiftSettings);
+      setCashShiftSettingsLoading(false);
+      return;
+    }
+
+    setCashShiftSettingsLoading(true);
+    return cashShiftSettingsService.listenSettings((nextSettings) => {
+      setCashShiftSettings(nextSettings);
+      setCashShiftSettingsLoading(false);
     });
   }, [currentUser]);
 
@@ -84,52 +105,57 @@ export const CashProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     });
   }, [currentUser]);
 
-  const openCashRegister = async (input: OpenCashRegisterInput) => {
+  const openCashRegister = useCallback(async (input: OpenCashRegisterInput) => {
     const id = await cashService.openCashRegister(input);
     toast.success("Caja abierta");
     return id;
-  };
+  }, []);
 
-  const createCashMovement = async (input: CreateCashMovementInput) => {
+  const createCashMovement = useCallback(async (input: CreateCashMovementInput) => {
     const id = await cashService.createCashMovement(input);
     toast.success("Movimiento registrado en caja");
     return id;
-  };
+  }, []);
 
-  const createPayment = async (payment: CreatePaymentInput) => {
+  const createPayment = useCallback(async (payment: CreatePaymentInput) => {
     const id = await cashService.createPayment(payment);
     toast.success("Pago registrado en caja");
     return id;
-  };
+  }, []);
 
-  const cancelPayment = async (id: string) => {
+  const cancelPayment = useCallback(async (id: string) => {
     await cashService.cancelPayment(id);
     toast.success("Pago cancelado");
-  };
+  }, []);
 
-  const closeCashRegister = async (input: CloseCashRegisterInput) => {
+  const closeCashRegister = useCallback(async (input: CloseCashRegisterInput) => {
     const id = await cashService.closeCashRegister(input);
     toast.success("Corte de caja cerrado");
     return id;
-  };
+  }, []);
 
-  const autoCloseCashRegister = async (observaciones?: string) => {
+  const autoCloseCashRegister = useCallback(async (observaciones?: string) => {
     const id = await cashService.autoCloseCashRegister(observaciones);
     toast.success("Corte automatico cerrado");
     return id;
-  };
+  }, []);
 
-  const finalizeQuotationCheckout = async (input: FinalizeQuotationCheckoutInput) => {
+  const finalizeQuotationCheckout = useCallback(async (input: FinalizeQuotationCheckoutInput) => {
     const id = await cashService.finalizeQuotationCheckout(input);
     toast.success("Cotizacion cobrada y registrada en caja");
     return id;
-  };
+  }, []);
 
-  const registerDirectSale = async (input: RegisterDirectSaleInput) => {
+  const registerDirectSale = useCallback(async (input: RegisterDirectSaleInput) => {
     const id = await cashService.registerDirectSale(input);
     toast.success("Venta registrada en caja");
     return id;
-  };
+  }, []);
+
+  const updateCashShiftSettings = useCallback(async (settings: CashShiftSettings) => {
+    await cashShiftSettingsService.updateSettings(settings);
+    toast.success("Configuracion de turnos guardada");
+  }, []);
 
   return (
     <CashContext.Provider
@@ -140,6 +166,8 @@ export const CashProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         cashClosuresLoading,
         cashMovements,
         cashMovementsLoading,
+        cashShiftSettings,
+        cashShiftSettingsLoading,
         openCashRegister,
         createCashMovement,
         createPayment,
@@ -148,6 +176,7 @@ export const CashProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         autoCloseCashRegister,
         finalizeQuotationCheckout,
         registerDirectSale,
+        updateCashShiftSettings,
       }}
     >
       {children}

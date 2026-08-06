@@ -39,6 +39,86 @@ service cloud.firestore {
         );
     }
 
+    function cashCutPath(corteId) {
+      return /databases/$(database)/documents/cortesCaja/$(corteId);
+    }
+
+    function isOpenCashCut(corteId) {
+      return corteId is string
+        && exists(cashCutPath(corteId))
+        && get(cashCutPath(corteId)).data.estado == "abierto";
+    }
+
+    function isOpenCashCutAfter(corteId) {
+      return corteId is string
+        && existsAfter(cashCutPath(corteId))
+        && getAfter(cashCutPath(corteId)).data.estado == "abierto";
+    }
+
+    function canReadSales() {
+      return hasPermission("sales.view")
+        || hasPermission("sales.payments.manage")
+        || hasPermission("sales.cashCuts.history.view")
+        || hasPermission("sales.reports.view")
+        || hasPermission("reports.view");
+    }
+
+    function canReadFinancialReports() {
+      return hasPermission("sales.reports.view")
+        || hasPermission("reports.view")
+        || hasPermission("reports.export");
+    }
+
+    function canReadInventory() {
+      return hasPermission("inventory.view")
+        || hasPermission("inventory.usage.create")
+        || hasPermission("inventory.stock.adjust")
+        || hasPermission("sales.create")
+        || hasPermission("sales.view");
+    }
+
+    function isStockOnlyProductUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        "stock",
+        "updatedAt"
+      ]);
+    }
+
+    function isAllowedStockMovementCreate() {
+      return request.resource.data.tipo in ["venta", "uso_clinico", "merma", "caducidad", "ajuste", "devolucion", "entrada"]
+        && request.resource.data.productoId is string
+        && request.resource.data.cantidad is number
+        && request.resource.data.stockAnterior is number
+        && request.resource.data.stockNuevo is number;
+    }
+
+    function isAutomaticCashCloseUpdate() {
+      return hasPermission("sales.cashShift.close")
+        && resource.data.estado == "abierto"
+        && request.resource.data.estado == "cerrado"
+        && request.resource.data.status == "cerrado"
+        && request.resource.data.tipoCierre == "automatico"
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "fecha",
+          "fin",
+          "fondoInicial",
+          "totales",
+          "totalEgresos",
+          "balanceNeto",
+          "efectivoEsperado",
+          "efectivoContado",
+          "diferenciaEfectivo",
+          "observaciones",
+          "estado",
+          "status",
+          "tipoCierre",
+          "usuarioCierreId",
+          "usuarioCierreNombre",
+          "usuarioCierreEmail",
+          "updatedAt"
+        ]);
+    }
+
     function invitationPath(email) {
       return /databases/$(database)/documents/invitacionesUsuarios/$(email);
     }
@@ -245,36 +325,107 @@ service cloud.firestore {
     }
 
     match /pagos/{pagoId} {
-      allow read, write: if isActiveUser();
+      allow read: if canReadSales() || canReadFinancialReports();
+      allow create: if (hasPermission("sales.create") || hasPermission("sales.payments.manage"))
+        && isOpenCashCut(request.resource.data.corteId);
+      allow update: if hasPermission("sales.cancel")
+        || hasPermission("sales.payments.manage");
+      allow delete: if isAdmin();
     }
 
     match /cortesCaja/{corteId} {
-      allow read, write: if isActiveUser();
+      allow read: if canReadSales() || canReadFinancialReports() || hasPermission("sales.cashShift.open") || hasPermission("sales.cashShift.close");
+      allow create: if hasPermission("sales.cashShift.open")
+        && request.resource.data.estado == "abierto";
+      allow update: if isAdmin()
+        || isAutomaticCashCloseUpdate()
+        || (
+          hasPermission("sales.cashShift.close")
+          && resource.data.usuarioAperturaId == request.auth.uid
+        );
+      allow delete: if isAdmin();
     }
 
     match /cajaMovimientos/{movimientoId} {
-      allow read, write: if isActiveUser();
+      allow read: if canReadSales() || canReadFinancialReports();
+      allow create: if (
+          hasPermission("sales.cashShift.open")
+          && request.resource.data.referenciaTipo == "apertura"
+          && request.resource.data.corteId == request.resource.data.referenciaId
+          && isOpenCashCutAfter(request.resource.data.corteId)
+        )
+        || (
+          (
+            hasPermission("sales.create")
+            || hasPermission("sales.payments.manage")
+            || hasPermission("sales.expenses.create")
+          )
+          && isOpenCashCut(request.resource.data.corteId)
+        );
+      allow update: if hasPermission("sales.cancel")
+        || hasPermission("sales.payments.manage")
+        || hasPermission("sales.cashShift.close");
+      allow delete: if isAdmin();
     }
 
     match /tratamientos/{tratamientoId} {
-      allow read, write: if isActiveUser();
+      allow read: if hasPermission("patients.clinicalHistory.view")
+        || hasPermission("sales.view")
+        || canReadFinancialReports();
+      allow create: if hasPermission("sales.create")
+        || hasPermission("sales.payments.manage")
+        || hasPermission("patients.clinicalHistory.update");
+      allow update: if hasPermission("patients.clinicalHistory.update")
+        || hasPermission("sales.payments.manage");
+      allow delete: if isAdmin();
     }
 
     match /inventarioProductos/{productoId} {
-      allow read, write: if isActiveUser();
+      allow read: if canReadInventory();
+      allow create: if isAdmin();
+      allow update: if hasPermission("inventory.update")
+        || (
+          isStockOnlyProductUpdate()
+          && (
+            hasPermission("sales.create")
+            || hasPermission("inventory.usage.create")
+            || hasPermission("inventory.stock.adjust")
+          )
+        );
+      allow delete: if isAdmin();
     }
 
     match /inventarioCategorias/{categoriaId} {
-      allow read, write: if isActiveUser();
+      allow read: if canReadInventory();
+      allow create, update: if hasPermission("inventory.categories.manage");
+      allow delete: if isAdmin();
     }
 
     match /inventarioMovimientos/{movimientoId} {
-      allow read, create: if isActiveUser();
+      allow read: if canReadInventory() || canReadSales() || canReadFinancialReports();
+      allow create: if isAllowedStockMovementCreate()
+        && (
+          hasPermission("inventory.usage.create")
+          || hasPermission("inventory.stock.adjust")
+          || hasPermission("sales.create")
+        );
       allow update, delete: if false;
     }
 
     match /inventarioEntradas/{entradaId} {
-      allow read, write: if isActiveUser();
+      allow read: if canReadInventory();
+      allow create, update: if hasPermission("inventory.stock.adjust")
+        || hasPermission("inventory.purchaseList.manage");
+      allow delete: if isAdmin();
+    }
+
+    match /configuracionCaja/{configId} {
+      allow read: if hasPermission("settings.view")
+        || hasPermission("settings.update")
+        || hasPermission("sales.cashShift.open")
+        || hasPermission("sales.cashShift.close");
+      allow create, update: if hasPermission("settings.update");
+      allow delete: if isAdmin();
     }
 
     match /bitacora/{logId} {
