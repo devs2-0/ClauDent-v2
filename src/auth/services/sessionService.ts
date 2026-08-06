@@ -1,6 +1,6 @@
 import { db } from '@/lib/firebase';
 import type { User } from 'firebase/auth';
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 
 type BrowserInfo = {
   browser: string;
@@ -116,20 +116,36 @@ export const getDeviceInfo = (): DeviceInfo => {
   };
 };
 
+const SESSION_STORAGE_KEY = 'claudent_session_id';
+
+const createSessionId = () => {
+  return 'sess_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+};
+
 // PERSISTENCIA: Busca un ID guardado. Si no hay, crea uno fijo para este navegador.
 export const getPersistentSessionId = () => {
-  let sid = localStorage.getItem('claudent_session_id');
+  let sid = localStorage.getItem(SESSION_STORAGE_KEY);
   if (!sid) {
     // Solo se genera una vez en la vida de este navegador/app
-    sid = 'sess_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
-    localStorage.setItem('claudent_session_id', sid);
+    sid = createSessionId();
+    localStorage.setItem(SESSION_STORAGE_KEY, sid);
   }
   return sid;
 };
 
+export const rotatePersistentSessionId = () => {
+  const sid = createSessionId();
+  localStorage.setItem(SESSION_STORAGE_KEY, sid);
+  return sid;
+};
+
+const isRevokedSession = (data: Record<string, unknown> | undefined) => {
+  return data?.status === 'revoked' || Boolean(data?.revokedAt);
+};
+
 // Registra o actualiza la última actividad sin crear un documento nuevo
 export const registerOrUpdateSession = async (uid: string, user?: User | null) => {
-  const sessionId = getPersistentSessionId();
+  let sessionId = getPersistentSessionId();
   const {
     deviceType,
     deviceLabel,
@@ -145,7 +161,13 @@ export const registerOrUpdateSession = async (uid: string, user?: User | null) =
     online,
     visibility,
   } = getDeviceInfo();
-  const sessionRef = doc(db, `usuarios/${uid}/sesiones`, sessionId);
+  let sessionRef = doc(db, `usuarios/${uid}/sesiones`, sessionId);
+  const existingSession = await getDoc(sessionRef);
+
+  if (existingSession.exists() && isRevokedSession(existingSession.data())) {
+    sessionId = rotatePersistentSessionId();
+    sessionRef = doc(db, `usuarios/${uid}/sesiones`, sessionId);
+  }
 
   await setDoc(sessionRef, {
     userId: uid,
@@ -164,6 +186,7 @@ export const registerOrUpdateSession = async (uid: string, user?: User | null) =
     userAgent,
     online,
     visibility,
+    status: 'active',
     lastActive: serverTimestamp(),
     updatedAt: serverTimestamp()
   }, { merge: true });

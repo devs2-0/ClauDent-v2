@@ -1,6 +1,6 @@
 import React, { createContext, ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { User, onAuthStateChanged, signOut } from "firebase/auth";
-import { collection, deleteDoc, doc, onSnapshot, runTransaction, serverTimestamp, writeBatch } from "firebase/firestore";
+import { collection, deleteDoc, doc, onSnapshot, runTransaction, serverTimestamp, updateDoc, writeBatch } from "firebase/firestore";
 import { toast } from "sonner";
 import { auth, db } from "@/lib/firebase";
 import { addAuditLog } from "@/modules/audit/services/auditService";
@@ -29,6 +29,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const logoutInProgressRef = useRef(false);
   const deviceLogInProgressRef = useRef(false);
   const heartbeatCleanupRef = useRef<null | (() => void)>(null);
+
+  const buildRevokedSessionPayload = (reason: string) => ({
+    status: "revoked",
+    online: false,
+    revokedAt: serverTimestamp(),
+    revokedByUid: currentUserRef.current?.uid ?? null,
+    revokedByEmail: currentUserRef.current?.email ?? null,
+    revokedByName: currentUserRef.current?.displayName || currentUserRef.current?.email || null,
+    revokeReason: reason,
+    updatedAt: serverTimestamp(),
+  });
 
   useEffect(() => {
     currentUserRef.current = currentUser;
@@ -127,18 +138,24 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         }
 
         sessionUnsubRef.current = onSnapshot(collection(db, `usuarios/${user.uid}/sesiones`), (snap) => {
-          const activeSessions = snap.docs.map((d) => ({
+          const allSessions = snap.docs.map((d) => ({
             id: d.id,
             ...d.data(),
             isCurrent: d.id === currentSid,
           } as UserSession));
+          const currentSession = allSessions.find((session) => session.id === currentSid);
+          const activeSessions = allSessions.filter((session) => session.status !== "revoked" && !session.revokedAt);
 
           setSessions(activeSessions);
 
-          if (!activeSessions.find((session) => session.id === currentSid) && !snap.metadata.fromCache && !sessionMissingNotifiedRef.current) {
+          if (
+            (!currentSession || currentSession.status === "revoked" || currentSession.revokedAt)
+            && !snap.metadata.fromCache
+            && !sessionMissingNotifiedRef.current
+          ) {
             sessionMissingNotifiedRef.current = true;
             toast.error("Tu sesion ha sido finalizada remotamente.");
-            logout().finally(() => {
+            signOut(auth).finally(() => {
               sessionMissingNotifiedRef.current = false;
             });
           }
@@ -173,7 +190,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     const user = currentUserRef.current;
     if (!user) return;
 
-    await deleteDoc(doc(db, `usuarios/${user.uid}/sesiones`, sid));
+    await updateDoc(doc(db, `usuarios/${user.uid}/sesiones`, sid), buildRevokedSessionPayload("Sesion cerrada desde seguridad"));
     await addAuditLog("UPDATE", "seguridad", `Sesion revocada ID: ${sid}`);
   };
 
@@ -186,7 +203,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     sessions.forEach((session) => {
       if (session.id !== sid) {
-        batch.delete(doc(db, `usuarios/${user.uid}/sesiones`, session.id));
+        batch.update(
+          doc(db, `usuarios/${user.uid}/sesiones`, session.id),
+          buildRevokedSessionPayload("Cierre masivo de sesiones propias"),
+        );
       }
     });
 
