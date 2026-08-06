@@ -28,6 +28,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const sessionMissingNotifiedRef = useRef(false);
   const logoutInProgressRef = useRef(false);
   const deviceLogInProgressRef = useRef(false);
+  const heartbeatCleanupRef = useRef<null | (() => void)>(null);
 
   useEffect(() => {
     currentUserRef.current = currentUser;
@@ -57,11 +58,31 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         sessionUnsubRef.current();
         sessionUnsubRef.current = null;
       }
+      if (heartbeatCleanupRef.current) {
+        heartbeatCleanupRef.current();
+        heartbeatCleanupRef.current = null;
+      }
 
       if (user) {
         sessionMissingNotifiedRef.current = false;
-        const currentSid = await registerOrUpdateSession(user.uid);
+        const currentSid = await registerOrUpdateSession(user.uid, user);
         sessionIdRef.current = currentSid;
+
+        const updateCurrentSession = () => {
+          registerOrUpdateSession(user.uid, user).catch(() => {
+            // La suscripcion de sesiones se encarga de avisar si la sesion fue revocada.
+          });
+        };
+        window.addEventListener("focus", updateCurrentSession);
+        window.addEventListener("online", updateCurrentSession);
+        document.addEventListener("visibilitychange", updateCurrentSession);
+        const heartbeatId = window.setInterval(updateCurrentSession, 60_000);
+        heartbeatCleanupRef.current = () => {
+          window.clearInterval(heartbeatId);
+          window.removeEventListener("focus", updateCurrentSession);
+          window.removeEventListener("online", updateCurrentSession);
+          document.removeEventListener("visibilitychange", updateCurrentSession);
+        };
 
         if (!deviceLogInProgressRef.current) {
           deviceLogInProgressRef.current = true;
@@ -71,7 +92,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               const snap = await tx.get(deviceRef);
               if (snap.exists()) return false;
 
-              const { deviceType, deviceLabel, browser, browserVersion, os, platform } = getDeviceInfo();
+              const {
+                deviceType,
+                deviceLabel,
+                browser,
+                browserVersion,
+                os,
+                platform,
+                language,
+                timezone,
+                screen,
+              } = getDeviceInfo();
               tx.set(deviceRef, {
                 deviceType,
                 deviceLabel,
@@ -79,6 +110,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 browserVersion,
                 os,
                 platform,
+                language,
+                timezone,
+                screen,
                 firstSeen: serverTimestamp(),
               });
               return true;
@@ -126,6 +160,10 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       if (sessionUnsubRef.current) {
         sessionUnsubRef.current();
         sessionUnsubRef.current = null;
+      }
+      if (heartbeatCleanupRef.current) {
+        heartbeatCleanupRef.current();
+        heartbeatCleanupRef.current = null;
       }
       unsubAuth();
     };

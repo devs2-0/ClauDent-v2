@@ -2,12 +2,24 @@ import type { AppUser } from "./user.types";
 
 export interface UserSession {
   id: string;
+  userId?: string;
+  userEmail?: string | null;
+  userName?: string | null;
   deviceType: string;
   deviceLabel?: string;
   browser: string;
   browserVersion?: string;
   os?: string;
   platform?: string;
+  language?: string;
+  timezone?: string;
+  screen?: string;
+  viewport?: string;
+  userAgent?: string;
+  online?: boolean;
+  visibility?: string;
+  startedAt?: any;
+  updatedAt?: any;
   lastActive: any;
   isCurrent: boolean;
 }
