@@ -146,6 +146,7 @@ const isRevokedSession = (data: Record<string, unknown> | undefined) => {
 // Registra o actualiza la última actividad sin crear un documento nuevo
 export const registerOrUpdateSession = async (uid: string, user?: User | null) => {
   let sessionId = getPersistentSessionId();
+  let createdNewSession = false;
   const {
     deviceType,
     deviceLabel,
@@ -163,10 +164,12 @@ export const registerOrUpdateSession = async (uid: string, user?: User | null) =
   } = getDeviceInfo();
   let sessionRef = doc(db, `usuarios/${uid}/sesiones`, sessionId);
   const existingSession = await getDoc(sessionRef);
+  createdNewSession = !existingSession.exists();
 
   if (existingSession.exists() && isRevokedSession(existingSession.data())) {
     sessionId = rotatePersistentSessionId();
     sessionRef = doc(db, `usuarios/${uid}/sesiones`, sessionId);
+    createdNewSession = true;
   }
 
   await setDoc(sessionRef, {
@@ -191,5 +194,8 @@ export const registerOrUpdateSession = async (uid: string, user?: User | null) =
     updatedAt: serverTimestamp()
   }, { merge: true });
 
-  return sessionId;
+  return {
+    sessionId,
+    createdNewSession,
+  };
 };
