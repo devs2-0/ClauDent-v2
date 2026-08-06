@@ -1,10 +1,14 @@
 import { addDoc, collection, serverTimestamp } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
+import { db } from "@/lib/firebase";
+import { getCurrentUserIdentity } from "@/shared/services/currentUserIdentity";
 
 export const addAuditLog = async (accion: string, modulo: string, detalle: string) => {
   try {
+    const userIdentity = await getCurrentUserIdentity();
     await addDoc(collection(db, "bitacora"), {
-      usuarioEmail: auth.currentUser?.email || "Sistema",
+      usuarioId: userIdentity.usuarioId,
+      usuarioNombre: userIdentity.usuarioNombre,
+      usuarioEmail: userIdentity.usuarioEmail,
       accion,
       modulo,
       detalle,

@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import {
   AlertTriangle,
+  Bell,
   ClipboardList,
   Edit,
   Layers,
@@ -10,6 +11,7 @@ import {
   Plus,
   RotateCcw,
   Search,
+  ShieldCheck,
   ShoppingCart,
   Trash2,
   Truck,
@@ -29,6 +31,7 @@ import {
 } from "@/shared/components/ui/dialog";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/shared/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/components/ui/select";
 import {
   Table,
@@ -46,6 +49,7 @@ import { useInventory } from "../hooks/useInventory";
 import type {
   InventoryCategory,
   InventoryCategoryRecord,
+  InventoryClassification,
   InventoryMovementType,
   InventoryProduct,
   InventoryStatus,
@@ -78,6 +82,28 @@ const movementFilterOptions: InventoryMovementType[] = [
   "ajuste",
 ];
 
+const classificationLabel: Record<InventoryClassification, string> = {
+  normal: "Normal",
+  medicamento_controlado: "Medicamento controlado",
+  alto_costo: "Alto costo",
+  equipo_especial: "Equipo especial",
+};
+
+const classificationDescription: Record<InventoryClassification, string> = {
+  normal: "No requiere alerta especial al retirar.",
+  medicamento_controlado: "Notifica al responsable y pide autorizacion.",
+  alto_costo: "Notifica y exige doble autorizacion.",
+  equipo_especial: "Notifica y exige doble autorizacion.",
+};
+
+const classifiedWithdrawalTypes: InventoryMovementType[] = ["uso_clinico", "merma", "caducidad"];
+
+const suggestedClassificationByCategory: Record<string, InventoryClassification> = {
+  medicamento: "medicamento_controlado",
+  alto_costo: "alto_costo",
+  equipo_especial: "equipo_especial",
+};
+
 const defaultManualMovementType: InventoryMovementType = "merma";
 
 const manualMovementDescriptions: Partial<Record<InventoryMovementType, string>> = {
@@ -97,6 +123,7 @@ const emptyProductForm = {
   stockMinimo: "",
   costoUnitario: "",
   precioVenta: "",
+  clasificacion: "normal" as InventoryClassification,
   proveedor: "",
   estado: "activo" as InventoryStatus,
   notas: "",
@@ -164,11 +191,15 @@ const InventarioPage: React.FC = () => {
     tipo: InventoryMovementType;
     cantidad: string;
     motivo: string;
+    autorizadoPorNombre: string;
+    segundaAutorizacionNombre: string;
   }>({
     productoId: "",
     tipo: defaultManualMovementType,
     cantidad: "",
     motivo: "",
+    autorizadoPorNombre: "",
+    segundaAutorizacionNombre: "",
   });
   const [stockEntryForm, setStockEntryForm] = useState({
     proveedor: "",
@@ -312,7 +343,32 @@ const InventarioPage: React.FC = () => {
   });
 
   const selectedEntryProduct = activeProducts.find((product) => product.id === entryItemForm.productoId);
+  const selectedMovementProduct = activeProducts.find((product) => product.id === movementForm.productoId);
   const entryTotalUnits = entryItems.reduce((total, item) => total + item.cantidad, 0);
+  const classifiedWithdrawalNotifications = useMemo(
+    () => movements
+      .filter((movement) => movement.notificacionGenerada && movement.materialClasificado)
+      .slice(0, 12),
+    [movements],
+  );
+  const activeClassifiedProducts = useMemo(
+    () => activeProducts.filter((product) => (product.clasificacion ?? "normal") !== "normal"),
+    [activeProducts],
+  );
+  const inventoryAlertCount = lowStockProducts.length + classifiedWithdrawalNotifications.length + activeClassifiedProducts.length;
+  const outOfStockProducts = useMemo(
+    () => lowStockProducts.filter((product) => product.stock <= 0),
+    [lowStockProducts],
+  );
+  const isClassifiedWithdrawal =
+    Boolean(selectedMovementProduct)
+    && (selectedMovementProduct?.clasificacion ?? "normal") !== "normal"
+    && (
+      classifiedWithdrawalTypes.includes(movementForm.tipo)
+      || (movementForm.tipo === "ajuste" && (Number(movementForm.cantidad) || 0) < 0)
+    );
+  const selectedClassification = selectedMovementProduct?.clasificacion ?? "normal";
+  const needsDoubleAuthorization = isClassifiedWithdrawal && (selectedClassification === "alto_costo" || selectedClassification === "equipo_especial");
 
   const openProductDialog = (product?: InventoryProduct) => {
     if (product) {
@@ -326,6 +382,7 @@ const InventarioPage: React.FC = () => {
         stockMinimo: String(product.stockMinimo),
         costoUnitario: String(product.costoUnitario),
         precioVenta: product.precioVenta === null ? "" : String(product.precioVenta),
+        clasificacion: product.clasificacion ?? "normal",
         proveedor: product.proveedor ?? "",
         estado: product.estado,
         notas: product.notas ?? "",
@@ -378,6 +435,7 @@ const InventarioPage: React.FC = () => {
         stockMinimo: Number(productForm.stockMinimo) || 0,
         costoUnitario: Number(productForm.costoUnitario) || 0,
         precioVenta: productForm.precioVenta === "" ? null : Number(productForm.precioVenta) || 0,
+        clasificacion: productForm.clasificacion,
         proveedor: productForm.proveedor.trim(),
         estado: productForm.estado,
         notas: productForm.notas,
@@ -529,6 +587,16 @@ const InventarioPage: React.FC = () => {
 
     const movementNote = movementForm.motivo.trim() || movementLabel[movementForm.tipo];
 
+    if (isClassifiedWithdrawal && !movementForm.autorizadoPorNombre.trim()) {
+      toast.error("Registra quien autorizo el retiro clasificado");
+      return;
+    }
+
+    if (needsDoubleAuthorization && !movementForm.segundaAutorizacionNombre.trim()) {
+      toast.error("Este material requiere doble autorizacion");
+      return;
+    }
+
     setIsSavingMovement(true);
     try {
       await registerMovement({
@@ -538,8 +606,17 @@ const InventarioPage: React.FC = () => {
         cantidad: Number(movementForm.cantidad) || 0,
         motivo: movementNote,
         referenciaTipo: "manual",
+        autorizadoPorNombre: movementForm.autorizadoPorNombre.trim(),
+        segundaAutorizacionNombre: movementForm.segundaAutorizacionNombre.trim(),
       });
-      setMovementForm({ productoId: "", tipo: defaultManualMovementType, cantidad: "", motivo: "" });
+      setMovementForm({
+        productoId: "",
+        tipo: defaultManualMovementType,
+        cantidad: "",
+        motivo: "",
+        autorizadoPorNombre: "",
+        segundaAutorizacionNombre: "",
+      });
       setIsMovementDialogOpen(false);
     } catch (error: any) {
       toast.error(error.message || "No se pudo registrar el movimiento");
@@ -562,6 +639,138 @@ const InventarioPage: React.FC = () => {
           <Button type="button" variant="outline" onClick={() => setDateFilter(today())}>
             Hoy
           </Button>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button type="button" variant="outline" className="relative">
+                <Bell className="mr-2 h-4 w-4" />
+                Alertas
+                {inventoryAlertCount > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-destructive px-1 text-[11px] font-semibold text-destructive-foreground">
+                    {inventoryAlertCount > 99 ? "99+" : inventoryAlertCount}
+                  </span>
+                )}
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-[420px] p-0">
+              <div className="border-b p-4">
+                <p className="font-semibold">Alertas de inventario</p>
+                <p className="text-sm text-muted-foreground">Stock, productos clasificados y retiros registrados.</p>
+              </div>
+              <div className="max-h-[28rem] space-y-4 overflow-auto p-3">
+                {inventoryAlertCount === 0 ? (
+                  <div className="p-6 text-center text-sm text-muted-foreground">
+                    No hay alertas de inventario por ahora.
+                  </div>
+                ) : null}
+
+                {lowStockProducts.length > 0 && (
+                  <section className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-semibold">Stock por revisar</p>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setProductStatusFilter("bajo_minimo");
+                          setCategoryFilter("todos");
+                        }}
+                      >
+                        Ver
+                      </Button>
+                    </div>
+                    {lowStockProducts.slice(0, 6).map((product) => (
+                      <div key={product.id} className="rounded-md border p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-medium">{getProductDisplayName(product)}</p>
+                            <p className="text-xs text-muted-foreground">
+                              Stock {product.stock} {product.unidad} / minimo {product.stockMinimo}
+                            </p>
+                          </div>
+                          <Badge variant={product.stock <= 0 ? "destructive" : "secondary"}>
+                            {product.stock <= 0 ? "Agotado" : "Bajo"}
+                          </Badge>
+                        </div>
+                      </div>
+                    ))}
+                    {lowStockProducts.length > 6 && (
+                      <p className="text-xs text-muted-foreground">+{lowStockProducts.length - 6} productos mas con stock bajo.</p>
+                    )}
+                  </section>
+                )}
+
+                {classifiedWithdrawalNotifications.length > 0 && (
+                  <section className="space-y-2">
+                    <p className="text-sm font-semibold">Retiros clasificados recientes</p>
+                    {classifiedWithdrawalNotifications.map((movement) => (
+                      <div key={movement.id} className="rounded-md border p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-medium">{movement.notificacionTitulo || movement.productoNombre}</p>
+                            <p className="text-xs text-muted-foreground">{formatDate(movement.fecha)}</p>
+                          </div>
+                          <Badge variant={movement.requiereDobleAutorizacion ? "destructive" : "secondary"}>
+                            {classificationLabel[movement.clasificacion ?? "normal"]}
+                          </Badge>
+                        </div>
+                        <p className="mt-2 text-sm text-muted-foreground">{movement.notificacionDetalle}</p>
+                        {movement.segundaAutorizacionNombre && (
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Segunda autorizacion: {movement.segundaAutorizacionNombre}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </section>
+                )}
+
+                {activeClassifiedProducts.length > 0 && (
+                  <section className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm font-semibold">Productos clasificados</p>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => {
+                          setProductStatusFilter("todos");
+                          setCategoryFilter("todos");
+                        }}
+                      >
+                        Ver
+                      </Button>
+                    </div>
+                    {activeClassifiedProducts.slice(0, 5).map((product) => (
+                      <div key={product.id} className="rounded-md border p-3">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <p className="font-medium">{getProductDisplayName(product)}</p>
+                            <p className="text-xs text-muted-foreground">
+                              Stock {product.stock} {product.unidad}
+                            </p>
+                          </div>
+                          <Badge variant={product.clasificacion === "medicamento_controlado" ? "secondary" : "destructive"}>
+                            {classificationLabel[product.clasificacion ?? "normal"]}
+                          </Badge>
+                        </div>
+                      </div>
+                    ))}
+                    {activeClassifiedProducts.length > 5 && (
+                      <p className="text-xs text-muted-foreground">+{activeClassifiedProducts.length - 5} productos clasificados mas.</p>
+                    )}
+                  </section>
+                )}
+
+                {outOfStockProducts.length > 0 && (
+                  <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3">
+                    <p className="text-sm font-semibold text-destructive">{outOfStockProducts.length} producto(s) agotado(s)</p>
+                    <p className="text-xs text-muted-foreground">Prioriza reabastecimiento antes de registrar nuevos retiros.</p>
+                  </div>
+                )}
+              </div>
+            </PopoverContent>
+          </Popover>
           <Button variant="outline" onClick={() => setIsStockEntryDialogOpen(true)}>
             <Truck className="mr-2 h-4 w-4" />
             Reabastecer
@@ -577,7 +786,7 @@ const InventarioPage: React.FC = () => {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">Productos activos</CardTitle>
@@ -606,6 +815,16 @@ const InventarioPage: React.FC = () => {
           <CardContent>
             <div className="text-2xl font-bold">{activeCategories.length}</div>
             <p className="text-xs text-muted-foreground">Disponibles en productos</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Clasificados</CardTitle>
+            <ShieldCheck className="h-5 w-5 text-rose-600" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{activeClassifiedProducts.length}</div>
+            <p className="text-xs text-muted-foreground">Con alerta al retirar</p>
           </CardContent>
         </Card>
         <Card>
@@ -728,6 +947,7 @@ const InventarioPage: React.FC = () => {
                     <TableRow>
                       <TableHead>Producto</TableHead>
                       <TableHead>Categoria</TableHead>
+                      <TableHead>Clasificacion</TableHead>
                       <TableHead>Stock</TableHead>
                       <TableHead>Minimo</TableHead>
                       <TableHead>Venta</TableHead>
@@ -739,13 +959,13 @@ const InventarioPage: React.FC = () => {
                   <TableBody>
                     {productsLoading ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
+                        <TableCell colSpan={9} className="py-10 text-center text-muted-foreground">
                           Cargando inventario...
                         </TableCell>
                       </TableRow>
                     ) : filteredProducts.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
+                        <TableCell colSpan={9} className="py-10 text-center text-muted-foreground">
                           No hay productos para este filtro.
                         </TableCell>
                       </TableRow>
@@ -760,6 +980,15 @@ const InventarioPage: React.FC = () => {
                             <Badge variant={product.categoria === "vendible" ? "default" : "secondary"}>
                               {getCategoryLabel(product.categoria)}
                             </Badge>
+                          </TableCell>
+                          <TableCell>
+                            {(product.clasificacion ?? "normal") === "normal" ? (
+                              <span className="text-sm text-muted-foreground">Normal</span>
+                            ) : (
+                              <Badge variant={product.clasificacion === "medicamento_controlado" ? "secondary" : "destructive"}>
+                                {classificationLabel[product.clasificacion ?? "normal"]}
+                              </Badge>
+                            )}
                           </TableCell>
                           <TableCell>{product.stock} {product.unidad}</TableCell>
                           <TableCell>{product.stockMinimo}</TableCell>
@@ -1177,6 +1406,7 @@ const InventarioPage: React.FC = () => {
                       <TableHead>Usuario</TableHead>
                       <TableHead>Cantidad</TableHead>
                       <TableHead>Stock</TableHead>
+                      <TableHead>Autorizacion</TableHead>
                       <TableHead>Lote</TableHead>
                       <TableHead>Proveedor</TableHead>
                       <TableHead>Motivo</TableHead>
@@ -1185,13 +1415,13 @@ const InventarioPage: React.FC = () => {
                   <TableBody>
                     {movementsLoading ? (
                       <TableRow>
-                        <TableCell colSpan={9} className="py-10 text-center text-muted-foreground">
+                        <TableCell colSpan={10} className="py-10 text-center text-muted-foreground">
                           Cargando movimientos...
                         </TableCell>
                       </TableRow>
                     ) : filteredMovements.length === 0 ? (
                       <TableRow>
-                        <TableCell colSpan={9} className="py-10 text-center text-muted-foreground">
+                        <TableCell colSpan={10} className="py-10 text-center text-muted-foreground">
                           No hay movimientos con esos filtros.
                         </TableCell>
                       </TableRow>
@@ -1215,6 +1445,20 @@ const InventarioPage: React.FC = () => {
                             {movement.cantidad > 0 ? `+${movement.cantidad}` : movement.cantidad}
                           </TableCell>
                           <TableCell>{movement.stockAnterior}{" -> "}{movement.stockNuevo}</TableCell>
+                          <TableCell>
+                            {movement.materialClasificado ? (
+                              <div className="space-y-1">
+                                <Badge variant={movement.requiereDobleAutorizacion ? "destructive" : "secondary"}>
+                                  {classificationLabel[movement.clasificacion ?? "normal"]}
+                                </Badge>
+                                <p className="text-xs text-muted-foreground">
+                                  {movement.autorizadoPorNombre || "Sin autorizacion"}
+                                </p>
+                              </div>
+                            ) : (
+                              <span className="text-sm text-muted-foreground">-</span>
+                            )}
+                          </TableCell>
                           <TableCell>{movement.lote || "-"}</TableCell>
                           <TableCell>{movement.proveedor || "-"}</TableCell>
                           <TableCell>{movement.motivo}</TableCell>
@@ -1313,7 +1557,16 @@ const InventarioPage: React.FC = () => {
               </div>
               <div className="space-y-2">
                 <Label>Categoria</Label>
-                <Select value={productForm.categoria} onValueChange={(value) => setProductForm({ ...productForm, categoria: value })}>
+                <Select
+                  value={productForm.categoria}
+                  onValueChange={(value) => setProductForm({
+                    ...productForm,
+                    categoria: value,
+                    clasificacion: productForm.clasificacion === "normal"
+                      ? suggestedClassificationByCategory[value] ?? "normal"
+                      : productForm.clasificacion,
+                  })}
+                >
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -1354,6 +1607,23 @@ const InventarioPage: React.FC = () => {
               <div className="space-y-2">
                 <Label>Proveedor principal</Label>
                 <Input value={productForm.proveedor} onChange={(event) => setProductForm({ ...productForm, proveedor: event.target.value })} placeholder="Opcional" />
+              </div>
+              <div className="space-y-2">
+                <Label>Clasificacion</Label>
+                <Select value={productForm.clasificacion} onValueChange={(value) => setProductForm({ ...productForm, clasificacion: value as InventoryClassification })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="normal">Normal</SelectItem>
+                    <SelectItem value="medicamento_controlado">Medicamento controlado</SelectItem>
+                    <SelectItem value="alto_costo">Alto costo</SelectItem>
+                    <SelectItem value="equipo_especial">Equipo especial</SelectItem>
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {classificationDescription[productForm.clasificacion]}
+                </p>
               </div>
               <div className="space-y-2">
                 <Label>Estado</Label>
@@ -1586,6 +1856,39 @@ const InventarioPage: React.FC = () => {
                 />
               </div>
             </div>
+            {isClassifiedWithdrawal && (
+              <div className="space-y-4 rounded-lg border border-amber-200 bg-amber-50 p-4">
+                <div className="flex items-start gap-3">
+                  <ShieldCheck className="mt-0.5 h-5 w-5 text-amber-700" />
+                  <div>
+                    <p className="font-semibold text-amber-950">Retiro de material clasificado</p>
+                    <p className="text-sm text-amber-900">
+                      {classificationLabel[selectedClassification]} requiere autorizacion y genera alerta para inventario.
+                    </p>
+                  </div>
+                </div>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label>Autorizo el retiro *</Label>
+                    <Input
+                      value={movementForm.autorizadoPorNombre}
+                      onChange={(event) => setMovementForm({ ...movementForm, autorizadoPorNombre: event.target.value })}
+                      placeholder="Nombre del responsable"
+                    />
+                  </div>
+                  {needsDoubleAuthorization && (
+                    <div className="space-y-2">
+                      <Label>Segunda autorizacion *</Label>
+                      <Input
+                        value={movementForm.segundaAutorizacionNombre}
+                        onChange={(event) => setMovementForm({ ...movementForm, segundaAutorizacionNombre: event.target.value })}
+                        placeholder="Nombre de quien confirma"
+                      />
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
             <div className="space-y-2">
               <Label>Nota opcional</Label>
               <Textarea
