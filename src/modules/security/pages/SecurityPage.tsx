@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { useAuth, usePermissions, type AppUser, type UserSession } from "@/auth";
+import { useAuth, usePermissions, type AppUser, type Role, type UserSession } from "@/auth";
 import { db } from "@/lib/firebase";
 import { addAuditLog } from "@/modules/audit/services/auditService";
 import {
@@ -42,6 +42,14 @@ type SessionWithUser = UserSession & {
   userName: string;
   userStatus?: string;
   roleIds?: string[];
+};
+
+const getRoleLabels = (roleIds: string[] | undefined, rolesById: Map<string, Role>) => {
+  if (!roleIds || roleIds.length === 0) return "sin rol";
+
+  return roleIds
+    .map((roleId) => rolesById.get(roleId)?.name || roleId)
+    .join(", ");
 };
 
 const toDate = (value: any): Date | null => {
@@ -106,6 +114,7 @@ const SecurityPage: React.FC = () => {
   const canRevokeAnySession = hasPermission("security.sessions.revoke");
 
   const [users, setUsers] = useState<Record<string, AppUser>>({});
+  const [rolesById, setRolesById] = useState<Map<string, Role>>(new Map());
   const [globalSessionsByUser, setGlobalSessionsByUser] = useState<Record<string, SessionWithUser[]>>({});
   const [isLoadingGlobalSessions, setIsLoadingGlobalSessions] = useState(false);
   const [search, setSearch] = useState("");
@@ -125,6 +134,22 @@ const SecurityPage: React.FC = () => {
 
     setIsLoadingGlobalSessions(true);
     const sessionUnsubscribers: Array<() => void> = [];
+
+    const unsubscribeRoles = onSnapshot(
+      collection(db, "roles"),
+      (snapshot) => {
+        setRolesById(new Map(snapshot.docs.map((roleDoc) => [
+          roleDoc.id,
+          {
+            id: roleDoc.id,
+            ...roleDoc.data(),
+          } as Role,
+        ])));
+      },
+      () => {
+        setRolesById(new Map());
+      },
+    );
 
     const unsubscribeUsers = onSnapshot(collection(db, "usuarios"), (snapshot) => {
       const nextUsers: Record<string, AppUser> = {};
@@ -210,6 +235,7 @@ const SecurityPage: React.FC = () => {
 
     return () => {
       unsubscribeUsers();
+      unsubscribeRoles();
       sessionUnsubscribers.forEach((unsubscribe) => unsubscribe());
     };
   }, [canViewAllSessions, currentSessionId, currentUser?.uid]);
@@ -537,7 +563,7 @@ const SecurityPage: React.FC = () => {
                       </p>
                       <p className="mt-1 text-muted-foreground">Estado: {session.userStatus || "sin perfil"}</p>
                       <p className="text-muted-foreground">
-                        Roles: {session.roleIds && session.roleIds.length ? session.roleIds.join(", ") : "sin rol"}
+                        Roles: {getRoleLabels(session.roleIds, rolesById)}
                       </p>
                     </div>
 
