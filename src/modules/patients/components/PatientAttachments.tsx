@@ -30,8 +30,6 @@ import {
   deleteObject,
 } from 'firebase/storage';
 import { Skeleton } from '@/shared/components/ui/skeleton';
-import { DataPagination } from '@/shared/components/DataPagination';
-import { usePagination } from '@/shared/hooks/usePagination';
 
 interface PatientAttachmentsProps {
   patientId: string;
@@ -45,9 +43,6 @@ const PatientAttachments: React.FC<PatientAttachmentsProps> = ({ patientId }) =>
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const attachmentsPagination = usePagination(attachments, {
-    resetKeys: [patientId],
-  });
 
   // ¡NUEVO! Efecto para cargar adjuntos
   useEffect(() => {
@@ -208,7 +203,7 @@ const PatientAttachments: React.FC<PatientAttachmentsProps> = ({ patientId }) =>
         </Card>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {attachmentsPagination.paginatedItems.map((attachment) => {
+          {attachments.map((attachment) => {
             const Icon = getFileIcon(attachment.tipo);
             const isDeletingThis = deletingId === attachment.id;
             return (
@@ -251,22 +246,6 @@ const PatientAttachments: React.FC<PatientAttachmentsProps> = ({ patientId }) =>
               </Card>
             );
           })}
-          <div className="md:col-span-2 lg:col-span-3">
-            <DataPagination
-              className="rounded-lg border"
-              itemLabel="archivos"
-              page={attachmentsPagination.page}
-              pageSize={attachmentsPagination.pageSize}
-              totalItems={attachmentsPagination.totalItems}
-              startIndex={attachmentsPagination.startIndex}
-              endIndex={attachmentsPagination.endIndex}
-              canPreviousPage={attachmentsPagination.canPreviousPage}
-              canNextPage={attachmentsPagination.canNextPage}
-              onPageSizeChange={attachmentsPagination.setPageSize}
-              onPreviousPage={attachmentsPagination.previousPage}
-              onNextPage={attachmentsPagination.nextPage}
-            />
-          </div>
         </div>
       )}
 

@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 
 import { SidebarProvider, SidebarInset, useSidebar } from "@/shared/components/ui/sidebar";
-import { useAuth } from "@/auth";
+import { Can, useAuth } from "@/auth";
 import { usePatients } from "@/modules/patients";
 import { AppSidebar } from "@/shared/components/layout/AppSidebar";
 import { BottomNav } from "@/shared/components/layout/BottomNav";
@@ -27,6 +27,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/shared/components/ui/alert-dialog';
+
 
 // HEADER
 const HeaderOriginal = () => {
@@ -171,21 +172,29 @@ const HeaderOriginal = () => {
 
           {adminMenuOpen && (
             <div className="absolute right-0 mt-2 w-52 bg-popover text-popover-foreground rounded-lg border shadow-lg z-50 overflow-hidden">
-              <button
-                onClick={() => go('/bitacora')}
-                className="w-full flex items-center gap-2 px-4 py-3 text-sm hover:bg-muted/50 text-left"
-              >
-                <ClipboardList className="h-4 w-4" />
-                Bitácora
-              </button>
+              
+              <Can permission="audit.view">
+                <button
+                  type="button"
+                  onClick={() => go("/bitacora")}
+                  className="w-full flex items-center gap-2 px-4 py-3 text-sm hover:bg-muted/50 text-left"
+                >
+                  <ClipboardList className="h-4 w-4" />
+                  Bitácora
+                </button>
+              </Can>
 
-              <button
-                onClick={() => go('/seguridad')}
-                className="w-full flex items-center gap-2 px-4 py-3 text-sm hover:bg-muted/50 text-left"
-              >
-                <ShieldCheck className="h-4 w-4" />
-                Seguridad
-              </button>
+              <Can permission="security.sessions.view">
+                <button
+                  type="button"
+                  onClick={() => go("/seguridad")}
+                  className="w-full flex items-center gap-2 px-4 py-3 text-sm hover:bg-muted/50 text-left"
+                >
+                  <ShieldCheck className="h-4 w-4" />
+                  Seguridad
+                </button>
+              </Can>
+              
             </div>
           )}
         </div>

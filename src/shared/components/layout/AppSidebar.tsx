@@ -1,106 +1,84 @@
-import React from 'react';
-import {
-  Home,
-  Users,
-  FileText,
-  LogOut,
-  Package,
-  Stethoscope,
-  WalletCards,
-  PanelLeftClose,
-  Menu,
-  History,
-  ShoppingCart,
-  ShieldCheck,
-  X // Icono para cerrar en móvil
-} from 'lucide-react';
+import React from "react";
+import { LogOut, Menu, PanelLeftClose, X } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+
+import { navigationItems } from "@/app/navigation/navigationItems";
+import { useAuth, useCan } from "@/auth";
+import { Button } from "@/shared/components/ui/button";
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
+  SidebarHeader,
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarFooter,
-  SidebarHeader,
   useSidebar,
 } from "@/shared/components/ui/sidebar";
-import { NavLink } from './NavLink';
-import { useAuth } from '@/auth';
-import { Button } from '@/shared/components/ui/button';
-import { useNavigate } from 'react-router-dom';
 
-const items = [
-  { title: "Dashboard", url: "/dashboard", icon: Home },
-  { title: "Pacientes", url: "/pacientes", icon: Users },
-  { title: "Cotizaciones", url: "/cotizaciones", icon: FileText },
-  { title: "Ventas", url: "/ventas", icon: ShoppingCart },
-  { title: "Caja", url: "/caja", icon: WalletCards },
-  { title: "Inventario", url: "/inventario", icon: Package },
-  { title: "Servicios", url: "/servicios", icon: Stethoscope },
-  { title: "Bitácora", url: "/bitacora", icon: History },
-  { title: "Seguridad", url: "/seguridad", icon: ShieldCheck },
-];
+import { NavLink } from "./NavLink";
 
 export function AppSidebar() {
   const { logout } = useAuth();
+  const { can, loading } = useCan();
   const navigate = useNavigate();
-  // isMobile viene del hook interno de la librería de sidebar que ya tienes
+
   const { state, toggleSidebar, isMobile, setOpenMobile } = useSidebar();
+
+  const visibleItems = navigationItems.filter((item) => can(item.permission));
 
   const handleLogout = () => {
     logout();
-    navigate('/login');
+    navigate("/login");
   };
 
-  // Función para cerrar el menú al hacer click en un item (solo en móvil)
   const handleItemClick = () => {
     if (isMobile) setOpenMobile(false);
   };
 
   return (
-    <Sidebar 
-      collapsible="icon" 
-      className="border-r border-border bg-card shadow-2xl z-50 transition-all duration-300"
-    >
-      <SidebarHeader className="p-0 border-b border-border h-16 flex items-center justify-center">
-        {state === 'expanded' || isMobile ? (
-          /* MODO EXPANDIDO O MÓVIL */
-          <div className="w-full h-full flex items-center justify-between px-4">
-            <div className="flex items-center gap-2 overflow-hidden">
-              <div className="h-8 w-8 min-w-[32px] rounded bg-primary text-primary-foreground flex items-center justify-center font-bold shadow-sm">
+    <Sidebar collapsible="icon">
+      <SidebarHeader>
+        {state === "expanded" || isMobile ? (
+          <div className="flex items-center justify-between px-3 py-3">
+            <div className="flex items-center gap-2">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground font-bold">
                 CD
               </div>
-              <span className="font-bold text-lg text-primary truncate">ClauDent</span>
+
+              <div>
+                <p className="text-sm font-semibold">ClauDent</p>
+                <p className="text-xs text-muted-foreground">
+                  Consultorio dental
+                </p>
+              </div>
             </div>
-            
-            {/* Botón de cerrar: En móvil cierra el overlay, en escritorio colapsa */}
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              onClick={toggleSidebar} 
-              className="hover:bg-accent"
+
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={() => (isMobile ? setOpenMobile(false) : toggleSidebar())}
             >
               {isMobile ? (
-                <X className="h-5 w-5 text-muted-foreground" />
+                <X className="h-5 w-5" />
               ) : (
-                <PanelLeftClose className="h-5 w-5 text-muted-foreground" />
+                <PanelLeftClose className="h-5 w-5" />
               )}
             </Button>
           </div>
         ) : (
-          /* MODO COLAPSADO (Solo Escritorio) */
-          <div className="w-full h-full flex items-center justify-center">
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              onClick={toggleSidebar} 
-              className="h-10 w-10 text-primary hover:bg-primary/10"
-              title="Expandir menú"
+          <div className="flex justify-center py-3">
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              onClick={toggleSidebar}
             >
-              <Menu className="h-6 w-6" />
+              <Menu className="h-5 w-5" />
             </Button>
           </div>
         )}
@@ -108,47 +86,76 @@ export function AppSidebar() {
 
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel className="px-4">Menú Principal</SidebarGroupLabel>
+          {(state === "expanded" || isMobile) && (
+            <SidebarGroupLabel>Menú Principal</SidebarGroupLabel>
+          )}
+
           <SidebarGroupContent>
             <SidebarMenu>
-              {items.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton 
-                    asChild 
-                    tooltip={item.title}
-                    onClick={handleItemClick} // Importante para móvil
-                  >
-                    <NavLink to={item.url}>
-                      <item.icon className="h-4 w-4" />
-                      <span className="text-sm font-medium">{item.title}</span>
-                    </NavLink>
-                  </SidebarMenuButton>
+              {loading && (
+                <SidebarMenuItem>
+                  <div className="px-3 py-2 text-xs text-muted-foreground">
+                    Cargando permisos...
+                  </div>
                 </SidebarMenuItem>
-              ))}
+              )}
+
+              {!loading &&
+                visibleItems.map((item) => {
+                  const Icon = item.icon;
+
+                  return (
+                    <SidebarMenuItem key={item.url}>
+                      <SidebarMenuButton asChild>
+                        <NavLink
+                          to={item.url}
+                          onClick={handleItemClick}
+                          className="flex items-center gap-3"
+                          activeClassName="bg-primary/10 text-primary"
+                        >
+                          <Icon className="h-5 w-5" />
+
+                          {(state === "expanded" || isMobile) && (
+                            <span>{item.title}</span>
+                          )}
+                        </NavLink>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+
+              {!loading && visibleItems.length === 0 && (
+                <SidebarMenuItem>
+                  <div className="px-3 py-2 text-xs text-muted-foreground">
+                    Sin módulos disponibles
+                  </div>
+                </SidebarMenuItem>
+              )}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="p-4 border-t border-border">
-        {state === 'expanded' || isMobile ? (
+      <SidebarFooter>
+        {state === "expanded" || isMobile ? (
           <Button
-            variant="outline"
-            className="w-full justify-start text-red-500 hover:text-red-600 hover:bg-red-50 border-red-100"
+            type="button"
+            variant="ghost"
+            className="justify-start gap-3 text-destructive hover:text-destructive"
             onClick={handleLogout}
           >
-            <LogOut className="mr-2 h-4 w-4" />
-            <span className="font-medium">Cerrar Sesión</span>
+            <LogOut className="h-5 w-5" />
+            Cerrar sesión
           </Button>
         ) : (
           <Button
+            type="button"
             variant="ghost"
             size="icon"
-            className="text-red-500 hover:text-red-600 hover:bg-red-50 w-full h-10"
+            className="text-destructive hover:text-destructive"
             onClick={handleLogout}
-            title="Cerrar Sesión"
           >
-            <LogOut className="h-4 w-4" />
+            <LogOut className="h-5 w-5" />
           </Button>
         )}
       </SidebarFooter>

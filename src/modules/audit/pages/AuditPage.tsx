@@ -16,12 +16,13 @@ import {
 import { Input } from "@/shared/components/ui/input";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
-import { DataPagination } from "@/shared/components/DataPagination";
-import { usePagination } from "@/shared/hooks/usePagination";
+
+const PAGE_SIZE = 10;
 
 const Bitacora: React.FC = () => {
   const [logs, setLogs] = useState<any[]>([]);
   const [filtro, setFiltro] = useState("");
+  const [page, setPage] = useState(1);
 
   useEffect(() => {
     const q = query(collection(db, 'bitacora'), orderBy('fecha', 'desc'));
@@ -36,7 +37,6 @@ const Bitacora: React.FC = () => {
     const term = filtro.toLowerCase();
     return logs.filter(l =>
       (l.detalle || "").toLowerCase().includes(term) ||
-      (l.usuarioNombre || "").toLowerCase().includes(term) ||
       (l.usuarioEmail || "").toLowerCase().includes(term) ||
       (l.modulo || "").toLowerCase().includes(term) ||
       (l.accion || "").toLowerCase().includes(term)
@@ -44,13 +44,11 @@ const Bitacora: React.FC = () => {
   }, [logs, filtro]);
 
   // Reset de página cuando cambia el filtro (para que no quede en página vacía)
+  useEffect(() => {
+    setPage(1);
+  }, [filtro]);
+
   // Paginación
-  const logsPagination = usePagination(logsFiltrados, {
-    resetKeys: [filtro],
-  });
-  const page = logsPagination.page;
-  const setPage = logsPagination.setPage;
-  const PAGE_SIZE = logsPagination.pageSize;
   const total = logsFiltrados.length;
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const safePage = Math.min(page, totalPages);
@@ -167,7 +165,7 @@ const Bitacora: React.FC = () => {
                 <div className="flex items-center gap-2 text-xs">
                   <Mail className="h-4 w-4 text-muted-foreground" />
                   <span className="truncate max-w-[220px] font-medium text-slate-700">
-                    {log.usuarioNombre || log.usuarioEmail || '—'}
+                    {log.usuarioEmail || '—'}
                   </span>
                 </div>
 
@@ -204,7 +202,7 @@ const Bitacora: React.FC = () => {
 
         {/* Paginador abajo (opcional, pero útil en móvil) */}
         {total > 0 && (
-          <div className="hidden">
+          <div className="flex items-center justify-between pt-2">
             <span className="text-xs text-muted-foreground font-medium">{rangeText}</span>
             <div className="flex gap-2">
               <Button variant="outline" size="sm" onClick={goPrev} disabled={!canPrev}>
@@ -215,22 +213,6 @@ const Bitacora: React.FC = () => {
               </Button>
             </div>
           </div>
-        )}
-        {total > 0 && (
-          <DataPagination
-            className="rounded-lg border"
-            itemLabel="registros"
-            page={logsPagination.page}
-            pageSize={logsPagination.pageSize}
-            totalItems={logsPagination.totalItems}
-            startIndex={logsPagination.startIndex}
-            endIndex={logsPagination.endIndex}
-            canPreviousPage={logsPagination.canPreviousPage}
-            canNextPage={logsPagination.canNextPage}
-            onPageSizeChange={logsPagination.setPageSize}
-            onPreviousPage={logsPagination.previousPage}
-            onNextPage={logsPagination.nextPage}
-          />
         )}
       </div>
 
@@ -253,7 +235,7 @@ const Bitacora: React.FC = () => {
                   <TableCell className="text-sm font-medium text-slate-600">
                     {fmtFecha(log.fecha)}
                   </TableCell>
-                  <TableCell className="text-sm">{log.usuarioNombre || log.usuarioEmail}</TableCell>
+                  <TableCell className="text-sm">{log.usuarioEmail}</TableCell>
                   <TableCell>
                     <Badge variant="outline" className={`${getAccionColor(log.accion)} font-bold border shadow-sm`}>
                       {log.accion}
@@ -286,7 +268,7 @@ const Bitacora: React.FC = () => {
 
         {/* Footer paginador (PC) */}
         {total > 0 && (
-          <div className="hidden">
+          <div className="flex items-center justify-end gap-2 px-4 py-3 border-t bg-card">
             <span className="text-xs text-muted-foreground font-medium">{rangeText}</span>
             <Button variant="ghost" size="icon" onClick={goPrev} disabled={!canPrev} className="h-9 w-9">
               <ChevronLeft className="h-5 w-5" />
@@ -295,21 +277,6 @@ const Bitacora: React.FC = () => {
               <ChevronRight className="h-5 w-5" />
             </Button>
           </div>
-        )}
-        {total > 0 && (
-          <DataPagination
-            itemLabel="registros"
-            page={logsPagination.page}
-            pageSize={logsPagination.pageSize}
-            totalItems={logsPagination.totalItems}
-            startIndex={logsPagination.startIndex}
-            endIndex={logsPagination.endIndex}
-            canPreviousPage={logsPagination.canPreviousPage}
-            canNextPage={logsPagination.canNextPage}
-            onPageSizeChange={logsPagination.setPageSize}
-            onPreviousPage={logsPagination.previousPage}
-            onNextPage={logsPagination.nextPage}
-          />
         )}
       </Card>
     </div>

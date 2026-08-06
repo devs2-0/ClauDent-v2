@@ -1,17 +1,24 @@
 # Auth - ClauDent
 
-Esta carpeta contiene la autenticacion basica, sesion actual y control de dispositivos activos.
-
-La configuracion de roles y permisos queda fuera del flujo activo por ahora para mantener el comportamiento de produccion del repositorio original.
+Esta carpeta contiene autenticacion, usuario actual, sesiones, roles, permisos y guards.
 
 ## Estructura
 
 ```txt
-components/  Reservado para componentes de auth
-guards/      Guards de autenticacion
-hooks/       Hooks como useAuth
-pages/       Pantallas de login y recuperacion
-services/    Servicios de auth y sesiones
-store/       Provider de autenticacion
-types/       Tipos compartidos de auth
+components/   Componentes transversales de permisos y roles
+constants/    Catalogo fijo de permisos y roles base
+guards/       Proteccion de rutas o acciones
+hooks/        useAuth, usePermissions y perfil actual
+pages/        Pantallas publicas de autenticacion
+services/     Integracion con Firebase Auth, usuarios, roles y sesiones
+store/        AuthProvider
+types/        Tipos de auth, roles y permisos
+index.ts      API publica del dominio auth
 ```
+
+## Reglas
+
+- Los permisos viven aqui, no dentro de cada modulo.
+- Los modulos consumen permisos desde `@/auth`.
+- La convencion de permisos es `modulo.recurso.accion`.
+- Las rutas pueden declarar un permiso en `src/app/router/routeConfig.tsx`.

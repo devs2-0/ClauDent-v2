@@ -1,13 +1,10 @@
 // RF09: Quotations (EDITABLE Y SIN ERRORES)
 import React, { useState, useMemo } from 'react';
-import { Plus, Download, Eye, FileText, Book, ClipboardPlus, Search, Printer, Check, ChevronsUpDown, X, Trash2, WalletCards } from 'lucide-react';
+import { Plus, Download, Eye, FileText, Book, ClipboardPlus, Search, Printer, Check, ChevronsUpDown, X, Trash2 } from 'lucide-react';
 import { usePatients } from '@/modules/patients';
 import { Quotation, QuotationItem, useQuotations } from '@/modules/quotations';
 import { Service, useDentalServices } from '@/modules/services';
-import { useCashRegister } from '@/modules/ventas';
-import { DataPagination } from '@/shared/components/DataPagination';
 import { formatCurrency, formatDate } from '@/shared/utils/utils';
-import { usePagination } from '@/shared/hooks/usePagination';
 import { Button } from '@/shared/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card';
 import {
@@ -61,15 +58,10 @@ const Cotizaciones: React.FC = () => {
   const { patients } = usePatients();
   const { services } = useDentalServices();
   const { quotations, quotationsLoading, addQuotation, updateQuotation, deleteQuotation } = useQuotations();
-  const { finalizeQuotationCheckout } = useCashRegister();
   
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isCheckoutDialogOpen, setIsCheckoutDialogOpen] = useState(false);
   const [isFormLoading, setIsFormLoading] = useState(false);
   const [editingQuotationId, setEditingQuotationId] = useState<string | null>(null);
-  const [checkoutQuotation, setCheckoutQuotation] = useState<Quotation | null>(null);
-  const [checkoutMethod, setCheckoutMethod] = useState<'efectivo' | 'tarjeta' | 'transferencia'>('efectivo');
-  const [isCheckoutLoading, setIsCheckoutLoading] = useState(false);
   
   const [openPatientCombobox, setOpenPatientCombobox] = useState(false);
   const [openServiceIndex, setOpenServiceIndex] = useState<number | null>(null);
@@ -156,9 +148,6 @@ const Cotizaciones: React.FC = () => {
         return matchesText && matchesStart && matchesEnd;
     });
   }, [quotations, patients, mainSearch, dateFilterStart, dateFilterEnd]);
-  const quotationsPagination = usePagination(filteredQuotations, {
-    resetKeys: [mainSearch, dateFilterStart, dateFilterEnd],
-  });
 
   const handleOpenDialog = (quotation?: Quotation) => {
     if (quotation) {
@@ -300,33 +289,6 @@ const Cotizaciones: React.FC = () => {
     }
   };
 
-  const handleOpenCheckout = (quotation: Quotation) => {
-    setCheckoutQuotation(quotation);
-    setCheckoutMethod('efectivo');
-    setIsCheckoutDialogOpen(true);
-  };
-
-  const handleConfirmCheckout = async () => {
-    if (!checkoutQuotation) return;
-
-    const patient = patients.find((p) => p.id === checkoutQuotation.pacienteId);
-
-    setIsCheckoutLoading(true);
-    try {
-      await finalizeQuotationCheckout({
-        quotation: checkoutQuotation,
-        pacienteNombre: patient ? `${patient.nombres} ${patient.apellidos}` : 'Paciente eliminado',
-        metodo: checkoutMethod,
-      });
-      setIsCheckoutDialogOpen(false);
-      setCheckoutQuotation(null);
-    } catch (error: any) {
-      toast.error(error.message || 'No se pudo finalizar el cobro');
-    } finally {
-      setIsCheckoutLoading(false);
-    }
-  };
-
   const estadoBadgeVariant = (estado: string) => {
     switch (estado) {
       case 'activo': return 'default';
@@ -433,7 +395,7 @@ const Cotizaciones: React.FC = () => {
                     </TableCell>
                   </TableRow>
                 ) : (
-                  quotationsPagination.paginatedItems.map((quotation) => {
+                  filteredQuotations.map((quotation) => {
                     const patient = patients.find((p) => p.id === quotation.pacienteId);
                     return (
                       <TableRow key={quotation.id}>
@@ -470,15 +432,6 @@ const Cotizaciones: React.FC = () => {
                             <Button
                               variant="ghost"
                               size="icon"
-                              className="text-primary hover:text-primary"
-                              onClick={() => handleOpenCheckout(quotation)}
-                              aria-label="Finalizar y cobrar"
-                            >
-                              <WalletCards className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
                               className="text-destructive hover:text-destructive"
                               onClick={() => handleDelete(quotation.id)}
                               aria-label="Eliminar Cotización"
@@ -495,21 +448,6 @@ const Cotizaciones: React.FC = () => {
             </Table>
           </div>
         </CardContent>
-        {!quotationsLoading && filteredQuotations.length > 0 && (
-          <DataPagination
-            itemLabel="cotizaciones"
-            page={quotationsPagination.page}
-            pageSize={quotationsPagination.pageSize}
-            totalItems={quotationsPagination.totalItems}
-            startIndex={quotationsPagination.startIndex}
-            endIndex={quotationsPagination.endIndex}
-            canPreviousPage={quotationsPagination.canPreviousPage}
-            canNextPage={quotationsPagination.canNextPage}
-            onPageSizeChange={quotationsPagination.setPageSize}
-            onPreviousPage={quotationsPagination.previousPage}
-            onNextPage={quotationsPagination.nextPage}
-          />
-        )}
       </Card>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -779,84 +717,6 @@ const Cotizaciones: React.FC = () => {
             </Button>
             <Button type="submit" form="quotation-form" disabled={isFormLoading}>
               {isFormLoading ? 'Guardando...' : (editingQuotationId ? 'Actualizar' : 'Crear Cotización')}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={isCheckoutDialogOpen} onOpenChange={setIsCheckoutDialogOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Finalizar y cobrar</DialogTitle>
-            <DialogDescription>
-              Esta accion representa el flujo completo: aceptar cotizacion, registrar tratamiento, cobrar y preparar inventario.
-            </DialogDescription>
-          </DialogHeader>
-
-          {checkoutQuotation && (
-            <div className="space-y-4">
-              <div className="grid gap-3 rounded-lg border bg-muted/30 p-4 sm:grid-cols-3">
-                <div>
-                  <p className="text-xs text-muted-foreground">Paciente</p>
-                  <p className="font-medium">
-                    {(() => {
-                      const patient = patients.find((p) => p.id === checkoutQuotation.pacienteId);
-                      return patient ? `${patient.nombres} ${patient.apellidos}` : 'Paciente eliminado';
-                    })()}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Servicios</p>
-                  <p className="font-medium">{checkoutQuotation.items.length} concepto(s)</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">Total a cobrar</p>
-                  <p className="text-lg font-bold">{formatCurrency(checkoutQuotation.total)}</p>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Metodo de pago</Label>
-                <Select value={checkoutMethod} onValueChange={(value) => setCheckoutMethod(value as any)}>
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="efectivo">Efectivo</SelectItem>
-                    <SelectItem value="tarjeta">Tarjeta</SelectItem>
-                    <SelectItem value="transferencia">Transferencia</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="grid gap-2 text-sm sm:grid-cols-2">
-                <div className="rounded-lg border p-3">
-                  <p className="font-medium">Tratamiento</p>
-                  <p className="text-muted-foreground">Se agregara al historial clinico del paciente.</p>
-                </div>
-                <div className="rounded-lg border p-3">
-                  <p className="font-medium">Caja</p>
-                  <p className="text-muted-foreground">El pago real alimentara el corte del dia.</p>
-                </div>
-                <div className="rounded-lg border p-3">
-                  <p className="font-medium">Inventario vendible</p>
-                  <p className="text-muted-foreground">Productos vendidos descontaran stock y moveran dinero.</p>
-                </div>
-                <div className="rounded-lg border p-3">
-                  <p className="font-medium">Material clinico</p>
-                  <p className="text-muted-foreground">Solo descontara inventario, sin impactar caja.</p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setIsCheckoutDialogOpen(false)} disabled={isCheckoutLoading}>
-              Cancelar
-            </Button>
-            <Button type="button" onClick={handleConfirmCheckout} disabled={isCheckoutLoading}>
-              <WalletCards className="mr-2 h-4 w-4" />
-              {isCheckoutLoading ? 'Cobrando...' : 'Cobrar y finalizar'}
             </Button>
           </DialogFooter>
         </DialogContent>

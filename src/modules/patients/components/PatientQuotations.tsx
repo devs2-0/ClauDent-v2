@@ -15,8 +15,6 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@
 import { Textarea } from '@/shared/components/ui/textarea';
 import { toast } from 'sonner';
 import { generateQuotationPDF } from '@/modules/quotations/services/quotationPdfService';
-import { DataPagination } from '@/shared/components/DataPagination';
-import { usePagination } from '@/shared/hooks/usePagination';
 
 interface PatientQuotationsProps {
   patientId: string;
@@ -46,10 +44,6 @@ const PatientQuotations: React.FC<PatientQuotationsProps> = ({ patientId }) => {
       setPatientQuotations([]);
     }
   }, [patientId, quotations]);
-
-  const quotationsPagination = usePagination(patientQuotations, {
-    resetKeys: [patientId],
-  });
 
   const handleEditClick = (quotation: Quotation) => {
       setEditingQuotation(quotation);
@@ -142,7 +136,7 @@ const PatientQuotations: React.FC<PatientQuotationsProps> = ({ patientId }) => {
         </Card>
       ) : (
         <div className="space-y-4">
-          {quotationsPagination.paginatedItems.map((quotation) => (
+          {patientQuotations.map((quotation) => (
             <Card 
                 key={quotation.id} 
                 className="hover:shadow-md transition-shadow cursor-pointer"
@@ -180,20 +174,6 @@ const PatientQuotations: React.FC<PatientQuotationsProps> = ({ patientId }) => {
               </CardContent>
             </Card>
           ))}
-          <DataPagination
-            className="rounded-lg border"
-            itemLabel="cotizaciones"
-            page={quotationsPagination.page}
-            pageSize={quotationsPagination.pageSize}
-            totalItems={quotationsPagination.totalItems}
-            startIndex={quotationsPagination.startIndex}
-            endIndex={quotationsPagination.endIndex}
-            canPreviousPage={quotationsPagination.canPreviousPage}
-            canNextPage={quotationsPagination.canNextPage}
-            onPageSizeChange={quotationsPagination.setPageSize}
-            onPreviousPage={quotationsPagination.previousPage}
-            onNextPage={quotationsPagination.nextPage}
-          />
         </div>
       )}
 

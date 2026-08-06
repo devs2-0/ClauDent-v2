@@ -1,15 +1,12 @@
 // RF02-RF05: Patients list (CORREGIDO: BUG DE ALERTDIALOG)
 import React, { useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { Plus, Search, Edit, Trash2, Eye, Filter, User, Phone, Calendar, X } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Eye, Filter, User, Phone, Calendar, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import { Patient, usePatients } from '@/modules/patients';
-import { DataPagination } from '@/shared/components/DataPagination';
 import { calculateAge } from '@/shared/utils/utils';
-import { usePagination } from '@/shared/hooks/usePagination';
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
 import { Badge } from '@/shared/components/ui/badge';
-import { DatePickerField } from '@/shared/components/DatePickerField';
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from '@/shared/components/ui/dialog';
@@ -27,12 +24,16 @@ const initialFormData: Omit<Patient, 'id' | 'fechaRegistro'> = {
   nombres: '', apellidos: '', fechaNacimiento: '', sexo: 'X', telefonoPrincipal: '', telefonoContacto: '', correo: '', curp: '', direccion: '', calle: '', numeroExterior: '', numeroInterior: '', colonia: '', municipio: '', estadoDireccion: '', estadoCivil: '', estado: 'activo',
 };
 
+const ITEMS_PER_PAGE = 12;
+
 const Pacientes: React.FC = () => {
   const { patients, addPatient, updatePatient, deletePatient, searchQuery, patientsLoading } = usePatients();
   
   const [localSearch, setLocalSearch] = useState(searchQuery);
   const [filterStatus, setFilterStatus] = useState<'all' | 'activo' | 'inactivo'>('all');
   const [dateFilter, setDateFilter] = useState<string>(''); 
+
+  const [currentPage, setCurrentPage] = useState(1);
 
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingPatient, setEditingPatient] = useState<string | null>(null);
@@ -58,9 +59,15 @@ const Pacientes: React.FC = () => {
     });
   }, [patients, localSearch, filterStatus, dateFilter]);
 
-  const patientsPagination = usePagination(filteredPatients, {
-    resetKeys: [localSearch, filterStatus, dateFilter],
-  });
+  const totalPages = Math.ceil(filteredPatients.length / ITEMS_PER_PAGE);
+  const paginatedPatients = useMemo(() => {
+    const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+    return filteredPatients.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+  }, [filteredPatients, currentPage]);
+
+  React.useEffect(() => {
+    setCurrentPage(1);
+  }, [localSearch, filterStatus, dateFilter]);
 
   const handleOpenDialog = (patientId?: string) => {
     setCrearHistorial(false);
@@ -79,10 +86,7 @@ const Pacientes: React.FC = () => {
 
   const handleRequestSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.nombres || !formData.apellidos || !formData.fechaNacimiento) {
-      toast.error('Nombres, apellidos y fecha de nacimiento requeridos');
-      return;
-    }
+    if (!formData.nombres || !formData.apellidos) { toast.error('Nombres y Apellidos requeridos'); return; }
     setIsConfirmationOpen(true);
   };
 
@@ -225,7 +229,7 @@ const Pacientes: React.FC = () => {
             </div>
         ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-4">
-                {patientsPagination.paginatedItems.map(patient => (
+                {paginatedPatients.map(patient => (
                     <PatientCard key={patient.id} p={patient} />
                 ))}
             </div>
@@ -233,20 +237,32 @@ const Pacientes: React.FC = () => {
       </div>
 
       {!patientsLoading && filteredPatients.length > 0 && (
-        <DataPagination
-          className="shrink-0 rounded-lg border"
-          itemLabel="pacientes"
-          page={patientsPagination.page}
-          pageSize={patientsPagination.pageSize}
-          totalItems={patientsPagination.totalItems}
-          startIndex={patientsPagination.startIndex}
-          endIndex={patientsPagination.endIndex}
-          canPreviousPage={patientsPagination.canPreviousPage}
-          canNextPage={patientsPagination.canNextPage}
-          onPageSizeChange={patientsPagination.setPageSize}
-          onPreviousPage={patientsPagination.previousPage}
-          onNextPage={patientsPagination.nextPage}
-        />
+          <div className="flex items-center justify-between border-t pt-4 shrink-0">
+              <p className="text-sm text-muted-foreground hidden sm:block">
+                  Mostrando {paginatedPatients.length} de {filteredPatients.length} pacientes
+              </p>
+              <div className="flex items-center gap-2 mx-auto sm:mx-0">
+                  <Button 
+                    variant="outline" 
+                    size="icon" 
+                    onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                  >
+                      <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="text-sm font-medium">
+                      Página {currentPage} de {totalPages}
+                  </span>
+                  <Button 
+                    variant="outline" 
+                    size="icon" 
+                    onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                  >
+                      <ChevronRight className="h-4 w-4" />
+                  </Button>
+              </div>
+          </div>
       )}
 
       {/* Modal de Formulario */}
@@ -257,7 +273,7 @@ const Pacientes: React.FC = () => {
             <DialogDescription>Los campos marcados con * son obligatorios.</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleRequestSubmit} className="space-y-6 pt-2">
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="nombres">Nombres *</Label>
                     <Input id="nombres" value={formData.nombres} onChange={handleFormChange} required placeholder="Ej. Juan Carlos" />
@@ -268,27 +284,20 @@ const Pacientes: React.FC = () => {
                   </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="telefonoPrincipal">Teléfono</Label>
                     <Input id="telefonoPrincipal" value={formData.telefonoPrincipal} onChange={handleFormChange} placeholder="Opcional" />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="fechaNacimiento">Fecha Nacimiento *</Label>
-                    <DatePickerField
-                      value={formData.fechaNacimiento}
-                      onChange={(fechaNacimiento) => setFormData((current) => ({ ...current, fechaNacimiento }))}
-                      max={new Date().toISOString().split('T')[0]}
-                      toYear={new Date().getFullYear()}
-                      placeholder="Seleccionar nacimiento"
-                      required
-                    />
+                    <Input id="fechaNacimiento" type="date" value={formData.fechaNacimiento} onChange={handleFormChange} required />
                   </div>
               </div>
 
               <div className="border rounded-lg p-4 bg-muted/20 space-y-4">
                   <h4 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">Detalles Adicionales</h4>
-                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                         <Label>Sexo</Label>
                         <Select value={formData.sexo} onValueChange={(v: any) => setFormData(p => ({...p, sexo: v}))}>
