@@ -279,13 +279,37 @@ service cloud.firestore {
       allow delete: if hasPermission("users.delete");
 
       match /sesiones/{sessionId} {
-        allow read, write: if isSignedIn()
+        allow read: if (
+            isSignedIn()
+            && request.auth.uid == userId
+          )
+          || hasPermission("security.sessions.view");
+
+        allow create, update: if isSignedIn()
           && request.auth.uid == userId;
+
+        allow delete: if (
+            isSignedIn()
+            && request.auth.uid == userId
+          )
+          || hasPermission("security.sessions.revoke");
       }
 
       match /dispositivos/{deviceId} {
-        allow read, write: if isSignedIn()
+        allow read: if (
+            isSignedIn()
+            && request.auth.uid == userId
+          )
+          || hasPermission("security.sessions.view");
+
+        allow create, update: if isSignedIn()
           && request.auth.uid == userId;
+
+        allow delete: if (
+            isSignedIn()
+            && request.auth.uid == userId
+          )
+          || hasPermission("security.sessions.revoke");
       }
     }
 

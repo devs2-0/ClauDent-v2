@@ -1,4 +1,5 @@
 import { db } from '@/lib/firebase';
+import type { User } from 'firebase/auth';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
 
 type BrowserInfo = {
@@ -13,6 +14,13 @@ type DeviceInfo = {
   browserVersion: string;
   os: string;
   platform: string;
+  language: string;
+  timezone: string;
+  screen: string;
+  viewport: string;
+  userAgent: string;
+  online: boolean;
+  visibility: string;
 };
 
 const getOsName = (ua: string, platform: string) => {
@@ -89,6 +97,7 @@ export const getDeviceInfo = (): DeviceInfo => {
 
   const { browser, browserVersion } = parseBrowserInfo(ua, uaData);
   const os = getOsName(ua, platform);
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Zona desconocida';
 
   return {
     deviceType,
@@ -97,6 +106,13 @@ export const getDeviceInfo = (): DeviceInfo => {
     browserVersion,
     os,
     platform,
+    language: navigator.language || 'Idioma desconocido',
+    timezone,
+    screen: `${window.screen.width}x${window.screen.height}`,
+    viewport: `${window.innerWidth}x${window.innerHeight}`,
+    userAgent: ua,
+    online: navigator.onLine,
+    visibility: document.visibilityState,
   };
 };
 
@@ -112,21 +128,45 @@ export const getPersistentSessionId = () => {
 };
 
 // Registra o actualiza la última actividad sin crear un documento nuevo
-export const registerOrUpdateSession = async (uid: string) => {
+export const registerOrUpdateSession = async (uid: string, user?: User | null) => {
   const sessionId = getPersistentSessionId();
-  const { deviceType, deviceLabel, browser, browserVersion, os, platform } = getDeviceInfo();
-  const sessionRef = doc(db, `usuarios/${uid}/sesiones`, sessionId);
-
-  await setDoc(sessionRef, {
+  const {
     deviceType,
     deviceLabel,
     browser,
     browserVersion,
     os,
     platform,
+    language,
+    timezone,
+    screen,
+    viewport,
+    userAgent,
+    online,
+    visibility,
+  } = getDeviceInfo();
+  const sessionRef = doc(db, `usuarios/${uid}/sesiones`, sessionId);
+
+  await setDoc(sessionRef, {
+    userId: uid,
+    userEmail: user?.email ?? null,
+    userName: user?.displayName || user?.email || null,
+    deviceType,
+    deviceLabel,
+    browser,
+    browserVersion,
+    os,
+    platform,
+    language,
+    timezone,
+    screen,
+    viewport,
+    userAgent,
+    online,
+    visibility,
     lastActive: serverTimestamp(),
     updatedAt: serverTimestamp()
-  }, { merge: true }); // Merge evita duplicar la entrada
+  }, { merge: true });
 
   return sessionId;
 };

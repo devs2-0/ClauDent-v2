@@ -1,136 +1,430 @@
-import React from 'react';
-import { useAuth } from '@/auth';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/shared/components/ui/card';
-import { Button } from '@/shared/components/ui/button';
-import { Badge } from '@/shared/components/ui/badge';
-import { Monitor, Smartphone, Tablet, LogOut, ShieldCheck, Clock, CheckCircle2 } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from "react";
+import { collection, collectionGroup, deleteDoc, doc, onSnapshot } from "firebase/firestore";
+import {
+  CheckCircle2,
+  Clock,
+  Globe2,
+  Laptop,
+  LogOut,
+  Monitor,
+  Search,
+  ShieldCheck,
+  Smartphone,
+  Tablet,
+  UserRound,
+  Wifi,
+  WifiOff,
+} from "lucide-react";
+import { toast } from "sonner";
 
-const Seguridad: React.FC = () => {
-  const { sessions, revokeSession, closeAllOtherSessions } = useAuth();
+import { useAuth, usePermissions, type AppUser, type UserSession } from "@/auth";
+import { db } from "@/lib/firebase";
+import { Badge } from "@/shared/components/ui/badge";
+import { Button } from "@/shared/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/components/ui/card";
+import { Input } from "@/shared/components/ui/input";
+import { cn } from "@/shared/utils/utils";
 
-  const getIcon = (type: string) => {
-    if (type === "Celular") return <Smartphone className="h-6 w-6" />;
-    if (type === "Tablet") return <Tablet className="h-6 w-6" />;
-    return <Monitor className="h-6 w-6" />;
+type SessionWithUser = UserSession & {
+  userId: string;
+  userEmail: string;
+  userName: string;
+  userStatus?: string;
+  roleIds?: string[];
+};
+
+const toDate = (value: any): Date | null => {
+  if (!value) return null;
+  if (value instanceof Date) return value;
+  if (typeof value.toDate === "function") return value.toDate();
+  if (typeof value === "string") {
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }
+  return null;
+};
+
+const formatLastActive = (value: any) => {
+  const date = toDate(value);
+  if (!date) return "Sin registro";
+
+  const diffMs = Date.now() - date.getTime();
+  const diffMinutes = Math.max(0, Math.floor(diffMs / 60000));
+
+  if (diffMinutes < 1) return "Activo ahora";
+  if (diffMinutes === 1) return "Hace 1 minuto";
+  if (diffMinutes < 60) return `Hace ${diffMinutes} minutos`;
+
+  return date.toLocaleString("es-MX", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+};
+
+const isRecentlyActive = (session: SessionWithUser) => {
+  const date = toDate(session.lastActive);
+  if (!date) return false;
+  return Date.now() - date.getTime() < 2 * 60 * 1000;
+};
+
+const getDeviceIcon = (type: string) => {
+  if (type === "Celular") return Smartphone;
+  if (type === "Tablet") return Tablet;
+  if (type?.includes("Portatil")) return Laptop;
+  return Monitor;
+};
+
+const sessionSearchText = (session: SessionWithUser) => [
+  session.userName,
+  session.userEmail,
+  session.deviceType,
+  session.deviceLabel,
+  session.browser,
+  session.browserVersion,
+  session.os,
+  session.platform,
+  session.language,
+  session.timezone,
+  session.roleIds?.join(" "),
+].filter(Boolean).join(" ").toLowerCase();
+
+const SecurityPage: React.FC = () => {
+  const { currentUser, sessions, revokeSession, closeAllOtherSessions } = useAuth();
+  const { hasPermission } = usePermissions();
+  const canViewAllSessions = hasPermission("security.sessions.view");
+  const canRevokeAnySession = hasPermission("security.sessions.revoke");
+
+  const [users, setUsers] = useState<Record<string, AppUser>>({});
+  const [globalSessions, setGlobalSessions] = useState<SessionWithUser[]>([]);
+  const [isLoadingGlobalSessions, setIsLoadingGlobalSessions] = useState(false);
+  const [search, setSearch] = useState("");
+
+  const currentSessionId = sessions.find((session) => session.isCurrent)?.id ?? null;
+
+  useEffect(() => {
+    if (!canViewAllSessions) return;
+
+    setIsLoadingGlobalSessions(true);
+
+    const unsubscribeUsers = onSnapshot(collection(db, "usuarios"), (snapshot) => {
+      const nextUsers: Record<string, AppUser> = {};
+      snapshot.docs.forEach((userDoc) => {
+        nextUsers[userDoc.id] = {
+          uid: userDoc.id,
+          ...userDoc.data(),
+        } as AppUser;
+      });
+      setUsers(nextUsers);
+    });
+
+    const unsubscribeSessions = onSnapshot(
+      collectionGroup(db, "sesiones"),
+      (snapshot) => {
+        const nextSessions = snapshot.docs.map((sessionDoc) => {
+          const inferredUserId = sessionDoc.ref.parent.parent?.id ?? "";
+          const data = sessionDoc.data();
+
+          return {
+            id: sessionDoc.id,
+            userId: data.userId ?? inferredUserId,
+            userEmail: data.userEmail ?? "",
+            userName: data.userName ?? data.userEmail ?? "Usuario",
+            deviceType: data.deviceType ?? "Computadora",
+            deviceLabel: data.deviceLabel ?? data.deviceType ?? "Dispositivo",
+            browser: data.browser ?? "Navegador",
+            browserVersion: data.browserVersion ?? "",
+            os: data.os ?? "",
+            platform: data.platform ?? "",
+            language: data.language ?? "",
+            timezone: data.timezone ?? "",
+            screen: data.screen ?? "",
+            viewport: data.viewport ?? "",
+            userAgent: data.userAgent ?? "",
+            online: data.online === true,
+            visibility: data.visibility ?? "",
+            startedAt: data.startedAt ?? null,
+            updatedAt: data.updatedAt ?? null,
+            lastActive: data.lastActive ?? null,
+            isCurrent: data.userId === currentUser?.uid && sessionDoc.id === currentSessionId,
+          } as SessionWithUser;
+        });
+
+        setGlobalSessions(nextSessions);
+        setIsLoadingGlobalSessions(false);
+      },
+      (error) => {
+        setIsLoadingGlobalSessions(false);
+        toast.error(error.message || "No se pudieron cargar las sesiones globales");
+      },
+    );
+
+    return () => {
+      unsubscribeUsers();
+      unsubscribeSessions();
+    };
+  }, [canViewAllSessions, currentSessionId, currentUser?.uid]);
+
+  const ownSessions = useMemo<SessionWithUser[]>(() => {
+    return sessions.map((session) => ({
+      ...session,
+      userId: currentUser?.uid ?? "",
+      userEmail: currentUser?.email ?? "",
+      userName: currentUser?.displayName || currentUser?.email || "Tu cuenta",
+    }));
+  }, [currentUser, sessions]);
+
+  const enrichedSessions = useMemo(() => {
+    const source = canViewAllSessions ? globalSessions : ownSessions;
+
+    return source
+      .map((session) => {
+        const user = users[session.userId];
+        return {
+          ...session,
+          userEmail: user?.email ?? session.userEmail,
+          userName: user?.displayName || session.userName || user?.email || "Usuario",
+          userStatus: user?.status,
+          roleIds: user?.roleIds ?? session.roleIds ?? [],
+          isCurrent: session.userId === currentUser?.uid && session.id === currentSessionId,
+        };
+      })
+      .sort((a, b) => {
+        const dateA = toDate(a.lastActive)?.getTime() ?? 0;
+        const dateB = toDate(b.lastActive)?.getTime() ?? 0;
+        return dateB - dateA;
+      });
+  }, [canViewAllSessions, currentSessionId, currentUser?.uid, globalSessions, ownSessions, users]);
+
+  const filteredSessions = useMemo(() => {
+    const term = search.trim().toLowerCase();
+    if (!term) return enrichedSessions;
+    return enrichedSessions.filter((session) => sessionSearchText(session).includes(term));
+  }, [enrichedSessions, search]);
+
+  const activeNowCount = enrichedSessions.filter(isRecentlyActive).length;
+  const uniqueUserCount = new Set(enrichedSessions.map((session) => session.userId)).size;
+  const remoteSessionCount = enrichedSessions.filter((session) => !session.isCurrent).length;
+
+  const revokeGlobalSession = async (session: SessionWithUser) => {
+    if (session.isCurrent) return;
+
+    if (!canRevokeAnySession && session.userId !== currentUser?.uid) {
+      toast.error("Necesitas security.sessions.revoke para cerrar sesiones de otros usuarios");
+      return;
+    }
+
+    if (session.userId === currentUser?.uid) {
+      await revokeSession(session.id);
+      return;
+    }
+
+    await deleteDoc(doc(db, "usuarios", session.userId, "sesiones", session.id));
+    toast.success("Sesion remota cerrada");
   };
 
   return (
-    <div className="p-4 md:p-8 max-w-4xl mx-auto space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-500 pb-24 lg:pb-6">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2 italic text-primary">
-          <ShieldCheck className="h-8 w-8 md:h-9 md:w-9" /> Seguridad de Acceso
-        </h1>
-        <p className="text-muted-foreground text-sm">
-          Gestiona tus dispositivos activos y protege tu cuenta dental.
-        </p>
+    <div className="space-y-6 pb-24 lg:pb-6">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <h1 className="flex items-center gap-2 text-2xl font-semibold text-foreground">
+            <ShieldCheck className="h-7 w-7 text-primary" />
+            Seguridad de acceso
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Supervisa usuarios conectados, navegadores activos y actividad reciente.
+          </p>
+        </div>
+
+        {remoteSessionCount > 0 && !canViewAllSessions && (
+          <Button variant="destructive" onClick={closeAllOtherSessions}>
+            <LogOut className="mr-2 h-4 w-4" />
+            Cerrar mis otras sesiones
+          </Button>
+        )}
       </div>
 
-      <Card className="shadow-xl border-primary/20 bg-background/50 backdrop-blur-sm">
-        <CardHeader className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b pb-6 bg-muted/20">
-          <div>
-            <CardTitle className="text-lg sm:text-xl flex items-center gap-2">
-              Dispositivos Conectados
-            </CardTitle>
-            <CardDescription className="font-medium text-slate-500">
-              Sesiones activas en la plataforma
-            </CardDescription>
-          </div>
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-muted-foreground">Sesiones activas</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{enrichedSessions.length}</div>
+            <p className="text-xs text-muted-foreground">Documentos abiertos de sesion</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-muted-foreground">Usuarios conectados</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{uniqueUserCount}</div>
+            <p className="text-xs text-muted-foreground">Cuentas con al menos una sesion</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-muted-foreground">Actividad reciente</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{activeNowCount}</div>
+            <p className="text-xs text-muted-foreground">Actualizadas en los ultimos 2 minutos</p>
+          </CardContent>
+        </Card>
+      </div>
 
-          {sessions.length > 1 && (
-            <Button
-              variant="destructive"
-              size="sm"
-              onClick={closeAllOtherSessions}
-              className="font-bold shadow-lg sm:w-auto w-full"
-            >
-              Cerrar todas las demás
-            </Button>
-          )}
+      <Card>
+        <CardHeader className="gap-4 border-b">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <CardTitle>Sesiones de usuarios</CardTitle>
+              <CardDescription>
+                {canViewAllSessions
+                  ? "Vista administrativa de cuentas activas en la plataforma."
+                  : "Vista de tus sesiones activas."}
+              </CardDescription>
+            </div>
+            <div className="relative w-full lg:max-w-sm">
+              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Buscar usuario, correo, navegador..."
+                className="pl-9"
+              />
+            </div>
+          </div>
         </CardHeader>
 
-        <CardContent className="pt-6 space-y-4">
-          {sessions.map((session) => (
-            <div
-              key={session.id}
-              className={`p-4 sm:p-5 border-2 rounded-2xl transition-all ${
-                session.isCurrent
-                  ? 'bg-primary/5 border-primary/40 ring-2 ring-primary/10 shadow-inner'
-                  : 'bg-white border-slate-100 hover:border-emerald-200'
-              }`}
-            >
-              {/* ✅ En móvil: columna. En sm+: fila */}
-              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-                <div className="flex items-start sm:items-center gap-4">
-                  <div
-                    className={`p-3 sm:p-4 rounded-full shadow-md shrink-0 ${
-                      session.isCurrent ? 'bg-primary text-white' : 'bg-muted text-slate-500'
-                    }`}
-                  >
-                    {getIcon(session.deviceType)}
-                  </div>
-
-                  <div className="space-y-1 min-w-0">
-                    {/* ✅ título y badge: wrap en móvil */}
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-extrabold text-slate-800 break-words">
-                        {session.deviceType} • {session.browser}
-                      </p>
-
-                      {session.isCurrent ? (
-                        <Badge className="bg-primary text-white border-none px-3 py-0.5 text-[10px] font-black uppercase">
-                          Este Navegador (Tú)
-                        </Badge>
-                      ) : (
-                        <Badge className="bg-emerald-50 text-emerald-600 border-emerald-200 px-3 py-0.5 text-[10px] font-black uppercase flex items-center gap-1 shadow-sm">
-                          <CheckCircle2 className="h-3 w-3" /> Sesión Abierta
-                        </Badge>
-                      )}
-                    </div>
-
-                    <p className="text-xs text-muted-foreground font-semibold flex items-center gap-1.5">
-                      <Clock className="h-3.5 w-3.5 text-primary opacity-70" />
-                      {session.isCurrent ? 'Activo en este momento' : 'Sesión remota conectada'}
-                    </p>
-                  </div>
-                </div>
-
-                {/* ✅ Botón cerrar sesión: en móvil baja y ocupa espacio correcto */}
-                {!session.isCurrent && (
-                  <Button
-                    variant="outline"
-                    onClick={() => revokeSession(session.id)}
-                    className="w-full sm:w-auto font-semibold"
-                    title="Cerrar esta sesión remotamente"
-                  >
-                    <LogOut className="h-5 w-5 mr-2" />
-                    Cerrar sesión
-                  </Button>
-                )}
-              </div>
-            </div>
-          ))}
-
-          {sessions.length === 0 && (
-            <div className="text-center text-sm text-muted-foreground py-8">
-              No hay sesiones registradas.
+        <CardContent className="space-y-3 pt-6">
+          {isLoadingGlobalSessions && (
+            <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+              Cargando sesiones activas...
             </div>
           )}
+
+          {!isLoadingGlobalSessions && filteredSessions.length === 0 && (
+            <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+              No hay sesiones para mostrar.
+            </div>
+          )}
+
+          {filteredSessions.map((session) => {
+            const DeviceIcon = getDeviceIcon(session.deviceType);
+            const recent = isRecentlyActive(session);
+            const canCloseSession = !session.isCurrent && (canRevokeAnySession || session.userId === currentUser?.uid);
+
+            return (
+              <div
+                key={`${session.userId}-${session.id}`}
+                className={cn(
+                  "rounded-lg border p-4 transition-colors",
+                  session.isCurrent ? "border-primary/40 bg-primary/5" : "bg-card hover:bg-muted/30",
+                )}
+              >
+                <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="min-w-0 space-y-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-md bg-muted text-muted-foreground">
+                        <DeviceIcon className="h-5 w-5" />
+                      </span>
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold">{session.userName}</p>
+                          {session.isCurrent && <Badge>Este navegador</Badge>}
+                          {recent ? (
+                            <Badge className="bg-emerald-50 text-emerald-700 hover:bg-emerald-50">
+                              <CheckCircle2 className="mr-1 h-3 w-3" />
+                              Activa
+                            </Badge>
+                          ) : (
+                            <Badge variant="secondary">Sin actividad reciente</Badge>
+                          )}
+                        </div>
+                        <p className="text-sm text-muted-foreground">{session.userEmail}</p>
+                      </div>
+                    </div>
+
+                    <div className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
+                      <div>
+                        <p className="text-xs uppercase text-muted-foreground">Dispositivo</p>
+                        <p className="font-medium">{session.deviceLabel || session.deviceType}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase text-muted-foreground">Navegador</p>
+                        <p className="font-medium">
+                          {session.browser}{session.browserVersion ? ` ${session.browserVersion}` : ""}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase text-muted-foreground">Sistema</p>
+                        <p className="font-medium">{session.os || session.platform || "No detectado"}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase text-muted-foreground">Ultima actividad</p>
+                        <p className="flex items-center gap-1 font-medium">
+                          <Clock className="h-3.5 w-3.5 text-primary" />
+                          {formatLastActive(session.lastActive)}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                      {session.timezone && (
+                        <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1">
+                          <Globe2 className="h-3.5 w-3.5" />
+                          {session.timezone}
+                        </span>
+                      )}
+                      {session.language && <span className="rounded-md bg-muted px-2 py-1">{session.language}</span>}
+                      {session.screen && <span className="rounded-md bg-muted px-2 py-1">Pantalla {session.screen}</span>}
+                      {session.viewport && <span className="rounded-md bg-muted px-2 py-1">Ventana {session.viewport}</span>}
+                      <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1">
+                        {session.online ? <Wifi className="h-3.5 w-3.5" /> : <WifiOff className="h-3.5 w-3.5" />}
+                        {session.online ? "Online al ultimo pulso" : "Offline al ultimo pulso"}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2 xl:min-w-48">
+                    <div className="rounded-md border bg-muted/30 p-3 text-xs">
+                      <p className="flex items-center gap-1 font-semibold">
+                        <UserRound className="h-3.5 w-3.5" />
+                        Usuario
+                      </p>
+                      <p className="mt-1 text-muted-foreground">Estado: {session.userStatus || "sin perfil"}</p>
+                      <p className="text-muted-foreground">
+                        Roles: {session.roleIds && session.roleIds.length ? session.roleIds.join(", ") : "sin rol"}
+                      </p>
+                    </div>
+
+                    {!session.isCurrent && (
+                      <Button
+                        variant="outline"
+                        onClick={() => revokeGlobalSession(session)}
+                        disabled={!canCloseSession}
+                        title={canCloseSession ? "Cerrar esta sesion" : "Necesitas security.sessions.revoke"}
+                      >
+                        <LogOut className="mr-2 h-4 w-4" />
+                        Cerrar sesion
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </CardContent>
       </Card>
 
-      <div className="p-5 bg-blue-50 border border-blue-200 rounded-2xl shadow-sm">
-        <h4 className="font-bold text-blue-900 text-sm flex items-center gap-2">
-          💡 Tip de Seguridad
-        </h4>
-        <p className="text-xs text-blue-700 mt-1.5 font-medium leading-relaxed">
-          Si ves un dispositivo sospechoso con la etiqueta{" "}
-          <span className="font-black text-emerald-700 underline">Sesión Abierta</span>{" "}
-          que no reconoces, ciérrala de inmediato y cambia tu contraseña.
-        </p>
-      </div>
+      <Card className="border-amber-200 bg-amber-50">
+        <CardContent className="p-4 text-sm text-amber-900">
+          El navegador no expone IP publica confiable, direccion fisica ni ubicacion exacta. Para eso se necesita backend o Cloud Functions.
+          Este panel usa informacion real disponible desde el cliente y la ultima actividad registrada en Firestore.
+        </CardContent>
+      </Card>
     </div>
   );
 };
 
-export default Seguridad;
-
+export default SecurityPage;
