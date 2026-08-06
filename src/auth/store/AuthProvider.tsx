@@ -76,7 +76,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
       if (user) {
         sessionMissingNotifiedRef.current = false;
-        const currentSid = await registerOrUpdateSession(user.uid, user);
+        const sessionRegistration = await registerOrUpdateSession(user.uid, user);
+        const currentSid = sessionRegistration.sessionId;
         sessionIdRef.current = currentSid;
 
         const updateCurrentSession = () => {
@@ -129,8 +130,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
               return true;
             });
 
-            if (shouldLog) {
-              await addAuditLog("LOGIN", "sistema", "Inicio de sesion (nuevo dispositivo)");
+            if (sessionRegistration.createdNewSession) {
+              await addAuditLog(
+                "LOGIN",
+                "sistema",
+                shouldLog
+                  ? `Inicio de sesion (nuevo dispositivo) | Sesion: ${currentSid}`
+                  : `Inicio de sesion | Sesion: ${currentSid}`,
+              );
             }
           } finally {
             deviceLogInProgressRef.current = false;
