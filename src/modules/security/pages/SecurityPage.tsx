@@ -323,7 +323,7 @@ const SecurityPage: React.FC = () => {
         await addAuditLog(
           "REVOKE_SESSION",
           "seguridad",
-          `Sesion propia revocada: ${session.id} | ${session.browser} | ${session.os || session.platform || "Sin sistema"}`,
+          `Sesion propia cerrada en ${session.browser} (${session.os || session.platform || "sistema no detectado"})`,
         );
       } finally {
         setIsRevoking(false);
@@ -341,7 +341,7 @@ const SecurityPage: React.FC = () => {
       await addAuditLog(
         "REVOKE_SESSION",
         "seguridad",
-        `Sesion de usuario revocada: ${session.userName} <${session.userEmail}> | UID: ${session.userId} | Sesion: ${session.id} | ${session.browser} | ${session.os || session.platform || "Sin sistema"}`,
+        `Sesion de ${session.userName} cerrada en ${session.browser} (${session.os || session.platform || "sistema no detectado"})`,
       );
       toast.success("Sesion remota cerrada");
     } finally {
