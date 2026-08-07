@@ -135,8 +135,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
                 "LOGIN",
                 "sistema",
                 shouldLog
-                  ? `Inicio de sesion (nuevo dispositivo) | Sesion: ${currentSid}`
-                  : `Inicio de sesion | Sesion: ${currentSid}`,
+                  ? "Inicio de sesion desde un dispositivo nuevo"
+                  : "Inicio de sesion registrado",
               );
             }
           } finally {
@@ -198,7 +198,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (!user) return;
 
     await updateDoc(doc(db, `usuarios/${user.uid}/sesiones`, sid), buildRevokedSessionPayload("Sesion cerrada desde seguridad"));
-    await addAuditLog("UPDATE", "seguridad", `Sesion revocada ID: ${sid}`);
+    await addAuditLog("UPDATE", "seguridad", "Sesion cerrada desde seguridad");
   };
 
   const closeAllOtherSessions = async () => {

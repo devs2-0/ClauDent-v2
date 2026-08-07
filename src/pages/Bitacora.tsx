@@ -16,6 +16,12 @@ import {
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import {
+  getAuditActionLabel,
+  getAuditDetailLabel,
+  getAuditModuleLabel,
+  getAuditSearchText,
+} from "@/modules/audit/utils/auditDisplay";
 
 const PAGE_SIZE = 10;
 
@@ -35,13 +41,7 @@ const Bitacora: React.FC = () => {
   // Filtrado
   const logsFiltrados = useMemo(() => {
     const term = filtro.toLowerCase();
-    return logs.filter(l =>
-      (l.detalle || "").toLowerCase().includes(term) ||
-      (l.usuarioNombre || "").toLowerCase().includes(term) ||
-      (l.usuarioEmail || "").toLowerCase().includes(term) ||
-      (l.modulo || "").toLowerCase().includes(term) ||
-      (l.accion || "").toLowerCase().includes(term)
-    );
+    return logs.filter(l => getAuditSearchText(l).includes(term));
   }, [logs, filtro]);
 
   // Reset de página cuando cambia el filtro (para que no quede en página vacía)
@@ -173,7 +173,7 @@ const Bitacora: React.FC = () => {
                 <div className="flex items-center gap-2 text-xs">
                   <Layers className="h-4 w-4 text-muted-foreground" />
                   <span className="text-[11px] font-semibold px-2 py-0.5 bg-slate-100 rounded text-slate-600 uppercase tracking-tight">
-                    {log.modulo || '—'}
+                    {getAuditModuleLabel(log.modulo)}
                   </span>
                 </div>
               </div>
@@ -182,14 +182,14 @@ const Bitacora: React.FC = () => {
                 variant="outline"
                 className={`${getAccionColor(log.accion)} font-bold border shadow-sm text-[10px] px-2 py-1`}
               >
-                {log.accion || '—'}
+                {getAuditActionLabel(log.accion)}
               </Badge>
             </div>
 
             <div className="mt-3 flex items-start gap-2 text-sm text-slate-800">
               <ArrowRightCircle className="h-4 w-4 text-primary opacity-60 shrink-0 mt-0.5" />
               <p className="leading-snug break-words">
-                {log.detalle || '—'}
+                {getAuditDetailLabel(log.accion, log.detalle)}
               </p>
             </div>
           </Card>
@@ -239,18 +239,18 @@ const Bitacora: React.FC = () => {
                   <TableCell className="text-sm">{log.usuarioNombre || log.usuarioEmail}</TableCell>
                   <TableCell>
                     <Badge variant="outline" className={`${getAccionColor(log.accion)} font-bold border shadow-sm`}>
-                      {log.accion}
+                      {getAuditActionLabel(log.accion)}
                     </Badge>
                   </TableCell>
                   <TableCell>
                     <span className="text-xs font-semibold px-2 py-1 bg-slate-100 rounded text-slate-600 uppercase tracking-tight">
-                      {log.modulo}
+                      {getAuditModuleLabel(log.modulo)}
                     </span>
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-2 text-[13px] md:text-[14px] text-slate-800 font-medium">
                       <ArrowRightCircle className="h-4 w-4 text-primary opacity-50 shrink-0" />
-                      <span className="break-words">{log.detalle}</span>
+                      <span className="break-words">{getAuditDetailLabel(log.accion, log.detalle)}</span>
                     </div>
                   </TableCell>
                 </TableRow>
