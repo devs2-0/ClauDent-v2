@@ -1,5 +1,6 @@
 import { db } from '@/lib/firebase';
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import type { User } from 'firebase/auth';
+import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 
 type BrowserInfo = {
   browser: string;
@@ -13,6 +14,13 @@ type DeviceInfo = {
   browserVersion: string;
   os: string;
   platform: string;
+  language: string;
+  timezone: string;
+  screen: string;
+  viewport: string;
+  userAgent: string;
+  online: boolean;
+  visibility: string;
 };
 
 const getOsName = (ua: string, platform: string) => {
@@ -89,6 +97,7 @@ export const getDeviceInfo = (): DeviceInfo => {
 
   const { browser, browserVersion } = parseBrowserInfo(ua, uaData);
   const os = getOsName(ua, platform);
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Zona desconocida';
 
   return {
     deviceType,
@@ -97,36 +106,96 @@ export const getDeviceInfo = (): DeviceInfo => {
     browserVersion,
     os,
     platform,
+    language: navigator.language || 'Idioma desconocido',
+    timezone,
+    screen: `${window.screen.width}x${window.screen.height}`,
+    viewport: `${window.innerWidth}x${window.innerHeight}`,
+    userAgent: ua,
+    online: navigator.onLine,
+    visibility: document.visibilityState,
   };
+};
+
+const SESSION_STORAGE_KEY = 'claudent_session_id';
+
+const createSessionId = () => {
+  return 'sess_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
 };
 
 // PERSISTENCIA: Busca un ID guardado. Si no hay, crea uno fijo para este navegador.
 export const getPersistentSessionId = () => {
-  let sid = localStorage.getItem('claudent_session_id');
+  let sid = localStorage.getItem(SESSION_STORAGE_KEY);
   if (!sid) {
     // Solo se genera una vez en la vida de este navegador/app
-    sid = 'sess_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
-    localStorage.setItem('claudent_session_id', sid);
+    sid = createSessionId();
+    localStorage.setItem(SESSION_STORAGE_KEY, sid);
   }
   return sid;
 };
 
-// Registra o actualiza la última actividad sin crear un documento nuevo
-export const registerOrUpdateSession = async (uid: string) => {
-  const sessionId = getPersistentSessionId();
-  const { deviceType, deviceLabel, browser, browserVersion, os, platform } = getDeviceInfo();
-  const sessionRef = doc(db, `usuarios/${uid}/sesiones`, sessionId);
+export const rotatePersistentSessionId = () => {
+  const sid = createSessionId();
+  localStorage.setItem(SESSION_STORAGE_KEY, sid);
+  return sid;
+};
 
-  await setDoc(sessionRef, {
+const isRevokedSession = (data: Record<string, unknown> | undefined) => {
+  return data?.status === 'revoked' || Boolean(data?.revokedAt);
+};
+
+// Registra o actualiza la última actividad sin crear un documento nuevo
+export const registerOrUpdateSession = async (uid: string, user?: User | null) => {
+  let sessionId = getPersistentSessionId();
+  let createdNewSession = false;
+  const {
     deviceType,
     deviceLabel,
     browser,
     browserVersion,
     os,
     platform,
+    language,
+    timezone,
+    screen,
+    viewport,
+    userAgent,
+    online,
+    visibility,
+  } = getDeviceInfo();
+  let sessionRef = doc(db, `usuarios/${uid}/sesiones`, sessionId);
+  const existingSession = await getDoc(sessionRef);
+  createdNewSession = !existingSession.exists();
+
+  if (existingSession.exists() && isRevokedSession(existingSession.data())) {
+    sessionId = rotatePersistentSessionId();
+    sessionRef = doc(db, `usuarios/${uid}/sesiones`, sessionId);
+    createdNewSession = true;
+  }
+
+  await setDoc(sessionRef, {
+    userId: uid,
+    userEmail: user?.email ?? null,
+    userName: user?.displayName || user?.email || null,
+    deviceType,
+    deviceLabel,
+    browser,
+    browserVersion,
+    os,
+    platform,
+    language,
+    timezone,
+    screen,
+    viewport,
+    userAgent,
+    online,
+    visibility,
+    status: 'active',
     lastActive: serverTimestamp(),
     updatedAt: serverTimestamp()
-  }, { merge: true }); // Merge evita duplicar la entrada
+  }, { merge: true });
 
-  return sessionId;
+  return {
+    sessionId,
+    createdNewSession,
+  };
 };

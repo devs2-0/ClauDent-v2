@@ -668,6 +668,24 @@ service cloud.firestore {
 
       allow delete: if isAdmin();
     }
+    
+    match /notificacionesAgenda/{notificationId} {
+      allow read: if isSignedIn();
+
+      allow create: if isSignedIn();
+
+      allow update: if isSignedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "read",
+          "readAt",
+          "readBy",
+          "updatedAt"
+        ])
+        && request.resource.data.read == true
+        && request.resource.data.readBy == request.auth.uid;
+
+      allow delete: if isAdmin();
+    }
 
     match /{document=**} {
       allow read: if isSignedIn();

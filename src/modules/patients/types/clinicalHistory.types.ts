@@ -1,9 +1,21 @@
+export interface ClinicalMaterialUsage {
+  productoId: string;
+  productoNombre: string;
+  cantidad: number;
+  unidad?: string;
+  stockAnterior?: number;
+  stockNuevo?: number;
+  movimientoId?: string;
+}
+
 export interface HistoryEntry {
   id: string;
   fecha: string;
   servicios: { servicioId: string; cantidad: number }[];
+  materialesClinicos?: ClinicalMaterialUsage[];
   notas: string;
   total: number;
+  citaId?: string | null;
 }
 
 export interface IHistoriaGeneral {

@@ -1,10 +1,11 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   Banknote,
   BarChart3,
   CheckCircle2,
   CircleDollarSign,
+  Clock,
   ClipboardCheck,
   CreditCard,
   Download,
@@ -16,12 +17,15 @@ import {
   Power,
   ReceiptText,
   Search,
+  Settings,
+  Trash2,
   TrendingDown,
   TrendingUp,
   Unlock,
   WalletCards,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useCan } from "@/auth";
 import { DataPagination } from "@/shared/components/DataPagination";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
@@ -37,6 +41,7 @@ import {
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/components/ui/select";
+import { Switch } from "@/shared/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/components/ui/tabs";
 import {
   Table,
@@ -47,10 +52,11 @@ import {
   TableRow,
 } from "@/shared/components/ui/table";
 import { Textarea } from "@/shared/components/ui/textarea";
-import { formatCurrency, formatDate } from "@/shared/utils/utils";
+import { cn, formatCurrency, formatDate } from "@/shared/utils/utils";
 import { usePagination } from "@/shared/hooks/usePagination";
 import { useInventory, type InventoryMovement } from "@/modules/inventario";
 import { useCashRegister } from "../hooks/useCashRegister";
+import { defaultCashShiftSettings } from "../services/cashShiftSettingsService";
 import {
   exportCashCutCsv,
   exportCashCutPdf,
@@ -59,7 +65,7 @@ import {
   type CashCutExportData,
   type FinancialReportExportData,
 } from "../services/financialReportExport";
-import type { CashClosureTotals, CashCutSummary, CashExpenseCategory, CashMovement, CashMovementType, PaymentMethod } from "../types/cash.types";
+import type { CashClosureTotals, CashCutSummary, CashExpenseCategory, CashMovement, CashMovementType, CashShiftDefinition, CashShiftSettings, PaymentMethod } from "../types/cash.types";
 
 const today = () => {
   const now = new Date();
@@ -102,6 +108,8 @@ const calculateVariation = (current: number, previous: number) => {
 };
 
 const formatVariation = (value: number) => `${value > 0 ? "+" : ""}${value.toFixed(1)}%`;
+
+const createShiftId = () => `turno-${Date.now()}`;
 
 const paymentMethods: PaymentMethod[] = ["efectivo", "tarjeta", "transferencia"];
 const cashExpenseCategories: CashExpenseCategory[] = ["suministros", "servicios", "renta", "nomina", "mantenimiento", "otros"];
@@ -163,6 +171,36 @@ const isOpeningCashMovement = (movement: Pick<CashMovement, "concepto" | "refere
 };
 
 const getUserDisplayName = (name?: string, email?: string) => name || email || "Admin";
+
+const cashConceptOrder = ["Ventas directas", "Tratamientos / cotizaciones", "Abonos", "Ingresos manuales", "Otros ingresos"];
+
+const getIncomeConceptLabel = (
+  movement: CashMovement,
+  paymentById: Map<string, { origen?: string }>,
+) => {
+  if (movement.referenciaTipo === "manual") return "Ingresos manuales";
+  if (movement.referenciaTipo === "cotizacion" || movement.referenciaTipo === "tratamiento") return "Tratamientos / cotizaciones";
+
+  const paymentOrigin = movement.referenciaId ? paymentById.get(movement.referenciaId)?.origen : null;
+  if (paymentOrigin === "cotizacion") return "Tratamientos / cotizaciones";
+  if (paymentOrigin === "abono") return "Abonos";
+  if (paymentOrigin === "venta_directa") return "Ventas directas";
+
+  return movement.referenciaTipo === "pago" ? "Ventas directas" : "Otros ingresos";
+};
+
+const sortByCashConceptOrder = <T extends { concepto?: string; categoria?: string; total: number }>(rows: T[]) => {
+  return [...rows].sort((a, b) => {
+    const aLabel = a.concepto ?? a.categoria ?? "";
+    const bLabel = b.concepto ?? b.categoria ?? "";
+    const aIndex = cashConceptOrder.indexOf(aLabel);
+    const bIndex = cashConceptOrder.indexOf(bLabel);
+    if (aIndex !== -1 || bIndex !== -1) {
+      return (aIndex === -1 ? cashConceptOrder.length : aIndex) - (bIndex === -1 ? cashConceptOrder.length : bIndex);
+    }
+    return b.total - a.total;
+  });
+};
 
 const buildCashSummary = (movements: CashMovement[]): CashCutSummary => {
   const summary = createEmptyCashSummary();
@@ -293,12 +331,17 @@ const CajaPage: React.FC = () => {
     cashClosures,
     cashMovements,
     cashMovementsLoading,
+    cashShiftSettings,
+    cashShiftSettingsLoading,
     openCashRegister,
     createCashMovement,
     createPayment,
     closeCashRegister,
     autoCloseCashRegister,
+    updateCashShiftSettings,
   } = useCashRegister();
+  const { can } = useCan();
+  const canManageCashSettings = can("settings.update");
   const {
     movements: inventoryMovements,
     movementsLoading: inventoryMovementsLoading,
@@ -307,6 +350,7 @@ const CajaPage: React.FC = () => {
   const [search, setSearch] = useState("");
   const [methodFilter, setMethodFilter] = useState<PaymentMethod | "todos">("todos");
   const [dateFilter, setDateFilter] = useState(() => today());
+  const [currentSystemDate, setCurrentSystemDate] = useState(() => today());
   const [reportStartDate, setReportStartDate] = useState(() => startOfCurrentMonth());
   const [reportEndDate, setReportEndDate] = useState(() => today());
   const [activeTab, setActiveTab] = useState("pagos");
@@ -317,10 +361,14 @@ const CajaPage: React.FC = () => {
   const [isClosingCash, setIsClosingCash] = useState(false);
   const [isAutoClosingCash, setIsAutoClosingCash] = useState(false);
   const [isSavingCashMovement, setIsSavingCashMovement] = useState(false);
+  const [isSavingShiftSettings, setIsSavingShiftSettings] = useState(false);
+  const [hasUnsavedShiftSettingsChanges, setHasUnsavedShiftSettingsChanges] = useState(false);
+  const midnightAutoCloseAttemptRef = useRef<string | null>(null);
 
   const [isOpenCashDialogOpen, setIsOpenCashDialogOpen] = useState(false);
   const [isCashMovementDialogOpen, setIsCashMovementDialogOpen] = useState(false);
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
+  const [isShiftSettingsConfirmOpen, setIsShiftSettingsConfirmOpen] = useState(false);
 
   const [paymentForm, setPaymentForm] = useState({
     pacienteNombre: "",
@@ -337,6 +385,7 @@ const CajaPage: React.FC = () => {
 
   const [openCashForm, setOpenCashForm] = useState({
     fondoInicial: "",
+    turnoId: "",
     observaciones: "",
   });
 
@@ -349,6 +398,21 @@ const CajaPage: React.FC = () => {
     monto: "",
     nota: "",
   });
+
+  const [shiftSettingsForm, setShiftSettingsForm] = useState<CashShiftSettings>(cashShiftSettings);
+
+  useEffect(() => {
+    if (hasUnsavedShiftSettingsChanges) return;
+    setShiftSettingsForm(cashShiftSettings);
+  }, [cashShiftSettings, hasUnsavedShiftSettingsChanges]);
+
+  useEffect(() => {
+    const intervalId = window.setInterval(() => {
+      setCurrentSystemDate(today());
+    }, 60000);
+
+    return () => window.clearInterval(intervalId);
+  }, []);
 
   const filteredPayments = useMemo(() => {
     const term = search.toLowerCase().trim();
@@ -371,6 +435,22 @@ const CajaPage: React.FC = () => {
     [cashClosures],
   );
 
+  useEffect(() => {
+    if (!openCashClosure) return;
+    if (openCashClosure.fecha >= currentSystemDate) return;
+    if (midnightAutoCloseAttemptRef.current === openCashClosure.id) return;
+
+    midnightAutoCloseAttemptRef.current = openCashClosure.id;
+    autoCloseCashRegister(`Cierre automatico por cambio de dia. La caja del ${openCashClosure.fecha} no se cerro antes de medianoche.`)
+      .then(() => {
+        toast.success(`Caja del ${formatDate(openCashClosure.fecha)} cerrada automaticamente por medianoche`);
+      })
+      .catch((error: any) => {
+        midnightAutoCloseAttemptRef.current = null;
+        toast.error(error.message || "No se pudo cerrar automaticamente la caja vencida");
+      });
+  }, [autoCloseCashRegister, currentSystemDate, openCashClosure]);
+
   const selectedDateCashMovements = useMemo(() => {
     return cashMovements.filter((movement) => !dateFilter || movement.fecha === dateFilter);
   }, [cashMovements, dateFilter]);
@@ -389,8 +469,13 @@ const CajaPage: React.FC = () => {
   const hasAnyClosureForDate = closuresForDate.length > 0;
   const hasOpenCashForSelectedDate = openCashClosure?.fecha === dateFilter;
   const hasOpenCashForAnotherDate = Boolean(openCashClosure && openCashClosure.fecha !== dateFilter);
-  const canOpenSelectedDate = !openCashClosure;
+  const canOpenSelectedDate = !openCashClosure && (cashShiftSettings.permitirMultiplesCortesPorDia || !hasAnyClosureForDate);
   const openCashButtonLabel = openCashClosure ? "Caja abierta" : "Abrir caja";
+  const activeConfiguredShifts = useMemo(
+    () => cashShiftSettings.turnos.filter((shift) => shift.activo),
+    [cashShiftSettings.turnos],
+  );
+  const selectedOpeningShift = activeConfiguredShifts.find((shift) => shift.id === openCashForm.turnoId) ?? null;
 
   const selectedClosureForDetail = useMemo(() => {
     const explicitClosure = selectedClosureId
@@ -418,6 +503,40 @@ const CajaPage: React.FC = () => {
 
   const openCashSummary = useMemo(() => buildCashSummary(openCashMovements), [openCashMovements]);
   const cashSummary = useMemo(() => buildCashSummary(displayedCashMovements), [displayedCashMovements]);
+  const paymentById = useMemo(
+    () => new Map(payments.map((payment) => [payment.id, payment])),
+    [payments],
+  );
+  const cutIncomeByConcept = useMemo(() => {
+    const conceptMap = new Map<string, { concepto: string; movimientos: number; total: number }>();
+
+    activeDisplayedCashMovements
+      .filter((movement) => movement.tipo === "ingreso" && !isOpeningCashMovement(movement))
+      .forEach((movement) => {
+        const concept = getIncomeConceptLabel(movement, paymentById);
+        const current = conceptMap.get(concept) ?? { concepto: concept, movimientos: 0, total: 0 };
+        current.movimientos += 1;
+        current.total += Number(movement.monto) || 0;
+        conceptMap.set(concept, current);
+      });
+
+    return sortByCashConceptOrder(Array.from(conceptMap.values()));
+  }, [activeDisplayedCashMovements, paymentById]);
+  const cutExpensesByCategory = useMemo(() => {
+    const categoryMap = new Map<string, { categoria: string; movimientos: number; total: number }>();
+
+    activeDisplayedCashMovements
+      .filter((movement) => movement.tipo === "egreso")
+      .forEach((movement) => {
+        const category = getExpenseCategoryLabel(movement.categoriaGasto);
+        const current = categoryMap.get(category) ?? { categoria: category, movimientos: 0, total: 0 };
+        current.movimientos += 1;
+        current.total += Number(movement.monto) || 0;
+        categoryMap.set(category, current);
+      });
+
+    return Array.from(categoryMap.values()).sort((a, b) => b.total - a.total);
+  }, [activeDisplayedCashMovements]);
   const cashSummaryForClosing = openCashClosure ? openCashSummary : cashSummary;
   const normalizedReportStartDate = reportStartDate <= reportEndDate ? reportStartDate : reportEndDate;
   const normalizedReportEndDate = reportStartDate <= reportEndDate ? reportEndDate : reportStartDate;
@@ -567,6 +686,8 @@ const CajaPage: React.FC = () => {
       egresos: method.egresos,
       neto: method.neto,
     })),
+    ingresosPorConcepto: cutIncomeByConcept,
+    gastosPorCategoria: cutExpensesByCategory,
     movimientos: displayedCashMovements.map((movement) => ({
       fecha: movement.fecha,
       tipo: isOpeningCashMovement(movement) ? "apertura" : movement.tipo,
@@ -576,7 +697,7 @@ const CajaPage: React.FC = () => {
       monto: movement.tipo === "egreso" ? -Math.abs(Number(movement.monto) || 0) : Number(movement.monto) || 0,
       usuario: getUserDisplayName(movement.usuarioNombre, movement.usuarioEmail),
     })),
-  }), [cashSummary, dateFilter, displayedCashMovements, selectedClosureForDetail, selectedClosureLabel]);
+  }), [cashSummary, cutExpensesByCategory, cutIncomeByConcept, dateFilter, displayedCashMovements, selectedClosureForDetail, selectedClosureLabel]);
 
   const handleAddPayment = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -613,6 +734,93 @@ const CajaPage: React.FC = () => {
     }
   };
 
+  const updateShiftSettingsForm = (updates: Partial<CashShiftSettings>) => {
+    setHasUnsavedShiftSettingsChanges(true);
+    setShiftSettingsForm((current) => ({ ...current, ...updates }));
+  };
+
+  const updateShiftRow = (shiftId: string, updates: Partial<CashShiftDefinition>) => {
+    setHasUnsavedShiftSettingsChanges(true);
+    setShiftSettingsForm((current) => ({
+      ...current,
+      turnos: current.turnos.map((shift) => (
+        shift.id === shiftId ? { ...shift, ...updates } : shift
+      )),
+    }));
+  };
+
+  const addShiftRow = () => {
+    setHasUnsavedShiftSettingsChanges(true);
+    setShiftSettingsForm((current) => ({
+      ...current,
+      turnos: [
+        ...current.turnos,
+        {
+          id: createShiftId(),
+          nombre: `Turno ${current.turnos.length + 1}`,
+          horaInicio: "08:00",
+          horaFin: "14:00",
+          activo: true,
+        },
+      ],
+    }));
+  };
+
+  const restoreDefaultSouthMexicoShifts = () => {
+    setHasUnsavedShiftSettingsChanges(true);
+    setShiftSettingsForm((current) => ({
+      ...current,
+      modo: "programado",
+      turnos: defaultCashShiftSettings.turnos,
+    }));
+  };
+
+  const removeShiftRow = (shiftId: string) => {
+    setHasUnsavedShiftSettingsChanges(true);
+    setShiftSettingsForm((current) => ({
+      ...current,
+      turnos: current.turnos.filter((shift) => shift.id !== shiftId),
+    }));
+  };
+
+  const handleRequestSaveShiftSettings = () => {
+    if (!hasUnsavedShiftSettingsChanges) return;
+    setIsShiftSettingsConfirmOpen(true);
+  };
+
+  const handleConfirmSaveShiftSettings = async () => {
+    if (shiftSettingsForm.modo === "programado" && shiftSettingsForm.turnos.filter((shift) => shift.activo).length === 0) {
+      toast.error("Agrega al menos un turno activo para el modo programado");
+      return;
+    }
+
+    setIsSavingShiftSettings(true);
+    try {
+      const nextSettings = {
+        ...shiftSettingsForm,
+        fondoInicialSugerido: Number(shiftSettingsForm.fondoInicialSugerido) || 0,
+        toleranciaDiferencia: Number(shiftSettingsForm.toleranciaDiferencia) || 0,
+      };
+
+      await updateCashShiftSettings(nextSettings);
+      setShiftSettingsForm(nextSettings);
+      setHasUnsavedShiftSettingsChanges(false);
+      setIsShiftSettingsConfirmOpen(false);
+    } catch (error: any) {
+      const isPermissionError =
+        error?.code === "permission-denied" ||
+        String(error?.message ?? "").toLowerCase().includes("permission");
+
+      toast.error(
+        isPermissionError
+          ? "No tienes permiso para modificar la configuracion de turnos. Solicita acceso de administrador o el permiso settings.update."
+          : error.message || "No se pudo guardar la configuracion de turnos",
+      );
+    } finally {
+      setIsSavingShiftSettings(false);
+    }
+  };
+
   const handleOpenCashRegister = async (event: React.FormEvent) => {
     event.preventDefault();
 
@@ -621,14 +829,28 @@ const CajaPage: React.FC = () => {
       return;
     }
 
+    if (cashShiftSettings.fondoInicialRequerido && !openCashForm.fondoInicial) {
+      toast.error("El fondo inicial es obligatorio por configuracion");
+      return;
+    }
+
+    if (cashShiftSettings.modo === "programado" && !selectedOpeningShift) {
+      toast.error("Selecciona un turno para abrir caja");
+      return;
+    }
+
     setIsOpeningCash(true);
     try {
       await openCashRegister({
         fecha: dateFilter || today(),
         fondoInicial: Number(openCashForm.fondoInicial) || 0,
+        turnoId: selectedOpeningShift?.id ?? null,
+        turnoNombre: selectedOpeningShift?.nombre ?? "",
+        horaInicioProgramada: selectedOpeningShift?.horaInicio ?? "",
+        horaFinProgramada: selectedOpeningShift?.horaFin ?? "",
         observaciones: openCashForm.observaciones,
       });
-      setOpenCashForm({ fondoInicial: "", observaciones: "" });
+      setOpenCashForm({ fondoInicial: "", turnoId: "", observaciones: "" });
       setIsOpenCashDialogOpen(false);
     } catch (error: any) {
       toast.error(error.message || "No se pudo abrir la caja");
@@ -713,6 +935,11 @@ const CajaPage: React.FC = () => {
   const handleAutoCloseCashRegister = async () => {
     if (!openCashClosure) {
       toast.error("No hay una caja abierta para cerrar");
+      return;
+    }
+
+    if (!cashShiftSettings.permitirCierreAutomatico) {
+      toast.error("El cierre automatico esta desactivado por configuracion");
       return;
     }
 
@@ -951,7 +1178,12 @@ const CajaPage: React.FC = () => {
               </Button>
             )}
             {openCashClosure && (
-              <Button type="button" variant="secondary" onClick={handleAutoCloseCashRegister} disabled={isAutoClosingCash || isClosingCash}>
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={handleAutoCloseCashRegister}
+                disabled={isAutoClosingCash || isClosingCash || !cashShiftSettings.permitirCierreAutomatico}
+              >
                 <CheckCircle2 className="mr-2 h-4 w-4" />
                 {isAutoClosingCash ? "Cerrando..." : "Cerrar automatico"}
               </Button>
@@ -961,10 +1193,11 @@ const CajaPage: React.FC = () => {
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid h-auto w-full grid-cols-3 md:w-fit">
+        <TabsList className={cn("grid h-auto w-full md:w-fit", canManageCashSettings ? "grid-cols-4" : "grid-cols-3")}>
           <TabsTrigger value="pagos">Pagos</TabsTrigger>
           <TabsTrigger value="corte">Corte</TabsTrigger>
           <TabsTrigger value="reportes">Reportes</TabsTrigger>
+          {canManageCashSettings && <TabsTrigger value="configuracion">Configuracion</TabsTrigger>}
         </TabsList>
 
         <TabsContent value="pagos" className="space-y-4">
@@ -1226,6 +1459,17 @@ const CajaPage: React.FC = () => {
                   {selectedClosureForDetail && (
                     <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                       <div className="rounded-lg border bg-background p-3">
+                        <p className="text-xs text-muted-foreground">Turno</p>
+                        <p className="text-lg font-semibold">
+                          {selectedClosureForDetail.turnoNombre || "Manual"}
+                        </p>
+                        {selectedClosureForDetail.horaInicioProgramada && selectedClosureForDetail.horaFinProgramada && (
+                          <p className="text-xs text-muted-foreground">
+                            {selectedClosureForDetail.horaInicioProgramada} - {selectedClosureForDetail.horaFinProgramada}
+                          </p>
+                        )}
+                      </div>
+                      <div className="rounded-lg border bg-background p-3">
                         <p className="text-xs text-muted-foreground">Efectivo contado</p>
                         <p className="text-lg font-semibold">
                           {selectedClosureForDetail.estado === "cerrado"
@@ -1333,6 +1577,12 @@ const CajaPage: React.FC = () => {
                                     : "Cerrado manual"}
                               </Badge>
                               <p className="font-semibold">Corte {closureNumber}</p>
+                              {closure.turnoNombre && (
+                                <Badge variant="outline">
+                                  <Clock className="mr-1 h-3 w-3" />
+                                  {closure.turnoNombre}
+                                </Badge>
+                              )}
                               <p className="text-sm text-muted-foreground">
                                 Inicio {formatDate(closure.inicio)}
                                 {closure.fin ? ` - cierre ${formatDate(closure.fin)}` : ""}
@@ -1410,6 +1660,62 @@ const CajaPage: React.FC = () => {
                   })}
                 </CardContent>
               </Card>
+
+              <div className="grid gap-4 xl:grid-cols-2">
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Ingresos por concepto</CardTitle>
+                    <CardDescription>Ventas directas, tratamientos, abonos e ingresos manuales del corte.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {cutIncomeByConcept.length === 0 ? (
+                      <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                        No hay ingresos registrados en este corte.
+                      </div>
+                    ) : (
+                      cutIncomeByConcept.map((row) => (
+                        <div key={row.concepto} className="grid gap-2 rounded-lg border p-3 sm:grid-cols-[1fr_auto_auto] sm:items-center">
+                          <div>
+                            <p className="font-medium">{row.concepto}</p>
+                            <p className="text-xs text-muted-foreground">{row.movimientos} movimientos</p>
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            {cashSummary.totalIngresos > 0 ? `${((row.total / cashSummary.totalIngresos) * 100).toFixed(1)}%` : "0%"}
+                          </p>
+                          <p className="font-semibold text-emerald-700">{formatCurrency(row.total)}</p>
+                        </div>
+                      ))
+                    )}
+                  </CardContent>
+                </Card>
+
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Gastos por categoria</CardTitle>
+                    <CardDescription>Total de egresos del corte agrupados por categoria.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    {cutExpensesByCategory.length === 0 ? (
+                      <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                        No hay gastos registrados en este corte.
+                      </div>
+                    ) : (
+                      cutExpensesByCategory.map((row) => (
+                        <div key={row.categoria} className="grid gap-2 rounded-lg border p-3 sm:grid-cols-[1fr_auto_auto] sm:items-center">
+                          <div>
+                            <p className="font-medium">{row.categoria}</p>
+                            <p className="text-xs text-muted-foreground">{row.movimientos} movimientos</p>
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            {cashSummary.totalEgresos > 0 ? `${((row.total / cashSummary.totalEgresos) * 100).toFixed(1)}%` : "0%"}
+                          </p>
+                          <p className="font-semibold text-destructive">{formatCurrency(row.total)}</p>
+                        </div>
+                      ))
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
 
               <Card className="overflow-hidden">
                 <CardHeader>
@@ -1532,7 +1838,12 @@ const CajaPage: React.FC = () => {
                     <ReceiptText className="mr-2 h-4 w-4" />
                     Movimiento de caja
                   </Button>
-                  <Button type="button" variant="secondary" onClick={handleAutoCloseCashRegister} disabled={!openCashClosure || isAutoClosingCash || isClosingCash}>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={handleAutoCloseCashRegister}
+                    disabled={!openCashClosure || isAutoClosingCash || isClosingCash || !cashShiftSettings.permitirCierreAutomatico}
+                  >
                     <CheckCircle2 className="mr-2 h-4 w-4" />
                     {isAutoClosingCash ? "Cerrando..." : "Cerrar automatico"}
                   </Button>
@@ -1873,6 +2184,285 @@ const CajaPage: React.FC = () => {
           </Card>
         </TabsContent>
 
+        {canManageCashSettings && (
+          <TabsContent value="configuracion" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Settings className="h-5 w-5 text-primary" />
+                      Configuracion de turnos
+                    </CardTitle>
+                    <CardDescription>
+                      Define como se abre caja, que reglas aplican al cierre y que turnos puede seleccionar recepcion.
+                    </CardDescription>
+                  </div>
+                  <div className="flex flex-col items-stretch gap-2 sm:items-end">
+                    <Button
+                      type="button"
+                      onClick={handleRequestSaveShiftSettings}
+                      disabled={isSavingShiftSettings || !hasUnsavedShiftSettingsChanges}
+                    >
+                      {isSavingShiftSettings ? "Guardando..." : "Guardar configuracion"}
+                    </Button>
+                    <p className="text-xs text-muted-foreground">
+                      {hasUnsavedShiftSettingsChanges ? "Hay cambios sin guardar." : "Configuracion guardada."}
+                    </p>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid gap-3 rounded-lg border border-emerald-200 bg-emerald-50 p-4 lg:grid-cols-[1fr_auto] lg:items-center">
+                  <div className="flex items-start gap-3">
+                    <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-md bg-emerald-600 text-white">
+                      <Clock className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold">Turnos establecidos para operacion diaria</p>
+                        <Badge className="bg-emerald-600 text-white hover:bg-emerald-600">
+                          {shiftSettingsForm.modo === "programado" ? "Por horario activo" : "Modo manual"}
+                        </Badge>
+                      </div>
+                      <p className="text-sm text-muted-foreground">
+                        Sugerido para clinicas del sur de Mexico: Matutino 08:00-14:00 y Vespertino 16:00-20:00.
+                      </p>
+                    </div>
+                  </div>
+                  <Button type="button" variant="outline" onClick={restoreDefaultSouthMexicoShifts} disabled={isSavingShiftSettings}>
+                    Restaurar sugeridos
+                  </Button>
+                </div>
+
+                <div className="grid gap-3 lg:grid-cols-3">
+                  <button
+                    type="button"
+                    className={cn(
+                      "rounded-lg border bg-background p-4 text-left transition-colors",
+                      shiftSettingsForm.modo === "manual" && "border-primary bg-primary/5 ring-1 ring-primary/30",
+                    )}
+                    onClick={() => updateShiftSettingsForm({ modo: "manual" })}
+                    disabled={isSavingShiftSettings}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Unlock className="h-4 w-4 text-primary" />
+                      <p className="font-semibold">Manual</p>
+                      {shiftSettingsForm.modo === "manual" && <Badge>Activo</Badge>}
+                    </div>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      Permite abrir caja sin escoger horario. Sirve para guardias, dias especiales o clinicas con una sola recepcion.
+                    </p>
+                  </button>
+                  <button
+                    type="button"
+                    className={cn(
+                      "rounded-lg border bg-background p-4 text-left transition-colors",
+                      shiftSettingsForm.modo === "programado" && "border-primary bg-primary/5 ring-1 ring-primary/30",
+                    )}
+                    onClick={() => updateShiftSettingsForm({ modo: "programado" })}
+                    disabled={isSavingShiftSettings}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-4 w-4 text-primary" />
+                      <p className="font-semibold">Por horario</p>
+                      {shiftSettingsForm.modo === "programado" && <Badge>Activo</Badge>}
+                    </div>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      Obliga a seleccionar Matutino, Vespertino u otro turno. Sirve para comparar ingresos y diferencias por responsable o horario.
+                    </p>
+                  </button>
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 text-amber-600" />
+                      <p className="font-semibold">Cierre a medianoche</p>
+                    </div>
+                    <p className="mt-2 text-sm text-muted-foreground">
+                      Independientemente del turno, si una caja queda abierta al cambiar de dia, el sistema la cierra automaticamente como corte vencido.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 lg:grid-cols-3">
+                  <div className="space-y-2">
+                    <Label>Modo de turno</Label>
+                    <Select
+                      value={shiftSettingsForm.modo}
+                      onValueChange={(value) => updateShiftSettingsForm({ modo: value as CashShiftSettings["modo"] })}
+                      disabled={isSavingShiftSettings}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="manual">Manual</SelectItem>
+                        <SelectItem value="programado">Por horario</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      {shiftSettingsForm.modo === "manual"
+                        ? "Al abrir caja no se pedira turno; los cortes quedan como Manual."
+                        : "Al abrir caja sera obligatorio seleccionar uno de los turnos activos."}
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Fondo inicial sugerido</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={shiftSettingsForm.fondoInicialSugerido}
+                      onChange={(event) => updateShiftSettingsForm({ fondoInicialSugerido: Number(event.target.value) || 0 })}
+                      disabled={isSavingShiftSettings}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label>Tolerancia de diferencia</Label>
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={shiftSettingsForm.toleranciaDiferencia}
+                      onChange={(event) => updateShiftSettingsForm({ toleranciaDiferencia: Number(event.target.value) || 0 })}
+                      disabled={isSavingShiftSettings}
+                    />
+                    <p className="text-xs text-muted-foreground">Referencia administrativa para diferencias de efectivo.</p>
+                  </div>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                  <div className="flex items-center justify-between gap-3 rounded-lg border p-4">
+                    <div>
+                      <p className="font-medium">Multiples cortes por dia</p>
+                      <p className="text-xs text-muted-foreground">Permite abrir otro corte en la misma fecha.</p>
+                    </div>
+                    <Switch
+                      checked={shiftSettingsForm.permitirMultiplesCortesPorDia}
+                      onCheckedChange={(checked) => updateShiftSettingsForm({ permitirMultiplesCortesPorDia: checked })}
+                      disabled={isSavingShiftSettings}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3 rounded-lg border p-4">
+                    <div>
+                      <p className="font-medium">Cierre automatico</p>
+                      <p className="text-xs text-muted-foreground">Habilita el boton de cierre automatico.</p>
+                    </div>
+                    <Switch
+                      checked={shiftSettingsForm.permitirCierreAutomatico}
+                      onCheckedChange={(checked) => updateShiftSettingsForm({ permitirCierreAutomatico: checked })}
+                      disabled={isSavingShiftSettings}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3 rounded-lg border p-4">
+                    <div>
+                      <p className="font-medium">Fondo inicial requerido</p>
+                      <p className="text-xs text-muted-foreground">Obliga a capturar fondo al abrir caja.</p>
+                    </div>
+                    <Switch
+                      checked={shiftSettingsForm.fondoInicialRequerido}
+                      onCheckedChange={(checked) => updateShiftSettingsForm({ fondoInicialRequerido: checked })}
+                      disabled={isSavingShiftSettings}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between gap-3 rounded-lg border p-4">
+                    <div>
+                      <p className="font-medium">Cierre obligatorio</p>
+                      <p className="text-xs text-muted-foreground">Marca la politica para cierre al final del turno.</p>
+                    </div>
+                    <Switch
+                      checked={shiftSettingsForm.cierreObligatorio}
+                      onCheckedChange={(checked) => updateShiftSettingsForm({ cierreObligatorio: checked })}
+                      disabled={isSavingShiftSettings}
+                    />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <CardTitle>Turnos configurados</CardTitle>
+                      <Badge variant="secondary">
+                        {shiftSettingsForm.turnos.filter((shift) => shift.activo).length} activos
+                      </Badge>
+                    </div>
+                    <CardDescription>Estos turnos aparecen al abrir caja cuando el modo por horario esta activo.</CardDescription>
+                  </div>
+                  <Button type="button" variant="outline" onClick={addShiftRow} disabled={isSavingShiftSettings}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Agregar turno
+                  </Button>
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {shiftSettingsForm.turnos.length === 0 ? (
+                  <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                    No hay turnos configurados.
+                  </div>
+                ) : (
+                  shiftSettingsForm.turnos.map((shift) => (
+                    <div key={shift.id} className="grid gap-3 rounded-lg border p-4 lg:grid-cols-[1fr_150px_150px_auto_auto] lg:items-end">
+                      <div className="space-y-2">
+                        <Label>Nombre</Label>
+                        <Input
+                          value={shift.nombre}
+                          onChange={(event) => updateShiftRow(shift.id, { nombre: event.target.value })}
+                          disabled={isSavingShiftSettings}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Inicio</Label>
+                        <Input
+                          type="time"
+                          value={shift.horaInicio}
+                          onChange={(event) => updateShiftRow(shift.id, { horaInicio: event.target.value })}
+                          disabled={isSavingShiftSettings}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Fin</Label>
+                        <Input
+                          type="time"
+                          value={shift.horaFin}
+                          onChange={(event) => updateShiftRow(shift.id, { horaFin: event.target.value })}
+                          disabled={isSavingShiftSettings}
+                        />
+                      </div>
+                      <div className="flex h-10 items-center gap-2">
+                        <Switch
+                          checked={shift.activo}
+                          onCheckedChange={(checked) => updateShiftRow(shift.id, { activo: checked })}
+                          disabled={isSavingShiftSettings}
+                        />
+                        <span className="text-sm">{shift.activo ? "Activo" : "Inactivo"}</span>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="border-destructive/30 text-destructive hover:bg-destructive hover:text-destructive-foreground"
+                        onClick={() => removeShiftRow(shift.id)}
+                        disabled={isSavingShiftSettings || shiftSettingsForm.turnos.length <= 1}
+                        aria-label={`Eliminar ${shift.nombre}`}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+        )}
+
       </Tabs>
 
       <Card className="border-primary/30 bg-primary/5">
@@ -1894,6 +2484,81 @@ const CajaPage: React.FC = () => {
           </Button>
         </CardContent>
       </Card>
+
+      <Dialog open={isShiftSettingsConfirmOpen} onOpenChange={setIsShiftSettingsConfirmOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Confirmar configuracion de turnos</DialogTitle>
+            <DialogDescription>
+              Estos cambios modifican como se abre y se cierra caja para los siguientes cortes.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="rounded-lg border p-4">
+              <p className="text-sm text-muted-foreground">Modo de turno</p>
+              <p className="font-semibold">
+                {shiftSettingsForm.modo === "manual" ? "Manual" : "Por horario"}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {shiftSettingsForm.modo === "manual"
+                  ? "Recepcion podra abrir caja sin seleccionar turno. Los cortes nuevos quedaran como Manual."
+                  : "Recepcion tendra que seleccionar un turno activo al abrir caja."}
+              </p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">Fondo sugerido</p>
+                <p className="font-semibold">{formatCurrency(Number(shiftSettingsForm.fondoInicialSugerido) || 0)}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">Tolerancia</p>
+                <p className="font-semibold">{formatCurrency(Number(shiftSettingsForm.toleranciaDiferencia) || 0)}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">Multiples cortes</p>
+                <p className="font-semibold">{shiftSettingsForm.permitirMultiplesCortesPorDia ? "Permitidos" : "No permitidos"}</p>
+              </div>
+              <div className="rounded-lg border p-3">
+                <p className="text-xs text-muted-foreground">Cierre automatico</p>
+                <p className="font-semibold">{shiftSettingsForm.permitirCierreAutomatico ? "Habilitado" : "Deshabilitado"}</p>
+              </div>
+            </div>
+
+            <div className="rounded-lg border p-4">
+              <p className="font-semibold">Turnos activos</p>
+              <div className="mt-2 space-y-2">
+                {shiftSettingsForm.turnos.filter((shift) => shift.activo).length === 0 ? (
+                  <p className="text-sm text-destructive">No hay turnos activos.</p>
+                ) : (
+                  shiftSettingsForm.turnos
+                    .filter((shift) => shift.activo)
+                    .map((shift) => (
+                      <div key={shift.id} className="flex items-center justify-between gap-3 text-sm">
+                        <span className="font-medium">{shift.nombre}</span>
+                        <span className="text-muted-foreground">{shift.horaInicio} - {shift.horaFin}</span>
+                      </div>
+                    ))
+                )}
+              </div>
+            </div>
+
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-muted-foreground">
+              El cierre por cambio de dia sigue activo: cualquier caja abierta de un dia anterior se cerrara automaticamente.
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setIsShiftSettingsConfirmOpen(false)} disabled={isSavingShiftSettings}>
+              Cancelar
+            </Button>
+            <Button type="button" onClick={handleConfirmSaveShiftSettings} disabled={isSavingShiftSettings}>
+              {isSavingShiftSettings ? "Guardando..." : "Confirmar y guardar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
         <DialogContent className="max-w-xl">
@@ -1990,17 +2655,54 @@ const CajaPage: React.FC = () => {
             </DialogDescription>
           </DialogHeader>
           <form id="open-cash-form" onSubmit={handleOpenCashRegister} className="space-y-4">
+            {cashShiftSettings.modo === "programado" && (
+              <div className="space-y-2">
+                <Label>Turno</Label>
+                <Select
+                  value={openCashForm.turnoId}
+                  onValueChange={(value) => setOpenCashForm({ ...openCashForm, turnoId: value })}
+                  disabled={isOpeningCash || activeConfiguredShifts.length === 0}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={activeConfiguredShifts.length ? "Seleccionar turno" : "No hay turnos activos"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {activeConfiguredShifts.map((shift) => (
+                      <SelectItem key={shift.id} value={shift.id}>
+                        {shift.nombre} ({shift.horaInicio} - {shift.horaFin})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div className="space-y-2">
-              <Label>Fondo inicial</Label>
+              <div className="flex items-center justify-between gap-3">
+                <Label>Fondo inicial</Label>
+                {cashShiftSettings.fondoInicialSugerido > 0 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setOpenCashForm({ ...openCashForm, fondoInicial: String(cashShiftSettings.fondoInicialSugerido) })}
+                    disabled={isOpeningCash}
+                  >
+                    Usar {formatCurrency(cashShiftSettings.fondoInicialSugerido)}
+                  </Button>
+                )}
+              </div>
               <Input
                 type="number"
                 step="0.01"
                 min="0"
                 value={openCashForm.fondoInicial}
                 onChange={(event) => setOpenCashForm({ ...openCashForm, fondoInicial: event.target.value })}
-                placeholder="0.00"
+                placeholder={cashShiftSettings.fondoInicialSugerido > 0 ? String(cashShiftSettings.fondoInicialSugerido) : "0.00"}
                 disabled={isOpeningCash}
               />
+              {cashShiftSettings.fondoInicialRequerido && (
+                <p className="text-xs text-muted-foreground">El fondo inicial es obligatorio por configuracion.</p>
+              )}
             </div>
             <div className="space-y-2">
               <Label>Observaciones</Label>
@@ -2017,7 +2719,15 @@ const CajaPage: React.FC = () => {
             <Button type="button" variant="outline" onClick={() => setIsOpenCashDialogOpen(false)} disabled={isOpeningCash}>
               Cancelar
             </Button>
-            <Button type="submit" form="open-cash-form" disabled={isOpeningCash || Boolean(openCashClosure)}>
+            <Button
+              type="submit"
+              form="open-cash-form"
+              disabled={
+                isOpeningCash ||
+                Boolean(openCashClosure) ||
+                (cashShiftSettings.modo === "programado" && activeConfiguredShifts.length === 0)
+              }
+            >
               {isOpeningCash ? "Abriendo..." : openCashButtonLabel}
             </Button>
           </DialogFooter>

@@ -9,10 +9,13 @@ import React, {
 } from "react";
 import { User, onAuthStateChanged, signOut } from "firebase/auth";
 import {
+  collection,
   deleteDoc,
   doc,
+  onSnapshot,
   runTransaction,
   serverTimestamp,
+  updateDoc,
   writeBatch,
 } from "firebase/firestore";
 import { toast } from "sonner";
@@ -48,6 +51,23 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
   const currentUserRef = useRef<User | null>(null);
   const logoutInProgressRef = useRef(false);
   const deviceLogInProgressRef = useRef(false);
+  const sessionUnsubRef = useRef<null | (() => void)>(null);
+  const heartbeatCleanupRef = useRef<null | (() => void)>(null);
+  const sessionMissingNotifiedRef = useRef(false);
+
+  const buildRevokedSessionPayload = (reason: string) => ({
+    status: "revoked",
+    online: false,
+    revokedAt: serverTimestamp(),
+    revokedByUid: currentUserRef.current?.uid ?? null,
+    revokedByEmail: currentUserRef.current?.email ?? null,
+    revokedByName:
+      currentUserRef.current?.displayName ||
+      currentUserRef.current?.email ||
+      null,
+    revokeReason: reason,
+    updatedAt: serverTimestamp(),
+  });
 
   useEffect(() => {
     currentUserRef.current = currentUser;
@@ -85,6 +105,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
 
   useEffect(() => {
     const unsubAuth = onAuthStateChanged(auth, async (user) => {
+      if (sessionUnsubRef.current) {
+        sessionUnsubRef.current();
+        sessionUnsubRef.current = null;
+      }
+
+      if (heartbeatCleanupRef.current) {
+        heartbeatCleanupRef.current();
+        heartbeatCleanupRef.current = null;
+      }
+
       if (!user) {
         sessionIdRef.current = null;
         setSessions([]);
@@ -99,9 +129,16 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
       setAuthLoading(false);
 
       let currentSid = getPersistentSessionId();
+      let createdNewSession = false;
 
       try {
-        currentSid = await registerOrUpdateSession(user.uid);
+        const sessionRegistration = await registerOrUpdateSession(
+          user.uid,
+          user,
+        );
+
+        currentSid = sessionRegistration.sessionId;
+        createdNewSession = sessionRegistration.createdNewSession;
       } catch (error) {
         console.warn(
           "No se pudo registrar o actualizar la sesión. La app continuará sin bloquearse.",
@@ -110,6 +147,26 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
       }
 
       sessionIdRef.current = currentSid;
+      sessionMissingNotifiedRef.current = false;
+
+      const updateCurrentSession = () => {
+        registerOrUpdateSession(user.uid, user).catch(() => {
+          // La app puede continuar aunque no se pueda actualizar el heartbeat.
+        });
+      };
+
+      window.addEventListener("focus", updateCurrentSession);
+      window.addEventListener("online", updateCurrentSession);
+      document.addEventListener("visibilitychange", updateCurrentSession);
+
+      const heartbeatId = window.setInterval(updateCurrentSession, 60_000);
+
+      heartbeatCleanupRef.current = () => {
+        window.clearInterval(heartbeatId);
+        window.removeEventListener("focus", updateCurrentSession);
+        window.removeEventListener("online", updateCurrentSession);
+        document.removeEventListener("visibilitychange", updateCurrentSession);
+      };
 
       if (!deviceLogInProgressRef.current) {
         deviceLogInProgressRef.current = true;
@@ -133,6 +190,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
               browserVersion,
               os,
               platform,
+              language,
+              timezone,
+              screen,
             } = getDeviceInfo();
 
             tx.set(deviceRef, {
@@ -142,18 +202,23 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
               browserVersion,
               os,
               platform,
+              language,
+              timezone,
+              screen,
               firstSeen: serverTimestamp(),
             });
 
             return true;
           });
 
-          if (shouldLog) {
+          if (createdNewSession) {
             try {
               await addAuditLog(
                 "LOGIN",
                 "sistema",
-                "Inicio de sesion (nuevo dispositivo)",
+                shouldLog
+                  ? "Inicio de sesion desde un dispositivo nuevo"
+                  : "Inicio de sesion registrado",
               );
             } catch (error) {
               console.warn("No se pudo registrar auditoría de login.", error);
@@ -169,19 +234,65 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
         }
       }
 
-      /*
-        IMPORTANTE:
-        Se quitó temporalmente el onSnapshot de:
-        usuarios/{uid}/sesiones
+      sessionUnsubRef.current = onSnapshot(
+        collection(db, `usuarios/${user.uid}/sesiones`),
+        (snap) => {
+          const allSessions = snap.docs.map(
+            (d) =>
+              ({
+                id: d.id,
+                ...d.data(),
+                isCurrent: d.id === currentSid,
+              }) as UserSession,
+          );
 
-        Motivo:
-        En usuarios no-admin estaba causando permission-denied y bloqueando la app.
-        Más adelante podemos reactivar monitoreo de sesiones con reglas más estrictas.
-      */
-      setSessions([]);
+          const currentSession = allSessions.find(
+            (session) => session.id === currentSid,
+          );
+
+          const activeSessions = allSessions.filter(
+            (session) => session.status !== "revoked" && !session.revokedAt,
+          );
+
+          setSessions(activeSessions);
+
+          if (
+            (!currentSession ||
+              currentSession.status === "revoked" ||
+              currentSession.revokedAt) &&
+            !snap.metadata.fromCache &&
+            !sessionMissingNotifiedRef.current
+          ) {
+            sessionMissingNotifiedRef.current = true;
+            toast.error("Tu sesion ha sido finalizada remotamente.");
+
+            signOut(auth).finally(() => {
+              sessionMissingNotifiedRef.current = false;
+            });
+          }
+        },
+        (error) => {
+          console.warn(
+            "No se pudo escuchar la colección de sesiones. La app continuará sin monitoreo de sesiones.",
+            error,
+          );
+
+          setSessions([]);
+        },
+      );
     });
 
     return () => {
+      if (sessionUnsubRef.current) {
+        sessionUnsubRef.current();
+        sessionUnsubRef.current = null;
+      }
+
+      if (heartbeatCleanupRef.current) {
+        heartbeatCleanupRef.current();
+        heartbeatCleanupRef.current = null;
+      }
+
       unsubAuth();
     };
   }, []);
@@ -192,10 +303,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
     if (!user) return;
 
     try {
-      await deleteDoc(doc(db, `usuarios/${user.uid}/sesiones`, sid));
+      await updateDoc(
+        doc(db, `usuarios/${user.uid}/sesiones`, sid),
+        buildRevokedSessionPayload("Sesion cerrada desde seguridad"),
+      );
 
       try {
-        await addAuditLog("UPDATE", "seguridad", `Sesion revocada ID: ${sid}`);
+        await addAuditLog(
+          "UPDATE",
+          "seguridad",
+          "Sesion cerrada desde seguridad",
+        );
       } catch (error) {
         console.warn("No se pudo registrar auditoría de revocación.", error);
       }
@@ -212,11 +330,14 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
 
     try {
       const batch = writeBatch(db);
-      const sid = getPersistentSessionId();
+      const sid = sessionIdRef.current ?? getPersistentSessionId();
 
       sessions.forEach((session) => {
         if (session.id !== sid) {
-          batch.delete(doc(db, `usuarios/${user.uid}/sesiones`, session.id));
+          batch.update(
+            doc(db, `usuarios/${user.uid}/sesiones`, session.id),
+            buildRevokedSessionPayload("Cierre masivo de sesiones propias"),
+          );
         }
       });
 

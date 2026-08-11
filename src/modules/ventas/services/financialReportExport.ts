@@ -8,6 +8,12 @@ export interface FinancialReportExpenseRow {
   total: number;
 }
 
+export interface CashCutConceptRow {
+  concepto: string;
+  movimientos: number;
+  total: number;
+}
+
 export interface FinancialReportProductRow {
   producto: string;
   unidades: number;
@@ -63,6 +69,8 @@ export interface CashCutExportData {
     egresos: number;
     neto: number;
   }>;
+  ingresosPorConcepto: CashCutConceptRow[];
+  gastosPorCategoria: FinancialReportExpenseRow[];
   movimientos: FinancialReportMovementRow[];
 }
 
@@ -222,6 +230,14 @@ export const exportCashCutCsv = (cut: CashCutExportData) => {
     ["Metodo", "Ingresos", "Egresos", "Neto"].map(csvCell).join(","),
     ...cut.desgloseMetodos.map((row) => [row.metodo, row.ingresos, row.egresos, row.neto].map(csvCell).join(",")),
     "",
+    ["Ingresos por concepto"].map(csvCell).join(","),
+    ["Concepto", "Movimientos", "Total"].map(csvCell).join(","),
+    ...cut.ingresosPorConcepto.map((row) => [row.concepto, row.movimientos, row.total].map(csvCell).join(",")),
+    "",
+    ["Gastos por categoria"].map(csvCell).join(","),
+    ["Categoria", "Movimientos", "Total"].map(csvCell).join(","),
+    ...cut.gastosPorCategoria.map((row) => [row.categoria, row.movimientos, row.total].map(csvCell).join(",")),
+    "",
     ["Movimientos"].map(csvCell).join(","),
     ["Fecha", "Tipo", "Concepto", "Metodo", "Categoria", "Monto", "Usuario"].map(csvCell).join(","),
     ...cut.movimientos.map((row) => [
@@ -279,6 +295,34 @@ export const exportCashCutPdf = (cut: CashCutExportData) => {
     ]),
     styles: { fontSize: 8, cellPadding: 5 },
     headStyles: { fillColor: [100, 116, 139] },
+    theme: "striped",
+    margin: { left: 40, right: 40 },
+  });
+
+  autoTable(doc, {
+    startY: (doc as any).lastAutoTable.finalY + 18,
+    head: [["Concepto", "Movimientos", "Total"]],
+    body: cut.ingresosPorConcepto.map((row) => [
+      row.concepto,
+      String(row.movimientos),
+      formatCurrency(row.total),
+    ]),
+    styles: { fontSize: 8, cellPadding: 5 },
+    headStyles: { fillColor: [16, 185, 129] },
+    theme: "striped",
+    margin: { left: 40, right: 40 },
+  });
+
+  autoTable(doc, {
+    startY: (doc as any).lastAutoTable.finalY + 18,
+    head: [["Categoria de gasto", "Movimientos", "Total"]],
+    body: cut.gastosPorCategoria.map((row) => [
+      row.categoria,
+      String(row.movimientos),
+      formatCurrency(row.total),
+    ]),
+    styles: { fontSize: 8, cellPadding: 5 },
+    headStyles: { fillColor: [220, 38, 38] },
     theme: "striped",
     margin: { left: 40, right: 40 },
   });

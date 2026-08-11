@@ -15,13 +15,15 @@ import {
   where,
   writeBatch,
 } from "firebase/firestore";
-import { auth, db } from "@/lib/firebase";
+import { db } from "@/lib/firebase";
 import { addAuditLog } from "@/modules/audit/services/auditService";
+import { getCurrentUserIdentity } from "@/shared/services/currentUserIdentity";
 import { cleanData, safeDate } from "@/shared/utils/firestoreData";
 import type {
   CreateInventoryCategoryInput,
   CreateInventoryProductInput,
   InventoryCategoryRecord,
+  InventoryClassification,
   InventoryMovement,
   InventoryMovementType,
   InventoryProduct,
@@ -39,6 +41,8 @@ export const DEFAULT_INVENTORY_CATEGORIES: InventoryCategoryRecord[] = [
   { id: "vendible", nombre: "Vendible", descripcion: "Productos que se venden al paciente.", estado: "activo", sistema: true },
   { id: "clinico", nombre: "Clinico", descripcion: "Material de uso clinico interno.", estado: "activo", sistema: true },
   { id: "medicamento", nombre: "Medicamento", descripcion: "Medicamentos y articulos controlados.", estado: "activo", sistema: true },
+  { id: "alto_costo", nombre: "Alto costo", descripcion: "Material de alto costo que requiere control de retiro.", estado: "activo", sistema: true },
+  { id: "equipo_especial", nombre: "Equipo especial", descripcion: "Equipos o aditamentos especiales bajo resguardo.", estado: "activo", sistema: true },
 ];
 
 const outputMovementTypes: InventoryMovementType[] = ["venta", "uso_clinico", "merma", "caducidad"];
@@ -54,6 +58,27 @@ const movementAuditLabel: Record<InventoryMovementType, string> = {
 
 const normalizeName = (value: string) => value.trim().toLowerCase().replace(/\s+/g, " ");
 
+const classifiedValues: InventoryClassification[] = ["medicamento_controlado", "alto_costo", "equipo_especial"];
+
+const normalizeClassification = (value: any, category?: string): InventoryClassification => {
+  if (classifiedValues.includes(value)) return value;
+  if (category === "medicamento") return "medicamento_controlado";
+  if (category === "alto_costo") return "alto_costo";
+  if (category === "equipo_especial") return "equipo_especial";
+  return "normal";
+};
+
+const classificationLabel: Record<InventoryClassification, string> = {
+  normal: "Normal",
+  medicamento_controlado: "Medicamento controlado",
+  alto_costo: "Alto costo",
+  equipo_especial: "Equipo especial",
+};
+
+const requiresDoubleAuthorization = (classification: InventoryClassification) => {
+  return classification === "alto_costo" || classification === "equipo_especial";
+};
+
 const formatProductDisplayName = (name: string, brand?: string) => {
   const cleanName = name.trim();
   const cleanBrand = brand?.trim();
@@ -67,16 +92,6 @@ const formatSignedQuantity = (quantity: number) => {
 const compactAuditItems = (items: string[]) => {
   if (items.length <= 4) return items.join("; ");
   return `${items.slice(0, 4).join("; ")}; +${items.length - 4} mas`;
-};
-
-const getMovementUser = () => {
-  const user = auth.currentUser;
-  const email = user?.email || "Sistema";
-  return {
-    usuarioEmail: email,
-    usuarioNombre: user?.displayName || email || "Admin",
-    usuarioId: user?.uid ?? null,
-  };
 };
 
 const toFirestoreDate = (date: string) => new Date(`${date}T00:00:00`);
@@ -120,6 +135,7 @@ const mapProduct = (id: string, data: any): InventoryProduct => ({
   stockMinimo: Number(data.stockMinimo) || 0,
   costoUnitario: Number(data.costoUnitario) || 0,
   precioVenta: data.precioVenta === null || data.precioVenta === undefined ? null : Number(data.precioVenta) || 0,
+  clasificacion: normalizeClassification(data.clasificacion, data.categoria),
   proveedor: data.proveedor ?? "",
   estado: data.estado ?? "activo",
   notas: data.notas ?? "",
@@ -137,6 +153,7 @@ const mapMovement = (id: string, data: any): InventoryMovement => ({
   motivo: data.motivo ?? "",
   referenciaTipo: data.referenciaTipo ?? "manual",
   referenciaId: data.referenciaId ?? null,
+  citaId: data.citaId ?? null,
   usuarioId: data.usuarioId ?? null,
   usuarioNombre: data.usuarioNombre ?? data.usuarioEmail ?? "Sistema",
   usuarioEmail: data.usuarioEmail ?? "",
@@ -148,6 +165,14 @@ const mapMovement = (id: string, data: any): InventoryMovement => ({
   costoTotal: Number(data.costoTotal) || 0,
   precioUnitarioVenta: Number(data.precioUnitarioVenta) || 0,
   ingresoTotal: Number(data.ingresoTotal) || 0,
+  clasificacion: normalizeClassification(data.clasificacion),
+  materialClasificado: data.materialClasificado === true,
+  requiereDobleAutorizacion: data.requiereDobleAutorizacion === true,
+  autorizadoPorNombre: data.autorizadoPorNombre ?? "",
+  segundaAutorizacionNombre: data.segundaAutorizacionNombre ?? "",
+  notificacionGenerada: data.notificacionGenerada === true,
+  notificacionTitulo: data.notificacionTitulo ?? "",
+  notificacionDetalle: data.notificacionDetalle ?? "",
 });
 
 const mapStockEntry = (id: string, data: any): InventoryStockEntry => ({
@@ -323,6 +348,7 @@ export const inventoryService = {
       stockMinimo: Number(product.stockMinimo) || 0,
       costoUnitario: Number(product.costoUnitario) || 0,
       precioVenta: product.precioVenta === null || product.precioVenta === undefined ? null : Number(product.precioVenta) || 0,
+      clasificacion: product.clasificacion ?? normalizeClassification(null, product.categoria),
       proveedor: product.proveedor?.trim() ?? "",
       estado: product.estado ?? "activo",
       createdAt: serverTimestamp(),
@@ -332,7 +358,7 @@ export const inventoryService = {
     const productRef = doc(collection(db, INVENTORY_PRODUCTS_COLLECTION));
     const batch = writeBatch(db);
     batch.set(productRef, payload);
-    const movementUser = getMovementUser();
+    const movementUser = await getCurrentUserIdentity();
 
     if (initialStock > 0) {
       const movementRef = doc(collection(db, INVENTORY_MOVEMENTS_COLLECTION));
@@ -441,7 +467,7 @@ export const inventoryService = {
       throw new Error("El ajuste no puede ser cero.");
     }
 
-    const movementUser = getMovementUser();
+    const movementUser = await getCurrentUserIdentity();
 
     const movementResult = await runTransaction(db, async (transaction) => {
       const productRef = doc(db, INVENTORY_PRODUCTS_COLLECTION, input.productoId);
@@ -455,6 +481,10 @@ export const inventoryService = {
       const quantity = resolveMovementQuantity(input.tipo, input.cantidad);
       const nextStock = product.stock + quantity;
       const absoluteQuantity = Math.abs(quantity);
+      const clasificacion = product.clasificacion ?? "normal";
+      const materialClasificado = clasificacion !== "normal";
+      const isWithdrawal = quantity < 0;
+      const requiereDobleAutorizacion = materialClasificado && requiresDoubleAuthorization(clasificacion);
       const costoUnitario = Number(input.costoUnitario ?? product.costoUnitario) || 0;
       const precioUnitarioVenta = Number(input.precioUnitarioVenta ?? product.precioVenta ?? 0) || 0;
 
@@ -462,7 +492,17 @@ export const inventoryService = {
         throw new Error("No hay stock suficiente para registrar este movimiento.");
       }
 
+      if (materialClasificado && isWithdrawal && !input.autorizadoPorNombre?.trim()) {
+        throw new Error("Este retiro requiere registrar quien autorizo el material clasificado.");
+      }
+
+      if (requiereDobleAutorizacion && isWithdrawal && !input.segundaAutorizacionNombre?.trim()) {
+        throw new Error("Este material requiere doble autorizacion antes de retirar stock.");
+      }
+
       const movementRef = doc(collection(db, INVENTORY_MOVEMENTS_COLLECTION));
+      const notificationTitle = `Retiro clasificado: ${formatProductDisplayName(product.nombre, product.marca)}`;
+      const notificationDetail = `${classificationLabel[clasificacion]} | ${movementAuditLabel[input.tipo]} | ${absoluteQuantity} ${product.unidad} | Autorizo: ${input.autorizadoPorNombre?.trim() || "Sin autorizacion"}`;
       transaction.update(productRef, {
         stock: nextStock,
         updatedAt: serverTimestamp(),
@@ -478,6 +518,7 @@ export const inventoryService = {
         motivo: input.motivo,
         referenciaTipo: input.referenciaTipo ?? "manual",
         referenciaId: input.referenciaId ?? null,
+        citaId: input.citaId ?? null,
         ...movementUser,
         lote: input.lote ?? "",
         fechaVencimiento: input.fechaVencimiento ? toFirestoreDate(input.fechaVencimiento) : null,
@@ -487,6 +528,14 @@ export const inventoryService = {
         costoTotal: absoluteQuantity * costoUnitario,
         precioUnitarioVenta: input.tipo === "venta" ? precioUnitarioVenta : 0,
         ingresoTotal: input.tipo === "venta" ? absoluteQuantity * precioUnitarioVenta : 0,
+        clasificacion,
+        materialClasificado: materialClasificado && isWithdrawal,
+        requiereDobleAutorizacion: requiereDobleAutorizacion && isWithdrawal,
+        autorizadoPorNombre: input.autorizadoPorNombre?.trim() ?? "",
+        segundaAutorizacionNombre: input.segundaAutorizacionNombre?.trim() ?? "",
+        notificacionGenerada: materialClasificado && isWithdrawal,
+        notificacionTitulo: materialClasificado && isWithdrawal ? notificationTitle : "",
+        notificacionDetalle: materialClasificado && isWithdrawal ? notificationDetail : "",
         createdAt: serverTimestamp(),
       }));
 
@@ -514,7 +563,7 @@ export const inventoryService = {
       if (!item.lote.trim()) throw new Error("Escribe el lote de todos los productos.");
     });
 
-    const movementUser = getMovementUser();
+    const movementUser = await getCurrentUserIdentity();
 
     const entryResult = await runTransaction(db, async (transaction) => {
       const products = [];

@@ -16,6 +16,7 @@ import {
 } from 'firebase/firestore';
 import { auth, db } from '@/lib/firebase';
 import { toast } from 'sonner';
+import { getCurrentUserIdentity } from '@/shared/services/currentUserIdentity';
 // Lógica de sesión persistente para evitar duplicados en pestañas
 import { registerOrUpdateSession, getPersistentSessionId, getDeviceInfo } from '@/lib/sessionService';
 
@@ -143,12 +144,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // --- LOGICA DE BITÁCORA ---
   const addLog = async (accion: string, modulo: string, detalle: string) => {
     try {
-      const user = auth.currentUser;
-      const email = user?.email || 'Sistema';
+      const userIdentity = await getCurrentUserIdentity();
       await addDoc(collection(db, 'bitacora'), {
-        usuarioEmail: email,
-        usuarioNombre: user?.displayName || email || 'Admin',
-        usuarioId: user?.uid ?? null,
+        usuarioEmail: userIdentity.usuarioEmail,
+        usuarioNombre: userIdentity.usuarioNombre,
+        usuarioId: userIdentity.usuarioId,
         accion, modulo, detalle, fecha: serverTimestamp(),
       });
     } catch (e) { console.error("Error bitácora:", e); }

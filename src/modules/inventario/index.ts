@@ -8,6 +8,7 @@ export type {
   CreateInventoryProductInput,
   InventoryCategoryRecord,
   InventoryCategory,
+  InventoryClassification,
   InventoryMovement,
   InventoryMovementType,
   InventoryProduct,
