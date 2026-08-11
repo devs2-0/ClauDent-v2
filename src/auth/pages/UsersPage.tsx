@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Ban,
   MailPlus,
-  Plus,
   RefreshCw,
   ShieldCheck,
   Trash2,
@@ -25,6 +24,8 @@ import {
 import { roleService } from "@/auth/services/roleService";
 import { userService } from "@/auth/services/userService";
 import type { AppUser, AppUserStatus, Role } from "@/auth";
+import { assistantService, doctorService } from "@/modules/agenda";
+import type { Assistant, Doctor } from "@/modules/agenda";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -46,18 +47,40 @@ import {
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 
+type InviteStaffType = "administrative" | "doctor" | "assistant";
+
+interface InviteFormState {
+  displayName: string;
+  email: string;
+  phone: string;
+  roleIds: string[];
+  status: AppUserStatus;
+  staffType: InviteStaffType;
+  doctorId: string;
+  assistantId: string;
+}
+
 const statusLabels: Record<AppUserStatus, string> = {
   active: "Activo",
   inactive: "Inactivo",
   blocked: "Bloqueado",
 };
 
-const emptyInviteForm = {
+const staffTypeLabels: Record<InviteStaffType, string> = {
+  administrative: "Administrativo / Recepción",
+  doctor: "Doctor",
+  assistant: "Asistente",
+};
+
+const emptyInviteForm: InviteFormState = {
   displayName: "",
   email: "",
   phone: "",
-  roleIds: [] as string[],
-  status: "active" as AppUserStatus,
+  roleIds: [],
+  status: "active",
+  staffType: "administrative",
+  doctorId: "",
+  assistantId: "",
 };
 
 const UsersPage = () => {
@@ -67,11 +90,17 @@ const UsersPage = () => {
   const [users, setUsers] = useState<AppUser[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [invitations, setInvitations] = useState<UserInvitation[]>([]);
+  const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [assistants, setAssistants] = useState<Assistant[]>([]);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
-  const [inviteForm, setInviteForm] = useState(emptyInviteForm);
+  const [inviteForm, setInviteForm] = useState<InviteFormState>({
+    ...emptyInviteForm,
+    roleIds: [],
+  });
 
   const [selectedUser, setSelectedUser] = useState<AppUser | null>(null);
   const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
@@ -81,12 +110,36 @@ const UsersPage = () => {
     return new Map(roles.map((role) => [role.id, role]));
   }, [roles]);
 
+  const doctorsById = useMemo(() => {
+    return new Map(doctors.map((doctor) => [doctor.id, doctor]));
+  }, [doctors]);
+
+  const assistantsById = useMemo(() => {
+    return new Map(
+      assistants.map((assistant) => [assistant.id, assistant]),
+    );
+  }, [assistants]);
+
   const activeRoles = useMemo(() => {
     return roles.filter((role) => role.status === "active");
   }, [roles]);
 
+  const availableDoctors = useMemo(() => {
+    return doctors.filter(
+      (doctor) => doctor.status === "active" && !doctor.userUid,
+    );
+  }, [doctors]);
+
+  const availableAssistants = useMemo(() => {
+    return assistants.filter(
+      (assistant) => assistant.status === "active" && !assistant.userUid,
+    );
+  }, [assistants]);
+
   const visibleUsers = useMemo(() => {
-    return users.filter((user) => (user as AppUser & { visible?: boolean }).visible !== false);
+    return users.filter(
+      (user) => (user as AppUser & { visible?: boolean }).visible !== false,
+    );
   }, [users]);
 
   const activeAdminCount = useMemo(() => {
@@ -112,7 +165,10 @@ const UsersPage = () => {
   };
 
   const resetInviteForm = () => {
-    setInviteForm(emptyInviteForm);
+    setInviteForm({
+      ...emptyInviteForm,
+      roleIds: [],
+    });
   };
 
   const openInviteDialog = () => {
@@ -151,24 +207,94 @@ const UsersPage = () => {
     return null;
   };
 
+  const getInvitationStaffLabel = (invitation: UserInvitation) => {
+    const staffType = (invitation as UserInvitation & {
+      staffType?: InviteStaffType;
+      doctorId?: string | null;
+      assistantId?: string | null;
+    }).staffType;
+
+    const doctorId = (invitation as UserInvitation & {
+      doctorId?: string | null;
+    }).doctorId;
+
+    const assistantId = (invitation as UserInvitation & {
+      assistantId?: string | null;
+    }).assistantId;
+
+    if (staffType === "doctor") {
+      const doctorName = doctorId ? doctorsById.get(doctorId)?.nombre : null;
+      return doctorName ? `Doctor: ${doctorName}` : "Doctor";
+    }
+
+    if (staffType === "assistant") {
+      const assistantName = assistantId
+        ? assistantsById.get(assistantId)?.nombre
+        : null;
+      return assistantName ? `Asistente: ${assistantName}` : "Asistente";
+    }
+
+    return "Administrativo / Recepción";
+  };
+
+  const getUserStaffLabel = (user: AppUser) => {
+    if (user.doctorId) {
+      const doctorName = doctorsById.get(user.doctorId)?.nombre;
+      return doctorName ? `Doctor: ${doctorName}` : "Doctor vinculado";
+    }
+
+    if (user.assistantId) {
+      const assistantName = assistantsById.get(user.assistantId)?.nombre;
+      return assistantName
+        ? `Asistente: ${assistantName}`
+        : "Asistente vinculado";
+    }
+
+    return null;
+  };
+
   const loadData = async () => {
     setLoading(true);
 
     try {
-      const [usersData, rolesData, invitationsData] = await Promise.all([
+      const canReadInvitations = can("users.view") || can("users.create");
+
+      const canReadClinicalStaff =
+        can("users.create") &&
+        (can("agenda.view") ||
+          can("agenda.doctors.manage") ||
+          can("agenda.assistants.manage"));
+
+      const [
+        usersData,
+        rolesData,
+        invitationsData,
+        doctorsData,
+        assistantsData,
+      ] = await Promise.all([
         userService.listUsers(),
         roleService.listRoles(),
-        can("users.view") || can("users.create")
+        canReadInvitations
           ? userInvitationService.listPendingInvitations()
+          : Promise.resolve([]),
+        canReadClinicalStaff
+          ? doctorService.listDoctors()
+          : Promise.resolve([]),
+        canReadClinicalStaff
+          ? assistantService.listAssistants()
           : Promise.resolve([]),
       ]);
 
       setUsers(usersData);
       setRoles(rolesData);
       setInvitations(invitationsData);
+      setDoctors(doctorsData);
+      setAssistants(assistantsData);
     } catch (error) {
       console.error(error);
-      toast.error("No se pudieron cargar usuarios, roles o invitaciones.");
+      toast.error(
+        "No se pudieron cargar usuarios, roles, invitaciones o personal clínico.",
+      );
     } finally {
       setLoading(false);
     }
@@ -242,6 +368,16 @@ const UsersPage = () => {
       return;
     }
 
+    if (inviteForm.staffType === "doctor" && !inviteForm.doctorId) {
+      toast.error("Selecciona el doctor vinculado a esta invitación.");
+      return;
+    }
+
+    if (inviteForm.staffType === "assistant" && !inviteForm.assistantId) {
+      toast.error("Selecciona el asistente vinculado a esta invitación.");
+      return;
+    }
+
     setSaving(true);
 
     try {
@@ -252,6 +388,9 @@ const UsersPage = () => {
           phone: inviteForm.phone.trim(),
           roleIds: inviteForm.roleIds,
           status: inviteForm.status,
+          staffType: inviteForm.staffType,
+          doctorId: inviteForm.doctorId || null,
+          assistantId: inviteForm.assistantId || null,
         },
         roles,
         currentUser?.uid,
@@ -370,7 +509,11 @@ const UsersPage = () => {
     if (!confirmed) return;
 
     try {
-      await userInvitationService.softDeleteUserAccess(user.uid, currentUser?.uid);
+      await userInvitationService.softDeleteUserAccess(
+        user.uid,
+        currentUser?.uid,
+      );
+
       toast.success("Usuario bloqueado y ocultado correctamente.");
       await loadData();
     } catch (error) {
@@ -390,7 +533,11 @@ const UsersPage = () => {
     }
 
     try {
-      await userService.recalculateUserPermissions(user.uid, currentUser?.uid);
+      await userService.recalculateUserPermissions(
+        user.uid,
+        currentUser?.uid,
+      );
+
       toast.success("Permisos recalculados correctamente.");
       await loadData();
     } catch (error) {
@@ -411,9 +558,9 @@ const UsersPage = () => {
             Usuarios e invitaciones
           </h1>
 
-          <p className="mt-1 text-sm text-muted-foreground">
-            Invita empleados, asigna roles y administra el acceso al sistema sin
-            usar Cloud Functions ni plan Blaze.
+          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+            Invita empleados, asigna roles iniciales y vincula cuentas con
+            doctores o asistentes de agenda.
           </p>
         </div>
 
@@ -476,6 +623,10 @@ const UsersPage = () => {
                         )}
 
                         <Badge variant="secondary">Pendiente</Badge>
+
+                        <Badge variant="outline">
+                          {getInvitationStaffLabel(invitation)}
+                        </Badge>
                       </div>
 
                       <p className="text-sm text-muted-foreground">
@@ -498,6 +649,7 @@ const UsersPage = () => {
                               >
                                 {role.icon || DEFAULT_ROLE_EMOJI}
                               </span>
+
                               {role.name}
                             </span>
                           ))
@@ -549,6 +701,8 @@ const UsersPage = () => {
                   .map((roleId) => rolesById.get(roleId))
                   .filter(Boolean) as Role[];
 
+                const staffLabel = getUserStaffLabel(user);
+
                 return (
                   <div
                     key={user.uid}
@@ -580,6 +734,10 @@ const UsersPage = () => {
                             >
                               {statusLabels[user.status]}
                             </Badge>
+
+                            {staffLabel && (
+                              <Badge variant="secondary">{staffLabel}</Badge>
+                            )}
                           </div>
 
                           <p className="text-sm text-muted-foreground">
@@ -625,7 +783,8 @@ const UsersPage = () => {
                         </div>
 
                         <p className="text-xs text-muted-foreground">
-                          {user.permissions.length} permiso(s) efectivo(s)
+                          {(user.permissions ?? []).length} permiso(s)
+                          efectivo(s)
                         </p>
                       </div>
 
@@ -745,8 +904,9 @@ const UsersPage = () => {
           <DialogHeader>
             <DialogTitle>Crear invitación de acceso</DialogTitle>
             <DialogDescription>
-              Registra el correo del empleado y sus roles iniciales. El empleado
-              creará su propia contraseña desde Primer acceso.
+              Registra el correo del empleado, su tipo operativo y sus roles
+              iniciales. El empleado creará su propia contraseña desde Primer
+              acceso.
             </DialogDescription>
           </DialogHeader>
 
@@ -797,6 +957,98 @@ const UsersPage = () => {
                   placeholder="Opcional"
                 />
               </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="staff-type">Tipo de empleado</Label>
+
+                <select
+                  id="staff-type"
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  value={inviteForm.staffType}
+                  onChange={(event) =>
+                    setInviteForm((current) => ({
+                      ...current,
+                      staffType: event.target.value as InviteStaffType,
+                      doctorId: "",
+                      assistantId: "",
+                    }))
+                  }
+                >
+                  <option value="administrative">
+                    {staffTypeLabels.administrative}
+                  </option>
+                  <option value="doctor">{staffTypeLabels.doctor}</option>
+                  <option value="assistant">
+                    {staffTypeLabels.assistant}
+                  </option>
+                </select>
+              </div>
+
+              {inviteForm.staffType === "doctor" && (
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="doctor-link">Doctor vinculado *</Label>
+
+                  <select
+                    id="doctor-link"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={inviteForm.doctorId}
+                    onChange={(event) =>
+                      setInviteForm((current) => ({
+                        ...current,
+                        doctorId: event.target.value,
+                      }))
+                    }
+                  >
+                    <option value="">Selecciona un doctor</option>
+
+                    {availableDoctors.map((doctor) => (
+                      <option key={doctor.id} value={doctor.id}>
+                        {doctor.nombre}
+                      </option>
+                    ))}
+                  </select>
+
+                  {availableDoctors.length === 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      No hay doctores activos sin cuenta vinculada. Crea uno en
+                      Agenda → Doctores.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {inviteForm.staffType === "assistant" && (
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="assistant-link">Asistente vinculado *</Label>
+
+                  <select
+                    id="assistant-link"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={inviteForm.assistantId}
+                    onChange={(event) =>
+                      setInviteForm((current) => ({
+                        ...current,
+                        assistantId: event.target.value,
+                      }))
+                    }
+                  >
+                    <option value="">Selecciona un asistente</option>
+
+                    {availableAssistants.map((assistant) => (
+                      <option key={assistant.id} value={assistant.id}>
+                        {assistant.nombre}
+                      </option>
+                    ))}
+                  </select>
+
+                  {availableAssistants.length === 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      No hay asistentes activos sin cuenta vinculada. Crea uno
+                      en Agenda → Asistentes.
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="space-y-3">

@@ -39,6 +39,94 @@ service cloud.firestore {
         );
     }
 
+    function cashCutPath(corteId) {
+      return /databases/$(database)/documents/cortesCaja/$(corteId);
+    }
+
+    function isOpenCashCut(corteId) {
+      return corteId is string
+        && exists(cashCutPath(corteId))
+        && get(cashCutPath(corteId)).data.estado == "abierto";
+    }
+
+    function isOpenCashCutAfter(corteId) {
+      return corteId is string
+        && existsAfter(cashCutPath(corteId))
+        && getAfter(cashCutPath(corteId)).data.estado == "abierto";
+    }
+
+    function canReadSales() {
+      return hasPermission("sales.view")
+        || hasPermission("sales.payments.manage")
+        || hasPermission("sales.cashCuts.history.view")
+        || hasPermission("sales.reports.view")
+        || hasPermission("reports.view");
+    }
+
+    function canReadFinancialReports() {
+      return hasPermission("sales.reports.view")
+        || hasPermission("reports.view")
+        || hasPermission("reports.export");
+    }
+
+    function canReadInventory() {
+      return hasPermission("inventory.view")
+        || hasPermission("inventory.usage.create")
+        || hasPermission("inventory.stock.adjust")
+        || hasPermission("sales.create")
+        || hasPermission("sales.view");
+    }
+
+    function isStockOnlyProductUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+        "stock",
+        "updatedAt"
+      ]);
+    }
+
+    function isAllowedStockMovementCreate() {
+      return request.resource.data.tipo in [
+          "venta",
+          "uso_clinico",
+          "merma",
+          "caducidad",
+          "ajuste",
+          "devolucion",
+          "entrada"
+        ]
+        && request.resource.data.productoId is string
+        && request.resource.data.cantidad is number
+        && request.resource.data.stockAnterior is number
+        && request.resource.data.stockNuevo is number;
+    }
+
+    function isAutomaticCashCloseUpdate() {
+      return hasPermission("sales.cashShift.close")
+        && resource.data.estado == "abierto"
+        && request.resource.data.estado == "cerrado"
+        && request.resource.data.status == "cerrado"
+        && request.resource.data.tipoCierre == "automatico"
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "fecha",
+          "fin",
+          "fondoInicial",
+          "totales",
+          "totalEgresos",
+          "balanceNeto",
+          "efectivoEsperado",
+          "efectivoContado",
+          "diferenciaEfectivo",
+          "observaciones",
+          "estado",
+          "status",
+          "tipoCierre",
+          "usuarioCierreId",
+          "usuarioCierreNombre",
+          "usuarioCierreEmail",
+          "updatedAt"
+        ]);
+    }
+
     function invitationPath(email) {
       return /databases/$(database)/documents/invitacionesUsuarios/$(email);
     }
@@ -94,8 +182,38 @@ service cloud.firestore {
         && request.resource.data.primaryRoleId == invitationData(request.resource.data.email).primaryRoleId
         && request.resource.data.permissions == invitationData(request.resource.data.email).permissions
         && request.resource.data.isAdmin == invitationData(request.resource.data.email).isAdmin
+        && request.resource.data.doctorId == invitationData(request.resource.data.email).doctorId
+        && request.resource.data.assistantId == invitationData(request.resource.data.email).assistantId
         && request.resource.data.invitationId == request.resource.data.email
         && request.resource.data.visible == true;
+    }
+
+    function canLinkDoctorByInvitation(doctorId) {
+      return isSignedIn()
+        && request.auth.token.email is string
+        && hasPendingInvitation(request.auth.token.email)
+        && invitationData(request.auth.token.email).doctorId == doctorId
+        && request.resource.data.userUid == request.auth.uid
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "userUid",
+          "updatedAt",
+          "updatedBy"
+        ]);
+    }
+
+    function canLinkAssistantByInvitation(assistantId) {
+      return isSignedIn()
+        && request.auth.token.email is string
+        && hasPendingInvitation(request.auth.token.email)
+        && invitationData(request.auth.token.email).assistantId == assistantId
+        && request.resource.data.userUid == request.auth.uid
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "userUid",
+          "updatedAt",
+          "updatedBy"
+        ]);
     }
 
     function hasPatientAttachmentFields(patientId) {
@@ -121,170 +239,439 @@ service cloud.firestore {
         );
     }
 
-    function isSafeSelfUserUpdate() {
-      return request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-        "displayName",
-        "photoURL",
-        "phone",
-        "lastLoginAt",
-        "updatedAt"
-      ]);
-    }
-
     match /invitacionesUsuarios/{inviteEmail} {
-      allow get: if hasPermission("users.view")
+      allow get: if isAdmin()
+        || hasPermission("users.view")
         || hasPermission("users.create")
         || isPendingInvitationForSignedInEmail(inviteEmail);
 
-      allow list: if hasPermission("users.view")
-        || hasPermission("users.create");
-
-      allow create: if hasPermission("users.create")
-        && request.resource.data.email == inviteEmail
-        && request.resource.data.displayName is string
-        && request.resource.data.displayName.size() > 0
-        && request.resource.data.roleIds is list
-        && request.resource.data.permissions is list
-        && request.resource.data.consumed == false
-        && request.resource.data.cancelled == false;
-
-      allow update: if hasPermission("users.update")
-        || hasPermission("users.create")
-        || isInviteConsumptionByOwner(inviteEmail);
-
-      allow delete: if hasPermission("users.delete");
-    }
-
-    match /roles/{roleId} {
-      allow read: if hasPermission("roles.view")
-        || hasPermission("roles.assign")
-        || hasPermission("roles.update")
+      allow list: if isAdmin()
         || hasPermission("users.view")
         || hasPermission("users.create");
 
-      allow create: if hasPermission("roles.create")
-        && request.resource.data.name is string
-        && request.resource.data.name.size() > 0
-        && request.resource.data.permissions is list
-        && request.resource.data.isSystem == false;
+      allow create: if isAdmin()
+        || (
+          hasPermission("users.create")
+          && request.resource.data.email == inviteEmail
+          && request.resource.data.displayName is string
+          && request.resource.data.displayName.size() > 0
+          && request.resource.data.roleIds is list
+          && request.resource.data.permissions is list
+          && request.resource.data.consumed == false
+          && request.resource.data.cancelled == false
+        );
 
-      allow update: if hasPermission("roles.update")
-        && resource.data.isSystem != true;
+      allow update: if isAdmin()
+        || hasPermission("users.update")
+        || hasPermission("users.create")
+        || isInviteConsumptionByOwner(inviteEmail);
 
-      allow delete: if hasPermission("roles.delete")
-        && resource.data.isSystem != true;
+      allow delete: if isAdmin()
+        || hasPermission("users.delete");
+    }
+
+    match /roles/{roleId} {
+      allow read: if isAdmin()
+        || isActiveUser()
+        || hasPermission("roles.view")
+        || hasPermission("roles.assign")
+        || hasPermission("roles.update")
+        || hasPermission("users.view")
+        || hasPermission("users.create")
+        || hasPermission("security.sessions.view");
+
+      allow create: if isAdmin()
+        || (
+          hasPermission("roles.create")
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.permissions is list
+          && request.resource.data.isSystem == false
+        );
+
+      allow update: if isAdmin()
+        || (
+          hasPermission("roles.update")
+          && resource.data.isSystem != true
+        );
+
+      allow delete: if isAdmin()
+        || (
+          hasPermission("roles.delete")
+          && resource.data.isSystem != true
+        );
     }
 
     match /usuarios/{userId} {
-      allow read: if request.auth.uid == userId
+      allow read: if isAdmin()
+        || (
+          isSignedIn()
+          && request.auth.uid == userId
+        )
         || hasPermission("users.view")
         || hasPermission("roles.view")
         || hasPermission("roles.update")
         || hasPermission("roles.assign")
         || hasPermission("security.sessions.view");
 
-      allow create: if isSafeSelfUserCreate(userId)
+      allow create: if isAdmin()
+        || isSafeSelfUserCreate(userId)
         || isInvitedSelfUserCreate(userId)
         || hasPermission("users.create");
 
-      allow update: if (
-          request.auth.uid == userId
-          && isSafeSelfUserUpdate()
+      allow update: if isAdmin()
+        || (
+          isSignedIn()
+          && request.auth.uid == userId
+          && !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            "permissions",
+            "roleIds",
+            "primaryRoleId",
+            "isAdmin",
+            "status",
+            "doctorId",
+            "assistantId",
+            "createdAt",
+            "createdBy",
+            "deletedAt",
+            "deletedBy",
+            "invitationId"
+          ])
         )
         || hasPermission("users.update")
         || hasPermission("users.delete")
         || hasPermission("roles.assign")
         || hasPermission("roles.update");
 
-      allow delete: if hasPermission("users.delete");
+      allow delete: if isAdmin()
+        || hasPermission("users.delete");
 
       match /sesiones/{sessionId} {
-        allow read, write: if isSignedIn()
-          && request.auth.uid == userId;
+        allow read, create, update, delete: if isAdmin()
+          || (
+            isSignedIn()
+            && request.auth.uid == userId
+          )
+          || hasPermission("security.sessions.view")
+          || hasPermission("security.sessions.revoke");
       }
 
       match /dispositivos/{deviceId} {
-        allow read, write: if isSignedIn()
-          && request.auth.uid == userId;
+        allow read, create, update, delete: if isAdmin()
+          || (
+            isSignedIn()
+            && request.auth.uid == userId
+          )
+          || hasPermission("security.sessions.view")
+          || hasPermission("security.sessions.revoke");
+      }
+
+      match /{userSubPath=**} {
+        allow read, create, update, delete: if isAdmin()
+          || (
+            isSignedIn()
+            && request.auth.uid == userId
+          );
       }
     }
 
+    match /doctores/{doctorId} {
+      allow read: if isAdmin()
+        || isActiveUser();
+
+      allow create: if isAdmin()
+        || hasPermission("agenda.doctors.manage");
+
+      allow update: if isAdmin()
+        || hasPermission("agenda.doctors.manage")
+        || canLinkDoctorByInvitation(doctorId);
+
+      allow delete: if isAdmin();
+    }
+
+    match /asistentes/{assistantId} {
+      allow read: if isAdmin()
+        || isActiveUser();
+
+      allow create: if isAdmin()
+        || hasPermission("agenda.assistants.manage");
+
+      allow update: if isAdmin()
+        || hasPermission("agenda.assistants.manage")
+        || canLinkAssistantByInvitation(assistantId);
+
+      allow delete: if isAdmin();
+    }
+
     match /pacientes/{patientId} {
-      allow read, write: if isActiveUser();
+      allow read, write: if isAdmin()
+        || isActiveUser();
 
       match /historial/{entryId} {
-        allow read, write: if isActiveUser();
+        allow read, write: if isAdmin()
+          || isActiveUser();
       }
 
       match /historia_clinica/{formId} {
-        allow read, write: if isActiveUser();
+        allow read, write: if isAdmin()
+          || isActiveUser();
       }
 
       match /odontograma/{odontogramId} {
-        allow read, write: if isActiveUser();
+        allow read, write: if isAdmin()
+          || isActiveUser();
       }
 
       match /adjuntos/{attachmentId} {
-        allow read: if isActiveUser();
-        allow create, update: if isActiveUser()
-          && hasPatientAttachmentFields(patientId);
-        allow delete: if isActiveUser();
+        allow read: if isAdmin()
+          || isActiveUser();
+
+        allow create, update: if isAdmin()
+          || (
+            isActiveUser()
+            && hasPatientAttachmentFields(patientId)
+          );
+
+        allow delete: if isAdmin()
+          || isActiveUser();
       }
     }
 
     match /servicios/{serviceId} {
-      allow read, write: if isActiveUser();
+      allow read, write: if isAdmin()
+        || isActiveUser();
     }
 
     match /cotizaciones/{cotizacionId} {
-      allow read, write: if isActiveUser();
+      allow read, write: if isAdmin()
+        || isActiveUser();
     }
 
     match /paquetes/{paqueteId} {
-      allow read, write: if isActiveUser();
+      allow read, write: if isAdmin()
+        || isActiveUser();
     }
 
     match /pagos/{pagoId} {
-      allow read, write: if isActiveUser();
+      allow read: if isAdmin()
+        || canReadSales()
+        || canReadFinancialReports();
+
+      allow create: if isAdmin()
+        || (
+          (
+            hasPermission("sales.create")
+            || hasPermission("sales.payments.manage")
+          )
+          && isOpenCashCut(request.resource.data.corteId)
+        );
+
+      allow update: if isAdmin()
+        || hasPermission("sales.cancel")
+        || hasPermission("sales.payments.manage");
+
+      allow delete: if isAdmin();
     }
 
     match /cortesCaja/{corteId} {
-      allow read, write: if isActiveUser();
+      allow read: if isAdmin()
+        || canReadSales()
+        || canReadFinancialReports()
+        || hasPermission("sales.cashShift.open")
+        || hasPermission("sales.cashShift.close");
+
+      allow create: if isAdmin()
+        || (
+          hasPermission("sales.cashShift.open")
+          && request.resource.data.estado == "abierto"
+        );
+
+      allow update: if isAdmin()
+        || isAutomaticCashCloseUpdate()
+        || (
+          hasPermission("sales.cashShift.close")
+          && resource.data.usuarioAperturaId == request.auth.uid
+        );
+
+      allow delete: if isAdmin();
     }
 
     match /cajaMovimientos/{movimientoId} {
-      allow read, write: if isActiveUser();
+      allow read: if isAdmin()
+        || canReadSales()
+        || canReadFinancialReports();
+
+      allow create: if isAdmin()
+        || (
+          hasPermission("sales.cashShift.open")
+          && request.resource.data.referenciaTipo == "apertura"
+          && request.resource.data.corteId == request.resource.data.referenciaId
+          && isOpenCashCutAfter(request.resource.data.corteId)
+        )
+        || (
+          (
+            hasPermission("sales.create")
+            || hasPermission("sales.payments.manage")
+            || hasPermission("sales.expenses.create")
+          )
+          && isOpenCashCut(request.resource.data.corteId)
+        );
+
+      allow update: if isAdmin()
+        || hasPermission("sales.cancel")
+        || hasPermission("sales.payments.manage")
+        || hasPermission("sales.cashShift.close");
+
+      allow delete: if isAdmin();
     }
 
     match /tratamientos/{tratamientoId} {
-      allow read, write: if isActiveUser();
+      allow read: if isAdmin()
+        || hasPermission("patients.clinicalHistory.view")
+        || hasPermission("sales.view")
+        || canReadFinancialReports();
+
+      allow create: if isAdmin()
+        || hasPermission("sales.create")
+        || hasPermission("sales.payments.manage")
+        || hasPermission("patients.clinicalHistory.update");
+
+      allow update: if isAdmin()
+        || hasPermission("patients.clinicalHistory.update")
+        || hasPermission("sales.payments.manage");
+
+      allow delete: if isAdmin();
     }
 
     match /inventarioProductos/{productoId} {
-      allow read, write: if isActiveUser();
+      allow read: if isAdmin()
+        || canReadInventory();
+
+      allow create: if isAdmin();
+
+      allow update: if isAdmin()
+        || hasPermission("inventory.update")
+        || (
+          isStockOnlyProductUpdate()
+          && (
+            hasPermission("sales.create")
+            || hasPermission("inventory.usage.create")
+            || hasPermission("inventory.stock.adjust")
+          )
+        );
+
+      allow delete: if isAdmin();
     }
 
     match /inventarioCategorias/{categoriaId} {
-      allow read, write: if isActiveUser();
+      allow read: if isAdmin()
+        || canReadInventory();
+
+      allow create, update: if isAdmin()
+        || hasPermission("inventory.categories.manage");
+
+      allow delete: if isAdmin();
     }
 
     match /inventarioMovimientos/{movimientoId} {
-      allow read, create: if isActiveUser();
-      allow update, delete: if false;
+      allow read: if isAdmin()
+        || canReadInventory()
+        || canReadSales()
+        || canReadFinancialReports();
+
+      allow create: if isAdmin()
+        || (
+          isAllowedStockMovementCreate()
+          && (
+            hasPermission("inventory.usage.create")
+            || hasPermission("inventory.stock.adjust")
+            || hasPermission("sales.create")
+          )
+        );
+
+      allow update, delete: if isAdmin();
     }
 
     match /inventarioEntradas/{entradaId} {
-      allow read, write: if isActiveUser();
+      allow read: if isAdmin()
+        || canReadInventory();
+
+      allow create, update: if isAdmin()
+        || hasPermission("inventory.stock.adjust")
+        || hasPermission("inventory.purchaseList.manage");
+
+      allow delete: if isAdmin();
+    }
+
+    match /configuracionCaja/{configId} {
+      allow read: if isAdmin()
+        || hasPermission("settings.view")
+        || hasPermission("settings.update")
+        || hasPermission("sales.cashShift.open")
+        || hasPermission("sales.cashShift.close");
+
+      allow create, update: if isAdmin()
+        || hasPermission("settings.update");
+
+      allow delete: if isAdmin();
     }
 
     match /bitacora/{logId} {
-      allow read: if hasPermission("audit.view");
-      allow create: if isSignedIn();
-      allow update, delete: if false;
+      allow read: if isAdmin()
+        || hasPermission("audit.view");
+
+      allow create: if isAdmin()
+        || isSignedIn();
+
+      allow update, delete: if isAdmin();
+    }
+
+    match /horariosPersonal/{scheduleId} {
+      allow read: if isAdmin()
+        || isActiveUser();
+
+      allow create, update: if isAdmin()
+        || hasPermission("agenda.doctors.manage")
+        || hasPermission("agenda.assistants.manage");
+
+      allow delete: if isAdmin();
+    }
+
+    match /bloqueosAgenda/{blockId} {
+      allow read: if isAdmin()
+        || isActiveUser();
+
+      allow create: if isAdmin()
+        || hasPermission("agenda.blocks.create")
+        || hasPermission("agenda.doctors.manage")
+        || hasPermission("agenda.assistants.manage");
+
+      allow update: if isAdmin()
+        || hasPermission("agenda.blocks.delete")
+        || hasPermission("agenda.blocks.create")
+        || hasPermission("agenda.doctors.manage")
+        || hasPermission("agenda.assistants.manage");
+
+      allow delete: if isAdmin();
+    }
+
+    match /citas/{appointmentId} {
+      allow read: if isAdmin()
+        || isActiveUser();
+
+      allow create: if isAdmin()
+        || hasPermission("agenda.appointments.create");
+
+      allow update: if isAdmin()
+        || hasPermission("agenda.appointments.update")
+        || hasPermission("agenda.appointments.cancel");
+
+      allow delete: if isAdmin();
     }
 
     match /{document=**} {
-      allow read, write: if false;
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
     }
   }
 }

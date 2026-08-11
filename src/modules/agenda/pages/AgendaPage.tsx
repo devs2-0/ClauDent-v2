@@ -1,11 +1,1004 @@
-import { ModulePlaceholderPage } from "@/shared";
+import { useEffect, useMemo, useState } from "react";
+import {
+  CalendarDays,
+  RefreshCw,
+  Stethoscope,
+  UserRoundCheck,
+  UserRoundX,
+  UsersRound,
+  Clock,
+} from "lucide-react";
+import { toast } from "sonner";
+
+import { useAuth, useCan } from "@/auth";
+import { Badge } from "@/shared/components/ui/badge";
+import { Button } from "@/shared/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/shared/components/ui/card";
+import { Checkbox } from "@/shared/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/shared/components/ui/dialog";
+import { Input } from "@/shared/components/ui/input";
+import { Label } from "@/shared/components/ui/label";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/shared/components/ui/tabs";
+import { Textarea } from "@/shared/components/ui/textarea";
+
+import { assistantService } from "../services/assistantService";
+import { doctorService } from "../services/doctorService";
+import type { Assistant, Doctor } from "../types/agenda.types";
+import AppointmentManager from "../components/AppointmentManager";
+import AvailabilityManager from "../components/AvailabilityManager";
+import AgendaNotificationsButton from "../components/AgendaNotificationsButton";
+
+const DEFAULT_DOCTOR_COLOR = "#2563EB";
+
+
+interface DoctorFormState {
+  nombre: string;
+  email: string;
+  telefono: string;
+  especialidad: string;
+  color: string;
+  visibleEnAgenda: boolean;
+}
+
+interface AssistantFormState {
+  nombre: string;
+  email: string;
+  telefono: string;
+  notas: string;
+  doctorIdsAsignados: string[];
+  visibleEnAgenda: boolean;
+}
+
+const emptyDoctorForm: DoctorFormState = {
+  nombre: "",
+  email: "",
+  telefono: "",
+  especialidad: "",
+  color: DEFAULT_DOCTOR_COLOR,
+  visibleEnAgenda: true,
+};
+
+const emptyAssistantForm: AssistantFormState = {
+  nombre: "",
+  email: "",
+  telefono: "",
+  notas: "",
+  doctorIdsAsignados: [],
+  visibleEnAgenda: true,
+};
 
 const AgendaPage = () => {
+  const { currentUser } = useAuth();
+  const { can } = useCan();
+
+  const [selectedTab, setSelectedTab] = useState("calendario");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  const [doctors, setDoctors] = useState<Doctor[]>([]);
+  const [assistants, setAssistants] = useState<Assistant[]>([]);
+
+  const [doctorDialogOpen, setDoctorDialogOpen] = useState(false);
+  const [editingDoctor, setEditingDoctor] = useState<Doctor | null>(null);
+  const [doctorForm, setDoctorForm] =
+    useState<DoctorFormState>(emptyDoctorForm);
+
+  const [assistantDialogOpen, setAssistantDialogOpen] = useState(false);
+  const [editingAssistant, setEditingAssistant] =
+    useState<Assistant | null>(null);
+  const [assistantForm, setAssistantForm] =
+    useState<AssistantFormState>(emptyAssistantForm);
+
+  const canManageDoctors = can("agenda.doctors.manage");
+  const canManageAssistants = can("agenda.assistants.manage");
+  const canManageAvailability =
+  canManageDoctors ||
+  canManageAssistants ||
+  can("agenda.blocks.create") ||
+  can("agenda.blocks.delete");
+
+
+  const activeDoctors = useMemo(() => {
+    return doctors.filter((doctor) => doctor.status === "active");
+  }, [doctors]);
+
+  const visibleTabs = useMemo(() => {
+    return [
+      {
+        value: "calendario",
+        label: "Calendario",
+        icon: CalendarDays,
+        visible: can("agenda.view"),
+      },
+      {
+        value: "doctores",
+        label: "Doctores",
+        icon: Stethoscope,
+        visible: canManageDoctors,
+      },
+      {
+        value: "asistentes",
+        label: "Asistentes",
+        icon: UsersRound,
+        visible: canManageAssistants,
+      },
+      {
+        value: "disponibilidad",
+        label: "Disponibilidad",
+        icon: Clock,
+        visible: canManageAvailability,
+      },
+    ].filter((tab) => tab.visible);
+  }, [can, canManageDoctors, canManageAssistants, canManageAvailability]);
+
+  const activeTab = visibleTabs.some((tab) => tab.value === selectedTab)
+    ? selectedTab
+    : visibleTabs[0]?.value;
+
+  const loadData = async () => {
+    setLoading(true);
+
+    try {
+      const [doctorsData, assistantsData] = await Promise.all([
+        doctorService.listDoctors(),
+        assistantService.listAssistants(),
+      ]);
+
+      setDoctors(doctorsData);
+      setAssistants(assistantsData);
+    } catch (error) {
+      console.error(error);
+      toast.error("No se pudo cargar la información de agenda.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const openCreateDoctorDialog = () => {
+    setEditingDoctor(null);
+    setDoctorForm(emptyDoctorForm);
+    setDoctorDialogOpen(true);
+  };
+
+  const openEditDoctorDialog = (doctor: Doctor) => {
+    setEditingDoctor(doctor);
+    setDoctorForm({
+      nombre: doctor.nombre,
+      email: doctor.email ?? "",
+      telefono: doctor.telefono ?? "",
+      especialidad: doctor.especialidad ?? "",
+      color: doctor.color ?? DEFAULT_DOCTOR_COLOR,
+      visibleEnAgenda: doctor.visibleEnAgenda,
+    });
+    setDoctorDialogOpen(true);
+  };
+
+  const closeDoctorDialog = () => {
+    if (saving) return;
+
+    setDoctorDialogOpen(false);
+    setEditingDoctor(null);
+    setDoctorForm(emptyDoctorForm);
+  };
+
+  const handleSaveDoctor = async () => {
+    if (!canManageDoctors) {
+      toast.error("No tienes permiso para gestionar doctores.");
+      return;
+    }
+
+    const nombre = doctorForm.nombre.trim();
+
+    if (!nombre) {
+      toast.error("El nombre del doctor es obligatorio.");
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      if (editingDoctor) {
+        await doctorService.updateDoctor(editingDoctor.id, {
+          nombre,
+          email: doctorForm.email.trim().toLowerCase(),
+          telefono: doctorForm.telefono.trim(),
+          especialidad: doctorForm.especialidad.trim(),
+          color: doctorForm.color || DEFAULT_DOCTOR_COLOR,
+          visibleEnAgenda: doctorForm.visibleEnAgenda,
+          updatedBy: currentUser?.uid ?? null,
+        });
+
+        toast.success("Doctor actualizado correctamente.");
+      } else {
+        await doctorService.createDoctor({
+          nombre,
+          email: doctorForm.email.trim().toLowerCase(),
+          telefono: doctorForm.telefono.trim(),
+          especialidad: doctorForm.especialidad.trim(),
+          color: doctorForm.color || DEFAULT_DOCTOR_COLOR,
+          status: "active",
+          visibleEnAgenda: doctorForm.visibleEnAgenda,
+          userUid: null,
+          createdBy: currentUser?.uid ?? null,
+          updatedBy: currentUser?.uid ?? null,
+        });
+
+        toast.success("Doctor creado correctamente.");
+      }
+
+      closeDoctorDialog();
+      await loadData();
+    } catch (error) {
+      console.error(error);
+      toast.error("No se pudo guardar el doctor.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleToggleDoctorStatus = async (doctor: Doctor) => {
+    if (!canManageDoctors) {
+      toast.error("No tienes permiso para gestionar doctores.");
+      return;
+    }
+
+    const nextStatus = doctor.status === "active" ? "inactive" : "active";
+
+    const confirmed = window.confirm(
+      nextStatus === "inactive"
+        ? `¿Seguro que deseas desactivar a ${doctor.nombre}? Ya no aparecerá como disponible en agenda.`
+        : `¿Deseas activar nuevamente a ${doctor.nombre}?`,
+    );
+
+    if (!confirmed) return;
+
+    try {
+      await doctorService.updateDoctor(doctor.id, {
+        status: nextStatus,
+        visibleEnAgenda:
+          nextStatus === "active" ? doctor.visibleEnAgenda : false,
+        updatedBy: currentUser?.uid ?? null,
+      });
+
+      toast.success(
+        nextStatus === "active"
+          ? "Doctor activado correctamente."
+          : "Doctor desactivado correctamente.",
+      );
+
+      await loadData();
+    } catch (error) {
+      console.error(error);
+      toast.error("No se pudo cambiar el estado del doctor.");
+    }
+  };
+
+  const openCreateAssistantDialog = () => {
+    setEditingAssistant(null);
+    setAssistantForm(emptyAssistantForm);
+    setAssistantDialogOpen(true);
+  };
+
+  const openEditAssistantDialog = (assistant: Assistant) => {
+    setEditingAssistant(assistant);
+    setAssistantForm({
+      nombre: assistant.nombre,
+      email: assistant.email ?? "",
+      telefono: assistant.telefono ?? "",
+      notas: assistant.notas ?? "",
+      doctorIdsAsignados: assistant.doctorIdsAsignados ?? [],
+      visibleEnAgenda: assistant.visibleEnAgenda,
+    });
+    setAssistantDialogOpen(true);
+  };
+
+  const closeAssistantDialog = () => {
+    if (saving) return;
+
+    setAssistantDialogOpen(false);
+    setEditingAssistant(null);
+    setAssistantForm(emptyAssistantForm);
+  };
+
+  const toggleAssistantDoctor = (doctorId: string) => {
+    setAssistantForm((current) => {
+      const exists = current.doctorIdsAsignados.includes(doctorId);
+
+      return {
+        ...current,
+        doctorIdsAsignados: exists
+          ? current.doctorIdsAsignados.filter((item) => item !== doctorId)
+          : [...current.doctorIdsAsignados, doctorId],
+      };
+    });
+  };
+
+  const handleSaveAssistant = async () => {
+    if (!canManageAssistants) {
+      toast.error("No tienes permiso para gestionar asistentes.");
+      return;
+    }
+
+    const nombre = assistantForm.nombre.trim();
+
+    if (!nombre) {
+      toast.error("El nombre del asistente es obligatorio.");
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      if (editingAssistant) {
+        await assistantService.updateAssistant(editingAssistant.id, {
+          nombre,
+          email: assistantForm.email.trim().toLowerCase(),
+          telefono: assistantForm.telefono.trim(),
+          notas: assistantForm.notas.trim(),
+          doctorIdsAsignados: assistantForm.doctorIdsAsignados,
+          visibleEnAgenda: assistantForm.visibleEnAgenda,
+          updatedBy: currentUser?.uid ?? null,
+        });
+
+        toast.success("Asistente actualizado correctamente.");
+      } else {
+        await assistantService.createAssistant({
+          nombre,
+          email: assistantForm.email.trim().toLowerCase(),
+          telefono: assistantForm.telefono.trim(),
+          notas: assistantForm.notas.trim(),
+          doctorIdsAsignados: assistantForm.doctorIdsAsignados,
+          status: "active",
+          visibleEnAgenda: assistantForm.visibleEnAgenda,
+          userUid: null,
+          createdBy: currentUser?.uid ?? null,
+          updatedBy: currentUser?.uid ?? null,
+        });
+
+        toast.success("Asistente creado correctamente.");
+      }
+
+      closeAssistantDialog();
+      await loadData();
+    } catch (error) {
+      console.error(error);
+      toast.error("No se pudo guardar el asistente.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleToggleAssistantStatus = async (assistant: Assistant) => {
+    if (!canManageAssistants) {
+      toast.error("No tienes permiso para gestionar asistentes.");
+      return;
+    }
+
+    const nextStatus = assistant.status === "active" ? "inactive" : "active";
+
+    const confirmed = window.confirm(
+      nextStatus === "inactive"
+        ? `¿Seguro que deseas desactivar a ${assistant.nombre}?`
+        : `¿Deseas activar nuevamente a ${assistant.nombre}?`,
+    );
+
+    if (!confirmed) return;
+
+    try {
+      await assistantService.updateAssistant(assistant.id, {
+        status: nextStatus,
+        visibleEnAgenda:
+          nextStatus === "active" ? assistant.visibleEnAgenda : false,
+        updatedBy: currentUser?.uid ?? null,
+      });
+
+      toast.success(
+        nextStatus === "active"
+          ? "Asistente activado correctamente."
+          : "Asistente desactivado correctamente.",
+      );
+
+      await loadData();
+    } catch (error) {
+      console.error(error);
+      toast.error("No se pudo cambiar el estado del asistente.");
+    }
+  };
+
+  if (visibleTabs.length === 0) {
+    return (
+      <main className="space-y-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Agenda</CardTitle>
+            <CardDescription>
+              No tienes permisos para ver este módulo.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </main>
+    );
+  }
+
+
+
   return (
-    <ModulePlaceholderPage
-      title="Agenda"
-      description="Módulo para gestionar citas, doctores, asistentes, turnos, bloqueos, cambios de horario y notificaciones."
-    />
+    <main className="space-y-6">
+      <section className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold text-foreground">Agenda</h1>
+
+          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
+            Gestiona el calendario interno del consultorio, doctores,
+            asistentes y disponibilidad operativa.
+          </p>
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          <AgendaNotificationsButton doctors={activeDoctors} />
+
+          <Button variant="outline" onClick={loadData} disabled={loading}>
+            <RefreshCw className="mr-2 h-4 w-4" />
+            Actualizar
+          </Button>
+        </div>
+      </section>
+
+      <Tabs value={activeTab} onValueChange={setSelectedTab}>
+        <TabsList className="h-auto flex-wrap justify-start">
+          {visibleTabs.map((tab) => {
+            const Icon = tab.icon;
+
+            return (
+              <TabsTrigger key={tab.value} value={tab.value} className="gap-2">
+                <Icon className="h-4 w-4" />
+                {tab.label}
+              </TabsTrigger>
+            );
+          })}
+        </TabsList>
+
+        <TabsContent value="calendario" className="mt-6">
+          <AppointmentManager doctors={doctors} assistants={assistants} />
+        </TabsContent>
+
+        <TabsContent value="doctores" className="mt-6">
+          <Card>
+            <CardHeader className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div>
+                <CardTitle>Doctores</CardTitle>
+                <CardDescription>
+                  Administra los doctores que aparecen en la agenda clínica.
+                </CardDescription>
+              </div>
+
+              {canManageDoctors && (
+                <Button onClick={openCreateDoctorDialog}>
+                  <Stethoscope className="mr-2 h-4 w-4" />
+                  Nuevo doctor
+                </Button>
+              )}
+            </CardHeader>
+
+            <CardContent>
+              {loading ? (
+                <div className="py-8 text-center text-sm text-muted-foreground">
+                  Cargando doctores...
+                </div>
+              ) : doctors.length === 0 ? (
+                <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+                  No hay doctores registrados.
+                </div>
+              ) : (
+                <div className="grid gap-4 md:grid-cols-2">
+                  {doctors.map((doctor) => (
+                    <div
+                      key={doctor.id}
+                      className="rounded-xl border bg-background p-4"
+                    >
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span
+                              className="h-4 w-4 rounded-full border"
+                              style={{
+                                backgroundColor:
+                                  doctor.color || DEFAULT_DOCTOR_COLOR,
+                              }}
+                            />
+
+                            <h3 className="font-semibold">{doctor.nombre}</h3>
+
+                            <Badge
+                              variant={
+                                doctor.status === "active"
+                                  ? "outline"
+                                  : "secondary"
+                              }
+                            >
+                              {doctor.status === "active"
+                                ? "Activo"
+                                : "Inactivo"}
+                            </Badge>
+
+                            {doctor.visibleEnAgenda && (
+                              <Badge variant="secondary">Visible</Badge>
+                            )}
+                          </div>
+
+                          <p className="text-sm text-muted-foreground">
+                            {doctor.especialidad || "Sin especialidad."}
+                          </p>
+
+                          {doctor.email && (
+                            <p className="text-xs text-muted-foreground">
+                              {doctor.email}
+                            </p>
+                          )}
+
+                          {doctor.telefono && (
+                            <p className="text-xs text-muted-foreground">
+                              {doctor.telefono}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => openEditDoctorDialog(doctor)}
+                        >
+                          Editar
+                        </Button>
+
+                        <Button
+                          variant={
+                            doctor.status === "active"
+                              ? "destructive"
+                              : "outline"
+                          }
+                          size="sm"
+                          onClick={() => handleToggleDoctorStatus(doctor)}
+                        >
+                          {doctor.status === "active" ? (
+                            <UserRoundX className="mr-2 h-4 w-4" />
+                          ) : (
+                            <UserRoundCheck className="mr-2 h-4 w-4" />
+                          )}
+                          {doctor.status === "active"
+                            ? "Desactivar"
+                            : "Activar"}
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="asistentes" className="mt-6">
+          <Card>
+            <CardHeader className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+              <div>
+                <CardTitle>Asistentes</CardTitle>
+                <CardDescription>
+                  Administra asistentes y vincúlalos con uno o varios doctores.
+                </CardDescription>
+              </div>
+
+              {canManageAssistants && (
+                <Button onClick={openCreateAssistantDialog}>
+                  <UsersRound className="mr-2 h-4 w-4" />
+                  Nuevo asistente
+                </Button>
+              )}
+            </CardHeader>
+
+            <CardContent>
+              {loading ? (
+                <div className="py-8 text-center text-sm text-muted-foreground">
+                  Cargando asistentes...
+                </div>
+              ) : assistants.length === 0 ? (
+                <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
+                  No hay asistentes registrados.
+                </div>
+              ) : (
+                <div className="grid gap-4 md:grid-cols-2">
+                  {assistants.map((assistant) => {
+                    const assignedDoctorNames = assistant.doctorIdsAsignados
+                      .map(
+                        (doctorId) =>
+                          doctors.find((doctor) => doctor.id === doctorId)
+                            ?.nombre,
+                      )
+                      .filter(Boolean);
+
+                    return (
+                      <div
+                        key={assistant.id}
+                        className="rounded-xl border bg-background p-4"
+                      >
+                        <div className="space-y-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h3 className="font-semibold">
+                              {assistant.nombre}
+                            </h3>
+
+                            <Badge
+                              variant={
+                                assistant.status === "active"
+                                  ? "outline"
+                                  : "secondary"
+                              }
+                            >
+                              {assistant.status === "active"
+                                ? "Activo"
+                                : "Inactivo"}
+                            </Badge>
+
+                            {assistant.visibleEnAgenda && (
+                              <Badge variant="secondary">Visible</Badge>
+                            )}
+                          </div>
+
+                          {assistant.email && (
+                            <p className="text-xs text-muted-foreground">
+                              {assistant.email}
+                            </p>
+                          )}
+
+                          {assistant.telefono && (
+                            <p className="text-xs text-muted-foreground">
+                              {assistant.telefono}
+                            </p>
+                          )}
+
+                          <p className="text-sm text-muted-foreground">
+                            {assignedDoctorNames.length > 0
+                              ? `Asignado a: ${assignedDoctorNames.join(", ")}`
+                              : "Sin doctores asignados."}
+                          </p>
+
+                          {assistant.notas && (
+                            <p className="text-xs text-muted-foreground">
+                              {assistant.notas}
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => openEditAssistantDialog(assistant)}
+                          >
+                            Editar
+                          </Button>
+
+                          <Button
+                            variant={
+                              assistant.status === "active"
+                                ? "destructive"
+                                : "outline"
+                            }
+                            size="sm"
+                            onClick={() =>
+                              handleToggleAssistantStatus(assistant)
+                            }
+                          >
+                            {assistant.status === "active" ? (
+                              <UserRoundX className="mr-2 h-4 w-4" />
+                            ) : (
+                              <UserRoundCheck className="mr-2 h-4 w-4" />
+                            )}
+                            {assistant.status === "active"
+                              ? "Desactivar"
+                              : "Activar"}
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="disponibilidad" className="mt-6">
+          <AvailabilityManager doctors={doctors} assistants={assistants} />
+        </TabsContent>
+
+      </Tabs>
+
+      <Dialog open={doctorDialogOpen} onOpenChange={setDoctorDialogOpen}>
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {editingDoctor ? "Editar doctor" : "Nuevo doctor"}
+            </DialogTitle>
+            <DialogDescription>
+              Configura la información básica del doctor para agenda.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="doctor-name">Nombre *</Label>
+              <Input
+                id="doctor-name"
+                value={doctorForm.nombre}
+                onChange={(event) =>
+                  setDoctorForm((current) => ({
+                    ...current,
+                    nombre: event.target.value,
+                  }))
+                }
+                placeholder="Ej. Dra. Claudia"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="doctor-specialty">Especialidad</Label>
+              <Input
+                id="doctor-specialty"
+                value={doctorForm.especialidad}
+                onChange={(event) =>
+                  setDoctorForm((current) => ({
+                    ...current,
+                    especialidad: event.target.value,
+                  }))
+                }
+                placeholder="Ej. Ortodoncia"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="doctor-email">Correo</Label>
+              <Input
+                id="doctor-email"
+                type="email"
+                value={doctorForm.email}
+                onChange={(event) =>
+                  setDoctorForm((current) => ({
+                    ...current,
+                    email: event.target.value,
+                  }))
+                }
+                placeholder="doctor@claudent.com"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="doctor-phone">Teléfono</Label>
+              <Input
+                id="doctor-phone"
+                value={doctorForm.telefono}
+                onChange={(event) =>
+                  setDoctorForm((current) => ({
+                    ...current,
+                    telefono: event.target.value,
+                  }))
+                }
+                placeholder="Opcional"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="doctor-color">Color en agenda</Label>
+              <Input
+                id="doctor-color"
+                type="color"
+                value={doctorForm.color}
+                onChange={(event) =>
+                  setDoctorForm((current) => ({
+                    ...current,
+                    color: event.target.value,
+                  }))
+                }
+              />
+            </div>
+
+            <label className="flex items-center gap-3 rounded-lg border p-3">
+              <Checkbox
+                checked={doctorForm.visibleEnAgenda}
+                onCheckedChange={(checked) =>
+                  setDoctorForm((current) => ({
+                    ...current,
+                    visibleEnAgenda: checked === true,
+                  }))
+                }
+              />
+              <span className="text-sm">Visible en agenda</span>
+            </label>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={closeDoctorDialog}
+              disabled={saving}
+            >
+              Cancelar
+            </Button>
+
+            <Button onClick={handleSaveDoctor} disabled={saving}>
+              {saving ? "Guardando..." : "Guardar doctor"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={assistantDialogOpen}
+        onOpenChange={setAssistantDialogOpen}
+      >
+        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>
+              {editingAssistant ? "Editar asistente" : "Nuevo asistente"}
+            </DialogTitle>
+            <DialogDescription>
+              Configura la información básica del asistente y sus doctores
+              asignados.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="assistant-name">Nombre *</Label>
+              <Input
+                id="assistant-name"
+                value={assistantForm.nombre}
+                onChange={(event) =>
+                  setAssistantForm((current) => ({
+                    ...current,
+                    nombre: event.target.value,
+                  }))
+                }
+                placeholder="Ej. Luis Pérez"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="assistant-email">Correo</Label>
+              <Input
+                id="assistant-email"
+                type="email"
+                value={assistantForm.email}
+                onChange={(event) =>
+                  setAssistantForm((current) => ({
+                    ...current,
+                    email: event.target.value,
+                  }))
+                }
+                placeholder="asistente@claudent.com"
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="assistant-phone">Teléfono</Label>
+              <Input
+                id="assistant-phone"
+                value={assistantForm.telefono}
+                onChange={(event) =>
+                  setAssistantForm((current) => ({
+                    ...current,
+                    telefono: event.target.value,
+                  }))
+                }
+                placeholder="Opcional"
+              />
+            </div>
+
+            <label className="flex items-center gap-3 rounded-lg border p-3">
+              <Checkbox
+                checked={assistantForm.visibleEnAgenda}
+                onCheckedChange={(checked) =>
+                  setAssistantForm((current) => ({
+                    ...current,
+                    visibleEnAgenda: checked === true,
+                  }))
+                }
+              />
+              <span className="text-sm">Visible en agenda</span>
+            </label>
+
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="assistant-notes">Notas</Label>
+              <Textarea
+                id="assistant-notes"
+                value={assistantForm.notas}
+                onChange={(event) =>
+                  setAssistantForm((current) => ({
+                    ...current,
+                    notas: event.target.value,
+                  }))
+                }
+                placeholder="Notas internas opcionales."
+              />
+            </div>
+
+            <div className="space-y-3 md:col-span-2">
+              <Label>Doctores asignados</Label>
+
+              {activeDoctors.length === 0 ? (
+                <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
+                  Primero registra doctores activos.
+                </p>
+              ) : (
+                <div className="grid gap-2">
+                  {activeDoctors.map((doctor) => (
+                    <label
+                      key={doctor.id}
+                      className="flex cursor-pointer items-center gap-3 rounded-lg border p-3"
+                    >
+                      <Checkbox
+                        checked={assistantForm.doctorIdsAsignados.includes(
+                          doctor.id,
+                        )}
+                        onCheckedChange={() => toggleAssistantDoctor(doctor.id)}
+                      />
+
+                      <span
+                        className="h-4 w-4 rounded-full border"
+                        style={{
+                          backgroundColor:
+                            doctor.color || DEFAULT_DOCTOR_COLOR,
+                        }}
+                      />
+
+                      <span className="text-sm">{doctor.nombre}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={closeAssistantDialog}
+              disabled={saving}
+            >
+              Cancelar
+            </Button>
+
+            <Button onClick={handleSaveAssistant} disabled={saving}>
+              {saving ? "Guardando..." : "Guardar asistente"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </main>
   );
 };
 
