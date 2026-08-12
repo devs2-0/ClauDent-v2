@@ -55,6 +55,39 @@
         { "fieldPath": "tipo", "order": "ASCENDING" },
         { "fieldPath": "fecha", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "inventarioMovimientos",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "productoId", "order": "ASCENDING" },
+        { "fieldPath": "fecha", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "cuentasPorCobrar",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "pacienteId", "order": "ASCENDING" },
+        { "fieldPath": "fechaCreacion", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "cuentasPorCobrar",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "pacienteId", "order": "ASCENDING" },
+        { "fieldPath": "estado", "order": "ASCENDING" },
+        { "fieldPath": "fechaCreacion", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "cuentasPorCobrar",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "estado", "order": "ASCENDING" },
+        { "fieldPath": "fechaUltimoAbono", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

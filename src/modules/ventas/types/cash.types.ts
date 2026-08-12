@@ -26,6 +26,7 @@ export interface Payment extends CashUserStamp {
   cotizacionId?: string | null;
   tratamientoId?: string | null;
   ventaId?: string | null;
+  cuentaPorCobrarId?: string | null;
   fecha: string;
   metodo: PaymentMethod;
   monto: number;
@@ -177,10 +178,18 @@ export interface RegisterDirectSaleInput {
   pacienteNombre: string;
   citaId?: string | null;
   metodo: PaymentMethod;
+  montoPagado?: number;
   servicios?: DirectSaleServiceItem[];
   productos?: DirectSaleProductItem[];
   descuento?: number;
   notas?: string;
+}
+
+export interface RegisterDirectSaleWithReceivableResult {
+  pagoId: string;
+  cuentaPorCobrarId: string;
+  tratamientoId: string;
+  saldoPendiente: number;
 }
 
 export interface FinalizeQuotationCheckoutInput {

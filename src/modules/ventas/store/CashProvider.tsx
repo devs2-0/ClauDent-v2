@@ -14,6 +14,7 @@ import type {
   OpenCashRegisterInput,
   Payment,
   RegisterDirectSaleInput,
+  RegisterDirectSaleWithReceivableResult,
 } from "../types/cash.types";
 
 interface CashContextValue {
@@ -33,6 +34,7 @@ interface CashContextValue {
   autoCloseCashRegister: (observaciones?: string) => Promise<string>;
   finalizeQuotationCheckout: (input: FinalizeQuotationCheckoutInput) => Promise<string>;
   registerDirectSale: (input: RegisterDirectSaleInput) => Promise<string>;
+  registerDirectSaleWithReceivable: (input: RegisterDirectSaleInput) => Promise<RegisterDirectSaleWithReceivableResult>;
   updateCashShiftSettings: (settings: CashShiftSettings) => Promise<void>;
 }
 
@@ -152,6 +154,12 @@ export const CashProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return id;
   }, []);
 
+  const registerDirectSaleWithReceivable = useCallback(async (input: RegisterDirectSaleInput) => {
+    const result = await cashService.registerDirectSaleWithReceivable(input);
+    toast.success("Abono registrado y saldo pendiente creado");
+    return result;
+  }, []);
+
   const updateCashShiftSettings = useCallback(async (settings: CashShiftSettings) => {
     await cashShiftSettingsService.updateSettings(settings);
     toast.success("Configuracion de turnos guardada");
@@ -176,6 +184,7 @@ export const CashProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         autoCloseCashRegister,
         finalizeQuotationCheckout,
         registerDirectSale,
+        registerDirectSaleWithReceivable,
         updateCashShiftSettings,
       }}
     >

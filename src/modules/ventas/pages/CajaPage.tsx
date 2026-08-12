@@ -56,6 +56,7 @@ import { cn, formatCurrency, formatDate } from "@/shared/utils/utils";
 import { usePagination } from "@/shared/hooks/usePagination";
 import { useInventory, type InventoryMovement } from "@/modules/inventario";
 import { useCashRegister } from "../hooks/useCashRegister";
+import { accountsReceivableService } from "../services/accountsReceivableService";
 import { defaultCashShiftSettings } from "../services/cashShiftSettingsService";
 import {
   exportCashCutCsv,
@@ -66,6 +67,7 @@ import {
   type FinancialReportExportData,
 } from "../services/financialReportExport";
 import type { CashClosureTotals, CashCutSummary, CashExpenseCategory, CashMovement, CashMovementType, CashShiftDefinition, CashShiftSettings, PaymentMethod } from "../types/cash.types";
+import type { AccountReceivable } from "../types/accountsReceivable.types";
 
 const today = () => {
   const now = new Date();
@@ -400,11 +402,21 @@ const CajaPage: React.FC = () => {
   });
 
   const [shiftSettingsForm, setShiftSettingsForm] = useState<CashShiftSettings>(cashShiftSettings);
+  const [accountsReceivable, setAccountsReceivable] = useState<AccountReceivable[]>([]);
+  const [accountsReceivableLoading, setAccountsReceivableLoading] = useState(true);
 
   useEffect(() => {
     if (hasUnsavedShiftSettingsChanges) return;
     setShiftSettingsForm(cashShiftSettings);
   }, [cashShiftSettings, hasUnsavedShiftSettingsChanges]);
+
+  useEffect(() => {
+    setAccountsReceivableLoading(true);
+    return accountsReceivableService.listenAllAccounts((nextAccounts) => {
+      setAccountsReceivable(nextAccounts);
+      setAccountsReceivableLoading(false);
+    });
+  }, []);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -429,6 +441,26 @@ const CajaPage: React.FC = () => {
       return matchesText && matchesMethod && matchesDate;
     });
   }, [payments, search, methodFilter, dateFilter]);
+
+  const pendingAccounts = useMemo(() => {
+    const term = search.toLowerCase().trim();
+    return accountsReceivable
+      .filter((account) => account.saldoPendiente > 0 && account.estado !== "cancelada")
+      .filter((account) => {
+        if (!term) return true;
+        return [
+          account.pacienteNombre,
+          account.concepto,
+          account.estado,
+          account.id,
+        ].join(" ").toLowerCase().includes(term);
+      });
+  }, [accountsReceivable, search]);
+
+  const totalPendingBalance = useMemo(
+    () => pendingAccounts.reduce((total, account) => total + account.saldoPendiente, 0),
+    [pendingAccounts],
+  );
 
   const openCashClosure = useMemo(
     () => cashClosures.find((closure) => closure.estado === "abierto"),
@@ -593,6 +625,9 @@ const CajaPage: React.FC = () => {
   ]);
   const paymentsPagination = usePagination(filteredPayments, {
     resetKeys: [search, methodFilter, dateFilter],
+  });
+  const pendingAccountsPagination = usePagination(pendingAccounts, {
+    resetKeys: [search],
   });
   const cashMovementsPagination = usePagination(displayedCashMovements, {
     resetKeys: [selectedClosureForDetail?.id, dateFilter],
@@ -1193,8 +1228,9 @@ const CajaPage: React.FC = () => {
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className={cn("grid h-auto w-full md:w-fit", canManageCashSettings ? "grid-cols-4" : "grid-cols-3")}>
+        <TabsList className={cn("grid h-auto w-full md:w-fit", canManageCashSettings ? "grid-cols-5" : "grid-cols-4")}>
           <TabsTrigger value="pagos">Pagos</TabsTrigger>
+          <TabsTrigger value="pendientes">Pendientes</TabsTrigger>
           <TabsTrigger value="corte">Corte</TabsTrigger>
           <TabsTrigger value="reportes">Reportes</TabsTrigger>
           {canManageCashSettings && <TabsTrigger value="configuracion">Configuracion</TabsTrigger>}
@@ -1389,6 +1425,100 @@ const CajaPage: React.FC = () => {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        <TabsContent value="pendientes" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                  <CardTitle>Cuentas pendientes</CardTitle>
+                  <CardDescription>
+                    Saldos vivos por paciente. Cada abono aparece en pagos y en el corte de caja del dia en que se registro.
+                  </CardDescription>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <Badge variant={totalPendingBalance > 0 ? "secondary" : "outline"} className="w-fit">
+                    Total pendiente: {formatCurrency(totalPendingBalance)}
+                  </Badge>
+                  <div className="relative sm:w-64">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={search}
+                      onChange={(event) => setSearch(event.target.value)}
+                      placeholder="Buscar pendiente..."
+                      className="pl-9"
+                    />
+                  </div>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Paciente</TableHead>
+                      <TableHead>Concepto</TableHead>
+                      <TableHead>Creacion</TableHead>
+                      <TableHead>Ultimo abono</TableHead>
+                      <TableHead>Estado</TableHead>
+                      <TableHead className="text-right">Abonado</TableHead>
+                      <TableHead className="text-right">Saldo</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {accountsReceivableLoading ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                          Cargando pendientes...
+                        </TableCell>
+                      </TableRow>
+                    ) : pendingAccounts.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                          No hay cuentas pendientes para este filtro.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      pendingAccountsPagination.paginatedItems.map((account) => (
+                        <TableRow key={account.id}>
+                          <TableCell className="font-medium">{account.pacienteNombre}</TableCell>
+                          <TableCell>{account.concepto}</TableCell>
+                          <TableCell>{formatDate(account.fechaCreacion)}</TableCell>
+                          <TableCell>{account.fechaUltimoAbono ? formatDate(account.fechaUltimoAbono) : "Sin abonos"}</TableCell>
+                          <TableCell>
+                            <Badge variant={account.estado === "vencida" ? "destructive" : "secondary"}>
+                              {account.estado}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">{formatCurrency(account.totalAbonado)}</TableCell>
+                          <TableCell className="text-right font-semibold text-amber-700">
+                            {formatCurrency(account.saldoPendiente)}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+            {!accountsReceivableLoading && pendingAccounts.length > 0 && (
+              <DataPagination
+                itemLabel="pendientes"
+                page={pendingAccountsPagination.page}
+                pageSize={pendingAccountsPagination.pageSize}
+                totalItems={pendingAccountsPagination.totalItems}
+                startIndex={pendingAccountsPagination.startIndex}
+                endIndex={pendingAccountsPagination.endIndex}
+                canPreviousPage={pendingAccountsPagination.canPreviousPage}
+                canNextPage={pendingAccountsPagination.canNextPage}
+                onPageSizeChange={pendingAccountsPagination.setPageSize}
+                onPreviousPage={pendingAccountsPagination.previousPage}
+                onNextPage={pendingAccountsPagination.nextPage}
+              />
+            )}
+          </Card>
         </TabsContent>
 
         <TabsContent value="corte" className="space-y-4">
