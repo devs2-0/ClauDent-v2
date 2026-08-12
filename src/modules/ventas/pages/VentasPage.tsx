@@ -80,6 +80,8 @@ const paymentMethodIcon: Record<PaymentMethod, React.ElementType> = {
   transferencia: Landmark,
 };
 
+type SettlementMode = "completo" | "abono";
+
 const patientFullName = (patient: { nombres: string; apellidos: string }) => {
   return `${patient.nombres} ${patient.apellidos}`.trim();
 };
@@ -94,6 +96,7 @@ const VentasPage: React.FC = () => {
     paymentsLoading,
     cashClosures,
     registerDirectSale,
+    registerDirectSaleWithReceivable,
   } = useCashRegister();
   const { products, productsLoading } = useInventory();
   const { patients, patientsLoading } = usePatients();
@@ -102,6 +105,8 @@ const VentasPage: React.FC = () => {
   const [dateFilter, setDateFilter] = useState(today());
   const [patientId, setPatientId] = useState("mostrador");
   const [method, setMethod] = useState<PaymentMethod>("efectivo");
+  const [settlementMode, setSettlementMode] = useState<SettlementMode>("completo");
+  const [initialPayment, setInitialPayment] = useState("");
   const [serviceId, setServiceId] = useState("");
   const [serviceQuantity, setServiceQuantity] = useState("1");
   const [isProductSearchOpen, setIsProductSearchOpen] = useState(false);
@@ -149,6 +154,11 @@ const VentasPage: React.FC = () => {
 
   const parsedDiscount = Number(discount) || 0;
   const saleTotal = Math.max(0, serviceSubtotal + productSubtotal - parsedDiscount);
+  const canUseInstallments = serviceItems.length > 0 && patientId !== "mostrador";
+  const effectiveSettlementMode = canUseInstallments ? settlementMode : "completo";
+  const parsedInitialPayment = Number(initialPayment) || 0;
+  const paymentAmount = effectiveSettlementMode === "abono" ? Math.min(parsedInitialPayment, saleTotal) : saleTotal;
+  const pendingBalance = Math.max(0, saleTotal - paymentAmount);
   const hasItems = serviceItems.length > 0 || productItems.length > 0;
 
   const salesForDate = useMemo(
@@ -256,6 +266,8 @@ const VentasPage: React.FC = () => {
   const resetTicket = () => {
     setPatientId("mostrador");
     setMethod("efectivo");
+    setSettlementMode("completo");
+    setInitialPayment("");
     setServiceId("");
     setProductId("");
     setServiceQuantity("1");
@@ -280,6 +292,24 @@ const VentasPage: React.FC = () => {
     if (serviceItems.length > 0 && patientId === "mostrador") {
       toast.error("Selecciona un paciente para registrar tratamientos en historial");
       return false;
+    }
+
+    if (effectiveSettlementMode === "abono") {
+      if (!canUseInstallments) {
+        toast.error("Los abonos requieren paciente y al menos un tratamiento.");
+        return false;
+      }
+
+      if (parsedInitialPayment <= 0 || parsedInitialPayment >= saleTotal) {
+        toast.error("El abono debe ser mayor a cero y menor al total.");
+        return false;
+      }
+
+      const minimumImmediatePayment = Math.min(productSubtotal, saleTotal);
+      if (minimumImmediatePayment > 0 && parsedInitialPayment < minimumImmediatePayment) {
+        toast.error("El abono debe cubrir al menos los productos vendidos.");
+        return false;
+      }
     }
 
     if (parsedDiscount >= serviceSubtotal + productSubtotal) {
@@ -311,19 +341,27 @@ const VentasPage: React.FC = () => {
         subtotalServicios: serviceSubtotal,
         subtotalProductos: productSubtotal,
         descuento: parsedDiscount,
-        total: saleTotal,
-        notas: notes,
+        total: paymentAmount,
+        tipoRecibo: pendingBalance > 0 ? ("abono" as const) : undefined,
+        tipoIngreso: pendingBalance > 0 ? ("abono" as const) : undefined,
+        notas: pendingBalance > 0
+          ? `${notes ? `${notes}\n` : ""}Saldo pendiente: ${formatCurrency(pendingBalance)}`
+          : notes,
       };
-      const paymentId = await registerDirectSale({
+      const salePayload = {
         fecha: dateFilter,
         pacienteId: selectedPatient?.id ?? null,
         pacienteNombre: receiptDraft.pacienteNombre,
         metodo: method,
+        montoPagado: paymentAmount,
         servicios: serviceItems,
         productos: productItems,
         descuento: parsedDiscount,
         notas: notes,
-      });
+      };
+      const paymentId = pendingBalance > 0
+        ? (await registerDirectSaleWithReceivable(salePayload)).pagoId
+        : await registerDirectSale(salePayload);
       setLastReceipt({ ...receiptDraft, paymentId });
       setIsConfirmSaleOpen(false);
       resetTicket();
@@ -760,10 +798,61 @@ const VentasPage: React.FC = () => {
                   disabled={isSaving}
                 />
               </div>
+              {serviceItems.length > 0 && (
+                <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label>Liquidacion</Label>
+                      <Select
+                        value={settlementMode}
+                        onValueChange={(value) => setSettlementMode(value as SettlementMode)}
+                        disabled={isSaving || !canUseInstallments}
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="completo">Pago completo</SelectItem>
+                          <SelectItem value="abono">Abono / pagos</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Abono inicial</Label>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={settlementMode === "completo" ? String(saleTotal || "") : initialPayment}
+                        onChange={(event) => setInitialPayment(event.target.value)}
+                        disabled={isSaving || settlementMode === "completo" || !canUseInstallments}
+                        placeholder="0.00"
+                      />
+                    </div>
+                  </div>
+                  <div className="grid gap-2 text-sm sm:grid-cols-2">
+                    <div className="rounded-md bg-background p-3">
+                      <p className="text-muted-foreground">Entra a caja</p>
+                      <p className="font-semibold">{formatCurrency(paymentAmount)}</p>
+                    </div>
+                    <div className="rounded-md bg-background p-3">
+                      <p className="text-muted-foreground">Queda pendiente</p>
+                      <p className={cn("font-semibold", pendingBalance > 0 && "text-amber-700")}>
+                        {formatCurrency(pendingBalance)}
+                      </p>
+                    </div>
+                  </div>
+                  {!canUseInstallments && (
+                    <p className="text-xs text-muted-foreground">
+                      Para usar abonos selecciona paciente y agrega al menos un tratamiento.
+                    </p>
+                  )}
+                </div>
+              )}
               <div className="flex items-center justify-between rounded-lg bg-primary p-4 text-primary-foreground shadow-sm transition-all duration-200">
-                <span className="font-semibold">Total a cobrar</span>
+                <span className="font-semibold">{pendingBalance > 0 ? "Abono a cobrar" : "Total a cobrar"}</span>
                 <span className={cn("text-2xl font-bold transition-transform duration-200", isSummaryHighlighted && "scale-105")}>
-                  {formatCurrency(saleTotal)}
+                  {formatCurrency(paymentAmount)}
                 </span>
               </div>
               <div className="space-y-2">
@@ -783,7 +872,7 @@ const VentasPage: React.FC = () => {
                 disabled={isSaving || !hasOpenCashForSelectedDate || !hasItems}
               >
                 <CircleDollarSign className="mr-2 h-4 w-4" />
-                {isSaving ? "Cobrando..." : `Cobrar ${formatCurrency(saleTotal)}`}
+                {isSaving ? "Cobrando..." : `Cobrar ${formatCurrency(paymentAmount)}`}
               </Button>
             </div>
           </CardContent>
@@ -915,9 +1004,21 @@ const VentasPage: React.FC = () => {
                 <span className="text-muted-foreground">Descuento</span>
                 <span>-{formatCurrency(parsedDiscount)}</span>
               </div>
+              {pendingBalance > 0 && (
+                <>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Total de venta</span>
+                    <span>{formatCurrency(saleTotal)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Saldo pendiente</span>
+                    <span className="font-medium text-amber-700">{formatCurrency(pendingBalance)}</span>
+                  </div>
+                </>
+              )}
               <div className="flex items-center justify-between rounded-lg bg-primary p-4 text-primary-foreground">
-                <span className="font-semibold">Total</span>
-                <span className="text-2xl font-bold">{formatCurrency(saleTotal)}</span>
+                <span className="font-semibold">{pendingBalance > 0 ? "Abono a cobrar" : "Total"}</span>
+                <span className="text-2xl font-bold">{formatCurrency(paymentAmount)}</span>
               </div>
             </div>
           </div>

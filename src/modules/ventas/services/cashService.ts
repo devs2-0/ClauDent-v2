@@ -11,7 +11,6 @@ import {
   serverTimestamp,
   updateDoc,
   where,
-  writeBatch,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { addAuditLog } from "@/modules/audit/services/auditService";
@@ -36,12 +35,14 @@ import type {
   Payment,
   PaymentMethod,
   RegisterDirectSaleInput,
+  RegisterDirectSaleWithReceivableResult,
 } from "../types/cash.types";
 
 const PAYMENTS_COLLECTION = "pagos";
 const CASH_CLOSURES_COLLECTION = "cortesCaja";
 const CASH_MOVEMENTS_COLLECTION = "cajaMovimientos";
 const TREATMENTS_COLLECTION = "tratamientos";
+const ACCOUNTS_RECEIVABLE_COLLECTION = "cuentasPorCobrar";
 
 const paymentMethods: PaymentMethod[] = ["efectivo", "tarjeta", "transferencia"];
 
@@ -102,6 +103,7 @@ const mapPayment = (id: string, data: any): Payment => ({
   cotizacionId: data.cotizacionId ?? null,
   tratamientoId: data.tratamientoId ?? null,
   ventaId: data.ventaId ?? id,
+  cuentaPorCobrarId: data.cuentaPorCobrarId ?? null,
   fecha: safeDate(data.fecha),
   metodo: normalizePaymentMethod(data.metodo),
   monto: Number(data.monto) || 0,
@@ -499,9 +501,19 @@ export const cashService = {
     const subtotalProductos = calculateDirectSaleSubtotal(productos);
     const descuento = Math.max(0, Number(input.descuento) || 0);
     const total = subtotalServicios + subtotalProductos - descuento;
+    const montoPagado = input.montoPagado === undefined
+      ? total
+      : Math.round((Number(input.montoPagado) || 0) * 100) / 100;
+    const saldoPendiente = Math.max(0, Math.round((total - montoPagado) * 100) / 100);
 
     if (total <= 0) {
       throw new Error("El total de la venta debe ser mayor a cero.");
+    }
+    if (montoPagado <= 0 || montoPagado > total) {
+      throw new Error("El monto pagado debe ser mayor a cero y no puede exceder el total.");
+    }
+    if (saldoPendiente > 0) {
+      throw new Error("Las ventas con saldo pendiente deben registrarse con el flujo de abonos.");
     }
 
     const concepto = buildDirectSaleConcept({ ...input, servicios, productos });
@@ -550,12 +562,15 @@ export const cashService = {
         ventaId: paymentRef.id,
         fecha,
         metodo: input.metodo,
-        monto: total,
+        monto: montoPagado,
         concepto,
         origen: "venta_directa",
         tipoIngreso: servicios.length > 0 && productos.length > 0 ? "venta_mixta" : servicios.length > 0 ? "tratamiento" : "venta_productos",
         estado: "activo",
         notas: input.notas ?? "",
+        totalVenta: total,
+        saldoPendiente,
+        estadoPago: saldoPendiente > 0 ? "parcial" : "pagado",
         subtotalServicios,
         subtotalProductos,
         descuento,
@@ -573,7 +588,7 @@ export const cashService = {
         tipo: "ingreso",
         metodo: input.metodo,
         concepto,
-        monto: total,
+        monto: montoPagado,
         referenciaTipo: "pago",
         referenciaId: paymentRef.id,
         citaId: input.citaId ?? null,
@@ -599,6 +614,9 @@ export const cashService = {
           fecha,
           items: servicios,
           total: subtotalServicios,
+          montoPagado,
+          saldoPendiente,
+          estadoPago: saldoPendiente > 0 ? "parcial" : "pagado",
           notas: input.notas ?? "",
           createdAt: serverTimestamp(),
         }));
@@ -612,6 +630,9 @@ export const cashService = {
             .map((item) => ({ servicioId: item.servicioId, cantidad: item.cantidad })),
           notas: input.notas || `Venta directa: ${servicios.map((item) => item.nombre).join(", ")}`,
           total: subtotalServicios,
+          montoPagado,
+          saldoPendiente,
+          estadoPago: saldoPendiente > 0 ? "parcial" : "pagado",
           pagoId: paymentRef.id,
           citaId: input.citaId ?? null,
           tratamientoId: treatmentRef?.id ?? null,
@@ -675,29 +696,324 @@ export const cashService = {
     return saleResult.paymentId;
   },
 
-  cancelPayment: async (id: string) => {
-    const batch = writeBatch(db);
-    const cancelUser = await getCurrentUserIdentity();
-    batch.update(doc(db, PAYMENTS_COLLECTION, id), cleanData({
-      estado: "cancelado",
-      usuarioCancelacionId: cancelUser.usuarioId,
-      usuarioCancelacionNombre: cancelUser.usuarioNombre,
-      usuarioCancelacionEmail: cancelUser.usuarioEmail,
-      updatedAt: serverTimestamp(),
-    }));
+  registerDirectSaleWithReceivable: async (input: RegisterDirectSaleInput): Promise<RegisterDirectSaleWithReceivableResult> => {
+    const openCash = await requireOpenCashClosureSnapshot();
+    ensureDateMatchesOpenCash(openCash, input.fecha);
 
-    const movementSnapshot = await getDocs(query(collection(db, CASH_MOVEMENTS_COLLECTION), where("referenciaId", "==", id)));
-    movementSnapshot.docs.forEach((movementDoc) => {
-      batch.update(movementDoc.ref, cleanData({
+    const servicios = (input.servicios ?? []).filter((item) => Number(item.cantidad) > 0);
+    const productos = (input.productos ?? []).filter((item) => Number(item.cantidad) > 0);
+    const subtotalServicios = calculateDirectSaleSubtotal(servicios);
+    const subtotalProductos = calculateDirectSaleSubtotal(productos);
+    const descuento = Math.max(0, Number(input.descuento) || 0);
+    const total = Math.round((subtotalServicios + subtotalProductos - descuento) * 100) / 100;
+    const montoPagado = Math.round((Number(input.montoPagado) || 0) * 100) / 100;
+    const saldoPendiente = Math.max(0, Math.round((total - montoPagado) * 100) / 100);
+
+    if (!input.pacienteId || !input.pacienteNombre.trim()) {
+      throw new Error("Selecciona un paciente para registrar abonos.");
+    }
+    if (servicios.length === 0) {
+      throw new Error("Los abonos requieren al menos un tratamiento.");
+    }
+    if (total <= 0) {
+      throw new Error("El total de la venta debe ser mayor a cero.");
+    }
+    if (montoPagado <= 0 || montoPagado >= total) {
+      throw new Error("El abono debe ser mayor a cero y menor al total.");
+    }
+    if (subtotalProductos > 0 && montoPagado < Math.min(subtotalProductos, total)) {
+      throw new Error("El abono debe cubrir al menos los productos vendidos.");
+    }
+
+    const concepto = buildDirectSaleConcept({ ...input, servicios, productos });
+    const movementUser = await getCurrentUserIdentity();
+
+    const saleResult = await runTransaction(db, async (transaction) => {
+      const inventoryProducts = [];
+
+      for (const item of productos) {
+        const productRef = doc(db, INVENTORY_PRODUCTS_COLLECTION, item.productoId);
+        const productSnap = await transaction.get(productRef);
+        if (!productSnap.exists()) throw new Error("No se encontro un producto de inventario.");
+
+        const data = productSnap.data();
+        inventoryProducts.push({
+          request: item,
+          ref: productRef,
+          id: productSnap.id,
+          nombre: formatInventoryProductName(data.nombre ?? item.nombre ?? "", data.marca ?? ""),
+          stock: Number(data.stock) || 0,
+          costoUnitario: Number(data.costoUnitario) || 0,
+          precioVenta: data.precioVenta === null || data.precioVenta === undefined ? 0 : Number(data.precioVenta) || 0,
+        });
+      }
+
+      const paymentRef = doc(collection(db, PAYMENTS_COLLECTION));
+      const cashMovementRef = doc(collection(db, CASH_MOVEMENTS_COLLECTION));
+      const treatmentRef = doc(collection(db, TREATMENTS_COLLECTION));
+      const patientHistoryRef = doc(collection(db, "pacientes", input.pacienteId!, "historial"));
+      const accountRef = doc(collection(db, ACCOUNTS_RECEIVABLE_COLLECTION));
+      const fecha = toFirestoreDate(input.fecha);
+      const paymentConcept = `Abono inicial: ${concepto}`;
+
+      transaction.set(accountRef, cleanData({
+        pacienteId: input.pacienteId,
+        pacienteNombre: input.pacienteNombre.trim(),
+        citaId: input.citaId ?? null,
+        tratamientoId: treatmentRef.id,
+        cotizacionId: null,
+        concepto: `Saldo pendiente: ${servicios.map((item) => item.nombre).join(", ")}`,
+        total,
+        totalAbonado: montoPagado,
+        saldoPendiente,
+        estado: "pendiente",
+        fechaCreacion: fecha,
+        fechaVencimiento: null,
+        fechaUltimoAbono: fecha,
+        diasSinAbono: 0,
+        alertaDiasSinAbono: 15,
+        notas: input.notas ?? "",
+        ultimoPagoId: paymentRef.id,
+        createdAt: serverTimestamp(),
+        createdBy: movementUser.usuarioId,
+        createdByName: movementUser.usuarioNombre,
+        createdByEmail: movementUser.usuarioEmail,
+        updatedAt: serverTimestamp(),
+        updatedBy: movementUser.usuarioId,
+        updatedByName: movementUser.usuarioNombre,
+        updatedByEmail: movementUser.usuarioEmail,
+      }));
+
+      transaction.set(paymentRef, cleanData({
+        corteId: openCash.id,
+        cuentaPorCobrarId: accountRef.id,
+        pacienteId: input.pacienteId,
+        pacienteNombre: input.pacienteNombre.trim(),
+        citaId: input.citaId ?? null,
+        cotizacionId: null,
+        tratamientoId: treatmentRef.id,
+        ventaId: paymentRef.id,
+        fecha,
+        metodo: input.metodo,
+        monto: montoPagado,
+        concepto: paymentConcept,
+        origen: "abono",
+        tipoIngreso: "abono",
+        estado: "activo",
+        notas: input.notas ?? `Saldo pendiente: ${saldoPendiente.toFixed(2)}`,
+        totalVenta: total,
+        saldoPendiente,
+        estadoPago: "parcial",
+        subtotalServicios,
+        subtotalProductos,
+        descuento,
+        servicios,
+        productos,
+        ...movementUser,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }));
+
+      transaction.set(cashMovementRef, cleanData({
+        corteId: openCash.id,
+        fecha,
+        tipo: "ingreso",
+        metodo: input.metodo,
+        concepto: paymentConcept,
+        monto: montoPagado,
+        referenciaTipo: "pago",
+        referenciaId: paymentRef.id,
+        cuentaPorCobrarId: accountRef.id,
+        citaId: input.citaId ?? null,
+        tratamientoId: treatmentRef.id,
+        ventaId: paymentRef.id,
+        tipoIngreso: "abono",
+        nota: input.notas ?? "",
+        categoriaGasto: null,
+        estado: "activo",
+        ...movementUser,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp(),
+      }));
+
+      transaction.set(treatmentRef, cleanData({
+        pacienteId: input.pacienteId,
+        pacienteNombre: input.pacienteNombre.trim(),
+        citaId: input.citaId ?? null,
+        cotizacionId: null,
+        pagoId: paymentRef.id,
+        cuentaPorCobrarId: accountRef.id,
+        ventaId: paymentRef.id,
+        fecha,
+        items: servicios,
+        total: subtotalServicios,
+        montoPagado,
+        saldoPendiente,
+        estadoPago: "parcial",
+        notas: input.notas ?? "",
+        ...movementUser,
+        createdAt: serverTimestamp(),
+      }));
+
+      transaction.set(patientHistoryRef, cleanData({
+        fecha,
+        servicios: servicios
+          .filter((item) => item.servicioId)
+          .map((item) => ({ servicioId: item.servicioId, cantidad: item.cantidad })),
+        notas: input.notas || `Venta con abono: ${servicios.map((item) => item.nombre).join(", ")}`,
+        total: subtotalServicios,
+        montoPagado,
+        saldoPendiente,
+        estadoPago: "parcial",
+        pagoId: paymentRef.id,
+        cuentaPorCobrarId: accountRef.id,
+        citaId: input.citaId ?? null,
+        tratamientoId: treatmentRef.id,
+        ventaId: paymentRef.id,
+      }));
+
+      const inventoryAuditItems: string[] = [];
+
+      inventoryProducts.forEach((product) => {
+        const quantity = resolveMovementQuantity("venta", product.request.cantidad);
+        const nextStock = product.stock + quantity;
+        const absoluteQuantity = Math.abs(quantity);
+        const precioUnitarioVenta = Number(product.request.precioUnitario) || product.precioVenta || 0;
+
+        if (nextStock < 0) {
+          throw new Error(`No hay stock suficiente para ${product.nombre}.`);
+        }
+
+        const movementRef = doc(collection(db, INVENTORY_MOVEMENTS_COLLECTION));
+        transaction.update(product.ref, {
+          stock: nextStock,
+          updatedAt: serverTimestamp(),
+        });
+        transaction.set(movementRef, cleanData({
+          productoId: product.id,
+          productoNombre: product.nombre,
+          fecha,
+          tipo: "venta",
+          cantidad: quantity,
+          stockAnterior: product.stock,
+          stockNuevo: nextStock,
+          motivo: `Venta con abono: ${concepto}`,
+          referenciaTipo: "pago",
+          referenciaId: paymentRef.id,
+          costoUnitario: product.costoUnitario,
+          costoTotal: absoluteQuantity * product.costoUnitario,
+          precioUnitarioVenta,
+          ingresoTotal: absoluteQuantity * precioUnitarioVenta,
+          ...movementUser,
+          createdAt: serverTimestamp(),
+        }));
+
+        inventoryAuditItems.push(`${product.nombre} ${formatSignedQuantity(quantity)} (${product.stock} -> ${nextStock})`);
+      });
+
+      return {
+        pagoId: paymentRef.id,
+        cuentaPorCobrarId: accountRef.id,
+        tratamientoId: treatmentRef.id,
+        saldoPendiente,
+        inventoryAuditDetail: inventoryAuditItems.length
+          ? `Venta con abono | ${compactAuditItems(inventoryAuditItems)}`
+          : "",
+      };
+    });
+
+    await addAuditLog("CREATE", "ventas", `Venta con abono: ${input.pacienteNombre} - ${concepto}`);
+    await addAuditLog("CREATE", "cuentas_por_cobrar", `Saldo pendiente creado: ${input.pacienteNombre} - ${saldoPendiente.toFixed(2)}`);
+    if (saleResult.inventoryAuditDetail) {
+      await addAuditLog("UPDATE", "inventario", saleResult.inventoryAuditDetail);
+    }
+    return {
+      pagoId: saleResult.pagoId,
+      cuentaPorCobrarId: saleResult.cuentaPorCobrarId,
+      tratamientoId: saleResult.tratamientoId,
+      saldoPendiente: saleResult.saldoPendiente,
+    };
+  },
+
+  cancelPayment: async (id: string) => {
+    const cancelUser = await getCurrentUserIdentity();
+    const paymentRef = doc(db, PAYMENTS_COLLECTION, id);
+    const movementSnapshot = await getDocs(query(
+      collection(db, CASH_MOVEMENTS_COLLECTION),
+      where("referenciaTipo", "==", "pago"),
+      where("referenciaId", "==", id),
+      limit(10),
+    ));
+
+    await runTransaction(db, async (transaction) => {
+      const paymentSnap = await transaction.get(paymentRef);
+      if (!paymentSnap.exists()) {
+        throw new Error("El pago no existe.");
+      }
+
+      const payment = mapPayment(paymentSnap.id, paymentSnap.data());
+      if (payment.estado === "cancelado") {
+        throw new Error("Este pago ya fue cancelado.");
+      }
+      if (!payment.corteId) {
+        throw new Error("El pago no tiene corte de caja vinculado.");
+      }
+
+      const cashCutRef = doc(db, CASH_CLOSURES_COLLECTION, payment.corteId);
+      const cashCutSnap = await transaction.get(cashCutRef);
+      if (!cashCutSnap.exists() || cashCutSnap.data().estado !== "abierto") {
+        throw new Error("No se puede cancelar un pago de un corte cerrado.");
+      }
+
+      transaction.update(paymentRef, cleanData({
         estado: "cancelado",
         usuarioCancelacionId: cancelUser.usuarioId,
         usuarioCancelacionNombre: cancelUser.usuarioNombre,
         usuarioCancelacionEmail: cancelUser.usuarioEmail,
         updatedAt: serverTimestamp(),
       }));
+
+      movementSnapshot.docs.forEach((movementDoc) => {
+        transaction.update(movementDoc.ref, cleanData({
+          estado: "cancelado",
+          usuarioCancelacionId: cancelUser.usuarioId,
+          usuarioCancelacionNombre: cancelUser.usuarioNombre,
+          usuarioCancelacionEmail: cancelUser.usuarioEmail,
+          updatedAt: serverTimestamp(),
+        }));
+      });
+
+      if (payment.cuentaPorCobrarId) {
+        const accountRef = doc(db, ACCOUNTS_RECEIVABLE_COLLECTION, payment.cuentaPorCobrarId);
+        const accountSnap = await transaction.get(accountRef);
+        if (!accountSnap.exists()) {
+          throw new Error("La cuenta por cobrar vinculada no existe.");
+        }
+
+        const account = accountSnap.data();
+        if (account.ultimoPagoId !== payment.id) {
+          throw new Error("Solo se puede cancelar el ultimo abono de una cuenta por cobrar.");
+        }
+
+        const total = Math.round((Number(account.total) || 0) * 100) / 100;
+        const currentPaid = Math.round((Number(account.totalAbonado) || 0) * 100) / 100;
+        const nextPaid = Math.max(0, Math.round((currentPaid - payment.monto) * 100) / 100);
+        const nextBalance = Math.max(0, Math.round((total - nextPaid) * 100) / 100);
+
+        transaction.update(accountRef, cleanData({
+          totalAbonado: nextPaid,
+          saldoPendiente: nextBalance,
+          estado: nextBalance <= 0 ? "pagada" : "pendiente",
+          ultimoPagoId: null,
+          diasSinAbono: 0,
+          updatedAt: serverTimestamp(),
+          updatedBy: cancelUser.usuarioId,
+          updatedByName: cancelUser.usuarioNombre,
+          updatedByEmail: cancelUser.usuarioEmail,
+        }));
+      }
     });
 
-    await batch.commit();
     await addAuditLog("UPDATE", "caja", `Pago cancelado: ${id}`);
   },
 

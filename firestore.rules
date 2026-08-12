@@ -43,6 +43,10 @@ service cloud.firestore {
       return /databases/$(database)/documents/cortesCaja/$(corteId);
     }
 
+    function paymentPath(paymentId) {
+      return /databases/$(database)/documents/pagos/$(paymentId);
+    }
+
     function isOpenCashCut(corteId) {
       return corteId is string
         && exists(cashCutPath(corteId))
@@ -67,6 +71,137 @@ service cloud.firestore {
       return hasPermission("sales.reports.view")
         || hasPermission("reports.view")
         || hasPermission("reports.export");
+    }
+
+    function canReadAccountsReceivable() {
+      return canReadSales()
+        || canReadFinancialReports()
+        || hasPermission("sales.payments.manage");
+    }
+
+    function canManageAccountsReceivable() {
+      return hasPermission("sales.payments.manage")
+        || hasPermission("sales.create");
+    }
+
+    function hasReceivableBaseFields(data) {
+      return data.pacienteId is string
+        && data.pacienteNombre is string
+        && data.concepto is string
+        && data.total is number
+        && data.totalAbonado is number
+        && data.saldoPendiente is number
+        && data.estado in ["pendiente", "pagada", "vencida", "cancelada"]
+        && data.fechaCreacion is timestamp
+        && data.diasSinAbono is number
+        && data.alertaDiasSinAbono is number;
+    }
+
+    function isValidReceivableCreate(accountId) {
+      return canManageAccountsReceivable()
+        && hasReceivableBaseFields(request.resource.data)
+        && request.resource.data.total > 0
+        && request.resource.data.totalAbonado >= 0
+        && request.resource.data.saldoPendiente >= 0
+        && request.resource.data.totalAbonado <= request.resource.data.total
+        && request.resource.data.saldoPendiente == request.resource.data.total - request.resource.data.totalAbonado
+        && request.resource.data.createdBy == request.auth.uid
+        && request.resource.data.updatedBy == request.auth.uid
+        && (
+          request.resource.data.totalAbonado == 0
+          || (
+            request.resource.data.ultimoPagoId is string
+            && existsAfter(paymentPath(request.resource.data.ultimoPagoId))
+            && getAfter(paymentPath(request.resource.data.ultimoPagoId)).data.cuentaPorCobrarId == accountId
+            && getAfter(paymentPath(request.resource.data.ultimoPagoId)).data.origen == "abono"
+            && getAfter(paymentPath(request.resource.data.ultimoPagoId)).data.estado == "activo"
+            && getAfter(paymentPath(request.resource.data.ultimoPagoId)).data.monto == request.resource.data.totalAbonado
+          )
+        );
+    }
+
+    function isValidReceivableInstallmentUpdate(accountId) {
+      return canManageAccountsReceivable()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "totalAbonado",
+          "saldoPendiente",
+          "estado",
+          "fechaUltimoAbono",
+          "ultimoPagoId",
+          "diasSinAbono",
+          "updatedAt",
+          "updatedBy",
+          "updatedByName",
+          "updatedByEmail"
+        ])
+        && resource.data.estado in ["pendiente", "vencida"]
+        && request.resource.data.total == resource.data.total
+        && request.resource.data.totalAbonado > resource.data.totalAbonado
+        && request.resource.data.totalAbonado <= resource.data.total
+        && request.resource.data.saldoPendiente == request.resource.data.total - request.resource.data.totalAbonado
+        && request.resource.data.estado in ["pendiente", "pagada"]
+        && request.resource.data.updatedBy == request.auth.uid
+        && request.resource.data.ultimoPagoId is string
+        && existsAfter(paymentPath(request.resource.data.ultimoPagoId))
+        && getAfter(paymentPath(request.resource.data.ultimoPagoId)).data.cuentaPorCobrarId == accountId
+        && getAfter(paymentPath(request.resource.data.ultimoPagoId)).data.origen == "abono"
+        && getAfter(paymentPath(request.resource.data.ultimoPagoId)).data.estado == "activo"
+        && getAfter(paymentPath(request.resource.data.ultimoPagoId)).data.monto == request.resource.data.totalAbonado - resource.data.totalAbonado;
+    }
+
+    function isValidReceivablePaymentCancelUpdate(accountId) {
+      return hasPermission("sales.cancel")
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "totalAbonado",
+          "saldoPendiente",
+          "estado",
+          "ultimoPagoId",
+          "diasSinAbono",
+          "updatedAt",
+          "updatedBy",
+          "updatedByName",
+          "updatedByEmail"
+        ])
+        && resource.data.ultimoPagoId is string
+        && existsAfter(paymentPath(resource.data.ultimoPagoId))
+        && getAfter(paymentPath(resource.data.ultimoPagoId)).data.cuentaPorCobrarId == accountId
+        && getAfter(paymentPath(resource.data.ultimoPagoId)).data.estado == "cancelado"
+        && request.resource.data.total == resource.data.total
+        && request.resource.data.totalAbonado == resource.data.totalAbonado - getAfter(paymentPath(resource.data.ultimoPagoId)).data.monto
+        && request.resource.data.saldoPendiente == resource.data.saldoPendiente + getAfter(paymentPath(resource.data.ultimoPagoId)).data.monto
+        && request.resource.data.estado == "pendiente"
+        && request.resource.data.ultimoPagoId == null
+        && request.resource.data.updatedBy == request.auth.uid;
+    }
+
+    function isValidPaymentCancelUpdate() {
+      return hasPermission("sales.cancel")
+        && resource.data.estado == "activo"
+        && request.resource.data.estado == "cancelado"
+        && isOpenCashCut(resource.data.corteId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "estado",
+          "usuarioCancelacionId",
+          "usuarioCancelacionNombre",
+          "usuarioCancelacionEmail",
+          "updatedAt"
+        ])
+        && request.resource.data.usuarioCancelacionId == request.auth.uid;
+    }
+
+    function isValidCashMovementCancelUpdate() {
+      return hasPermission("sales.cancel")
+        && resource.data.estado == "activo"
+        && request.resource.data.estado == "cancelado"
+        && isOpenCashCut(resource.data.corteId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "estado",
+          "usuarioCancelacionId",
+          "usuarioCancelacionNombre",
+          "usuarioCancelacionEmail",
+          "updatedAt"
+        ])
+        && request.resource.data.usuarioCancelacionId == request.auth.uid;
     }
 
     function canReadInventory() {
@@ -440,29 +575,35 @@ service cloud.firestore {
     }
 
     match /doctores/{doctorId} {
-      allow read: if hasPermission("agenda.view")
+      allow read: if isAdmin()
+        || hasPermission("agenda.view")
         || hasPermission("agenda.doctors.viewAll")
         || hasPermission("agenda.doctors.viewOwn")
         || hasPermission("agenda.doctors.manage");
 
-      allow create: if hasPermission("agenda.doctors.manage");
+      allow create: if isAdmin()
+        || hasPermission("agenda.doctors.manage");
 
-      allow update: if hasPermission("agenda.doctors.manage")
+      allow update: if isAdmin()
+        || hasPermission("agenda.doctors.manage")
         || canLinkDoctorByInvitation(doctorId);
 
-      allow delete: if false;
+      allow delete: if isAdmin();
     }
 
     match /asistentes/{assistantId} {
-      allow read: if hasPermission("agenda.view")
+      allow read: if isAdmin()
+        || hasPermission("agenda.view")
         || hasPermission("agenda.assistants.manage");
 
-      allow create: if hasPermission("agenda.assistants.manage");
+      allow create: if isAdmin()
+        || hasPermission("agenda.assistants.manage");
 
-      allow update: if hasPermission("agenda.assistants.manage")
+      allow update: if isAdmin()
+        || hasPermission("agenda.assistants.manage")
         || canLinkAssistantByInvitation(assistantId);
 
-      allow delete: if false;
+      allow delete: if isAdmin();
     }
 
     match /pacientes/{patientId} {
@@ -511,8 +652,7 @@ service cloud.firestore {
         )
         && isOpenCashCut(request.resource.data.corteId);
 
-      allow update: if hasPermission("sales.cancel")
-        || hasPermission("sales.payments.manage");
+      allow update: if isValidPaymentCancelUpdate();
 
       allow delete: if isAdmin();
     }
@@ -554,9 +694,7 @@ service cloud.firestore {
           && isOpenCashCut(request.resource.data.corteId)
         );
 
-      allow update: if hasPermission("sales.cancel")
-        || hasPermission("sales.payments.manage")
-        || hasPermission("sales.cashShift.close");
+      allow update: if isValidCashMovementCancelUpdate();
 
       allow delete: if isAdmin();
     }
@@ -574,6 +712,14 @@ service cloud.firestore {
         || hasPermission("sales.payments.manage");
 
       allow delete: if isAdmin();
+    }
+
+    match /cuentasPorCobrar/{accountId} {
+      allow read: if canReadAccountsReceivable();
+      allow create: if isValidReceivableCreate(accountId);
+      allow update: if isValidReceivableInstallmentUpdate(accountId)
+        || isValidReceivablePaymentCancelUpdate(accountId);
+      allow delete: if false;
     }
 
     match /inventarioProductos/{productoId} {
@@ -643,47 +789,37 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    match /notificaciones/{notificationId} {
+      allow read: if isActiveUser();
+      allow create: if false;
+      allow update: if isActiveUser()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "leida",
+          "readAt",
+          "updatedAt"
+        ]);
+      allow delete: if isAdmin();
+    }
+
     match /horariosPersonal/{scheduleId} {
-      allow read: if hasPermission("agenda.view")
-        || hasPermission("agenda.doctors.manage")
-        || hasPermission("agenda.assistants.manage");
+      allow read, create, update: if isAdmin()
+        || isActiveUser();
 
-      allow create, update: if hasPermission("agenda.doctors.manage")
-        || hasPermission("agenda.assistants.manage");
-
-      allow delete: if false;
+      allow delete: if isAdmin();
     }
 
     match /bloqueosAgenda/{blockId} {
-      allow read: if hasPermission("agenda.view")
-        || hasPermission("agenda.blocks.create")
-        || hasPermission("agenda.blocks.delete")
-        || hasPermission("agenda.doctors.manage")
-        || hasPermission("agenda.assistants.manage");
+      allow read, create, update: if isAdmin()
+        || isActiveUser();
 
-      allow create: if hasPermission("agenda.blocks.create")
-        || hasPermission("agenda.doctors.manage")
-        || hasPermission("agenda.assistants.manage");
-
-      allow update: if hasPermission("agenda.blocks.delete")
-        || hasPermission("agenda.blocks.create")
-        || hasPermission("agenda.doctors.manage")
-        || hasPermission("agenda.assistants.manage");
-
-      allow delete: if false;
+      allow delete: if isAdmin();
     }
 
     match /citas/{appointmentId} {
-      allow read: if hasPermission("agenda.view")
-        || hasPermission("agenda.doctors.viewAll")
-        || hasPermission("agenda.doctors.viewOwn");
+      allow read, create, update: if isAdmin()
+        || isActiveUser();
 
-      allow create: if hasPermission("agenda.appointments.create");
-
-      allow update: if hasPermission("agenda.appointments.update")
-        || hasPermission("agenda.appointments.cancel");
-
-      allow delete: if false;
+      allow delete: if isAdmin();
     }
 
     match /{document=**} {
