@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui
 import { toast } from 'sonner';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
+import { addAuditLog } from '@/modules/audit/services/auditService';
 import { 
   ArrowLeft, Save, Loader2, Eraser, Circle, X, Check, ArrowUp, AlertTriangle, 
   FileText, Ban, Activity, Crown, Syringe, AlertCircle, HelpCircle, MinusCircle, 
@@ -178,6 +179,7 @@ const OdontogramEditorPage: React.FC = () => {
 
       const docRef = doc(db, 'pacientes', patientId, 'odontograma', odontogramId);
       await updateDoc(docRef, { dientes: cleanDientes, notas: notas || "" });
+      await addAuditLog("UPDATE", "odontograma", `Odontograma guardado: Paciente ${patientId} | ${odontogramId}`);
       toast.success("Guardado correctamente");
     } catch (error) {
       console.error("Error completo:", error); // Ver error real en consola

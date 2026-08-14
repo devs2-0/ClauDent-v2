@@ -61,6 +61,7 @@ service cloud.firestore {
 
     function canReadSales() {
       return hasPermission("sales.view")
+        || hasPermission("sales.cancel")
         || hasPermission("sales.payments.manage")
         || hasPermission("sales.cashCuts.history.view")
         || hasPermission("sales.reports.view")
@@ -181,11 +182,15 @@ service cloud.firestore {
         && isOpenCashCut(resource.data.corteId)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           "estado",
+          "motivoCancelacion",
+          "canceladoAt",
           "usuarioCancelacionId",
           "usuarioCancelacionNombre",
           "usuarioCancelacionEmail",
           "updatedAt"
         ])
+        && request.resource.data.motivoCancelacion is string
+        && request.resource.data.motivoCancelacion.size() <= 300
         && request.resource.data.usuarioCancelacionId == request.auth.uid;
     }
 
@@ -196,11 +201,15 @@ service cloud.firestore {
         && isOpenCashCut(resource.data.corteId)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
           "estado",
+          "motivoCancelacion",
+          "canceladoAt",
           "usuarioCancelacionId",
           "usuarioCancelacionNombre",
           "usuarioCancelacionEmail",
           "updatedAt"
         ])
+        && request.resource.data.motivoCancelacion is string
+        && request.resource.data.motivoCancelacion.size() <= 300
         && request.resource.data.usuarioCancelacionId == request.auth.uid;
     }
 
@@ -208,6 +217,7 @@ service cloud.firestore {
       return hasPermission("inventory.view")
         || hasPermission("inventory.usage.create")
         || hasPermission("inventory.stock.adjust")
+        || hasPermission("sales.cancel")
         || hasPermission("sales.create")
         || hasPermission("sales.view");
     }
@@ -217,6 +227,54 @@ service cloud.firestore {
         "stock",
         "updatedAt"
       ]);
+    }
+
+    function hasInventoryProductShape(data) {
+      return data.nombre is string
+        && data.categoria is string
+        && data.unidad is string
+        && data.stock is number
+        && data.stock >= 0
+        && data.stockMinimo is number
+        && data.stockMinimo >= 0
+        && data.costoUnitario is number
+        && data.costoUnitario >= 0
+        && data.estado in ["activo", "inactivo"]
+        && (
+          !data.keys().hasAny(["precioVenta"])
+          || data.precioVenta == null
+          || (
+            data.precioVenta is number
+            && data.precioVenta >= 0
+          )
+        );
+    }
+
+    function isInventoryProductCreate() {
+      return hasPermission("inventory.create")
+        && hasInventoryProductShape(request.resource.data);
+    }
+
+    function isInventoryProductCatalogUpdate() {
+      return hasPermission("inventory.update")
+        && hasInventoryProductShape(request.resource.data)
+        && request.resource.data.stock == resource.data.stock
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "nombre",
+          "nombreNormalizado",
+          "marca",
+          "marcaNormalizada",
+          "categoria",
+          "unidad",
+          "stockMinimo",
+          "costoUnitario",
+          "precioVenta",
+          "clasificacion",
+          "proveedor",
+          "estado",
+          "notas",
+          "updatedAt"
+        ]);
     }
 
     function isAllowedStockMovementCreate() {
@@ -231,8 +289,40 @@ service cloud.firestore {
         ]
         && request.resource.data.productoId is string
         && request.resource.data.cantidad is number
+        && request.resource.data.cantidad != 0
         && request.resource.data.stockAnterior is number
-        && request.resource.data.stockNuevo is number;
+        && request.resource.data.stockNuevo is number
+        && request.resource.data.stockNuevo >= 0
+        && request.resource.data.stockNuevo == request.resource.data.stockAnterior + request.resource.data.cantidad
+        && request.resource.data.usuarioId == request.auth.uid;
+    }
+
+    function isValidAuditCreate() {
+      return isActiveUser()
+        && request.resource.data.keys().hasOnly([
+          "usuarioId",
+          "usuarioNombre",
+          "usuarioEmail",
+          "accion",
+          "modulo",
+          "detalle",
+          "fecha"
+        ])
+        && request.resource.data.usuarioId == request.auth.uid
+        && request.resource.data.usuarioNombre is string
+        && request.resource.data.usuarioEmail is string
+        && request.resource.data.accion in [
+          "CREATE",
+          "UPDATE",
+          "DELETE",
+          "LOGIN",
+          "LOGOUT",
+          "REVOKE_SESSION",
+          "REVOKE_ALL_SESSIONS"
+        ]
+        && request.resource.data.modulo is string
+        && request.resource.data.detalle is string
+        && request.resource.data.fecha is timestamp;
     }
 
     function isAutomaticCashCloseUpdate() {
@@ -260,6 +350,101 @@ service cloud.firestore {
           "usuarioCierreEmail",
           "updatedAt"
         ]);
+    }
+
+    function isManualCashCloseUpdate() {
+      return hasPermission("sales.cashShift.close")
+        && resource.data.estado == "abierto"
+        && resource.data.usuarioAperturaId == request.auth.uid
+        && request.resource.data.estado == "cerrado"
+        && request.resource.data.status == "cerrado"
+        && request.resource.data.tipoCierre == "manual"
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "fecha",
+          "fin",
+          "fondoInicial",
+          "totales",
+          "totalEgresos",
+          "balanceNeto",
+          "efectivoEsperado",
+          "efectivoContado",
+          "diferenciaEfectivo",
+          "observaciones",
+          "estado",
+          "status",
+          "tipoCierre",
+          "usuarioCierreId",
+          "usuarioCierreNombre",
+          "usuarioCierreEmail",
+          "updatedAt"
+        ])
+        && request.resource.data.usuarioCierreId == request.auth.uid;
+    }
+
+    function isValidCashClosureCreate() {
+      return hasPermission("sales.cashShift.open")
+        && request.resource.data.estado == "abierto"
+        && request.resource.data.status == "abierto"
+        && request.resource.data.fecha is timestamp
+        && request.resource.data.inicio is timestamp
+        && request.resource.data.fondoInicial is number
+        && request.resource.data.fondoInicial >= 0
+        && request.resource.data.usuarioAperturaId == request.auth.uid
+        && request.resource.data.responsableId == request.auth.uid
+        && request.resource.data.efectivoEsperado == request.resource.data.fondoInicial
+        && request.resource.data.efectivoContado == 0
+        && request.resource.data.diferenciaEfectivo == 0;
+    }
+
+    function hasPaymentCreateShape() {
+      return request.resource.data.corteId is string
+        && request.resource.data.fecha is timestamp
+        && request.resource.data.metodo in ["efectivo", "tarjeta", "transferencia"]
+        && request.resource.data.monto is number
+        && request.resource.data.monto > 0
+        && request.resource.data.concepto is string
+        && request.resource.data.origen in ["cotizacion", "venta_directa", "abono"]
+        && request.resource.data.estado == "activo"
+        && request.resource.data.usuarioId == request.auth.uid;
+    }
+
+    function hasCashMovementCreateShape() {
+      return request.resource.data.corteId is string
+        && request.resource.data.fecha is timestamp
+        && request.resource.data.tipo in ["ingreso", "egreso"]
+        && request.resource.data.metodo in ["efectivo", "tarjeta", "transferencia"]
+        && request.resource.data.concepto is string
+        && request.resource.data.monto is number
+        && request.resource.data.monto >= 0
+        && request.resource.data.referenciaTipo in ["apertura", "pago", "cotizacion", "tratamiento", "manual"]
+        && request.resource.data.estado == "activo"
+        && request.resource.data.usuarioId == request.auth.uid
+        && (
+          request.resource.data.referenciaTipo == "apertura"
+          || request.resource.data.monto > 0
+        );
+    }
+
+    function canCreateCashMovementByType() {
+      return (
+          request.resource.data.referenciaTipo == "apertura"
+          && request.resource.data.tipo == "ingreso"
+          && request.resource.data.metodo == "efectivo"
+          && hasPermission("sales.cashShift.open")
+        )
+        || (
+          request.resource.data.referenciaTipo != "apertura"
+          && request.resource.data.tipo == "ingreso"
+          && (
+            hasPermission("sales.create")
+            || hasPermission("sales.payments.manage")
+          )
+        )
+        || (
+          request.resource.data.referenciaTipo == "manual"
+          && request.resource.data.tipo == "egreso"
+          && hasPermission("sales.expenses.create")
+        );
     }
 
     function invitationPath(email) {
@@ -379,9 +564,18 @@ service cloud.firestore {
         "displayName",
         "photoURL",
         "phone",
+        "preferencias",
         "lastLoginAt",
         "updatedAt"
-      ]);
+      ])
+      && (
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(["preferencias"])
+        || (
+          request.resource.data.preferencias is map
+          && request.resource.data.preferencias.keys().hasOnly(["apariencia"])
+          && request.resource.data.preferencias.apariencia in ["light", "dark"]
+        )
+      );
     }
 
     function isOwnActiveSessionCreate(userId) {
@@ -646,7 +840,8 @@ service cloud.firestore {
     match /pagos/{pagoId} {
       allow read: if canReadSales() || canReadFinancialReports();
 
-      allow create: if (
+      allow create: if hasPaymentCreateShape()
+        && (
           hasPermission("sales.create")
           || hasPermission("sales.payments.manage")
         )
@@ -663,15 +858,11 @@ service cloud.firestore {
         || hasPermission("sales.cashShift.open")
         || hasPermission("sales.cashShift.close");
 
-      allow create: if hasPermission("sales.cashShift.open")
-        && request.resource.data.estado == "abierto";
+      allow create: if isValidCashClosureCreate();
 
       allow update: if isAdmin()
         || isAutomaticCashCloseUpdate()
-        || (
-          hasPermission("sales.cashShift.close")
-          && resource.data.usuarioAperturaId == request.auth.uid
-        );
+        || isManualCashCloseUpdate();
 
       allow delete: if isAdmin();
     }
@@ -679,19 +870,18 @@ service cloud.firestore {
     match /cajaMovimientos/{movimientoId} {
       allow read: if canReadSales() || canReadFinancialReports();
 
-      allow create: if (
-          hasPermission("sales.cashShift.open")
-          && request.resource.data.referenciaTipo == "apertura"
-          && request.resource.data.corteId == request.resource.data.referenciaId
-          && isOpenCashCutAfter(request.resource.data.corteId)
-        )
-        || (
+      allow create: if hasCashMovementCreateShape()
+        && canCreateCashMovementByType()
+        && (
           (
-            hasPermission("sales.create")
-            || hasPermission("sales.payments.manage")
-            || hasPermission("sales.expenses.create")
+            request.resource.data.referenciaTipo == "apertura"
+            && request.resource.data.corteId == request.resource.data.referenciaId
+            && isOpenCashCutAfter(request.resource.data.corteId)
           )
-          && isOpenCashCut(request.resource.data.corteId)
+          || (
+            request.resource.data.referenciaTipo != "apertura"
+            && isOpenCashCut(request.resource.data.corteId)
+          )
         );
 
       allow update: if isValidCashMovementCancelUpdate();
@@ -725,13 +915,14 @@ service cloud.firestore {
     match /inventarioProductos/{productoId} {
       allow read: if canReadInventory();
 
-      allow create: if isAdmin();
+      allow create: if isAdmin() || isInventoryProductCreate();
 
-      allow update: if hasPermission("inventory.update")
+      allow update: if isInventoryProductCatalogUpdate()
         || (
           isStockOnlyProductUpdate()
           && (
             hasPermission("sales.create")
+            || hasPermission("sales.cancel")
             || hasPermission("inventory.usage.create")
             || hasPermission("inventory.stock.adjust")
           )
@@ -755,8 +946,11 @@ service cloud.firestore {
 
       allow create: if isAllowedStockMovementCreate()
         && (
-          hasPermission("inventory.usage.create")
+          hasPermission("inventory.create")
+          || hasPermission("inventory.update")
+          || hasPermission("inventory.usage.create")
           || hasPermission("inventory.stock.adjust")
+          || hasPermission("sales.cancel")
           || hasPermission("sales.create")
         );
 
@@ -785,7 +979,7 @@ service cloud.firestore {
 
     match /bitacora/{logId} {
       allow read: if hasPermission("audit.view");
-      allow create: if isSignedIn();
+      allow create: if isValidAuditCreate();
       allow update, delete: if false;
     }
 

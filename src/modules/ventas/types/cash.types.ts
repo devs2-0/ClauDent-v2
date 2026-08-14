@@ -36,6 +36,16 @@ export interface Payment extends CashUserStamp {
   estado: PaymentStatus;
   notas?: string;
   costoProductos?: number;
+  totalVenta?: number;
+  saldoPendiente?: number;
+  estadoPago?: "pagado" | "parcial";
+  subtotalServicios?: number;
+  subtotalProductos?: number;
+  descuento?: number;
+  servicios?: DirectSaleServiceItem[];
+  productos?: DirectSaleProductItem[];
+  motivoCancelacion?: string;
+  canceladoAt?: string | null;
 }
 
 export interface CashClosureTotals {
@@ -111,11 +121,18 @@ export interface CashMovement extends CashUserStamp {
   comprobanteUrl?: string;
   costoProductos?: number;
   estado: PaymentStatus;
+  motivoCancelacion?: string;
+  canceladoAt?: string | null;
 }
 
 export type CreatePaymentInput = Omit<Payment, "id" | "estado"> & {
   estado?: PaymentStatus;
 };
+
+export interface CancelPaymentInput {
+  id: string;
+  motivo: string;
+}
 
 export interface OpenCashRegisterInput {
   fecha: string;

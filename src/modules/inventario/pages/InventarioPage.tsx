@@ -531,6 +531,11 @@ const InventarioPage: React.FC = () => {
       return;
     }
 
+    if (entryItems.some((item) => item.productoId === selectedEntryProduct.id)) {
+      toast.error("Este producto ya esta en el reabastecimiento");
+      return;
+    }
+
     setEntryItems((current) => [
       ...current,
       {
@@ -1587,6 +1592,8 @@ const InventarioPage: React.FC = () => {
                 <Label>{editingProductId ? "Stock actual" : "Stock inicial"}</Label>
                 <Input
                   type="number"
+                  min="0"
+                  step="0.01"
                   value={productForm.stock}
                   onChange={(event) => setProductForm({ ...productForm, stock: event.target.value })}
                   disabled={Boolean(editingProductId)}
@@ -1594,15 +1601,15 @@ const InventarioPage: React.FC = () => {
               </div>
               <div className="space-y-2">
                 <Label>Stock minimo</Label>
-                <Input type="number" value={productForm.stockMinimo} onChange={(event) => setProductForm({ ...productForm, stockMinimo: event.target.value })} />
+                <Input type="number" min="0" step="0.01" value={productForm.stockMinimo} onChange={(event) => setProductForm({ ...productForm, stockMinimo: event.target.value })} />
               </div>
               <div className="space-y-2">
                 <Label>Costo unitario</Label>
-                <Input type="number" step="0.01" value={productForm.costoUnitario} onChange={(event) => setProductForm({ ...productForm, costoUnitario: event.target.value })} />
+                <Input type="number" min="0" step="0.01" value={productForm.costoUnitario} onChange={(event) => setProductForm({ ...productForm, costoUnitario: event.target.value })} />
               </div>
               <div className="space-y-2">
                 <Label>Precio venta</Label>
-                <Input type="number" step="0.01" value={productForm.precioVenta} onChange={(event) => setProductForm({ ...productForm, precioVenta: event.target.value })} placeholder="Opcional" />
+                <Input type="number" min="0" step="0.01" value={productForm.precioVenta} onChange={(event) => setProductForm({ ...productForm, precioVenta: event.target.value })} placeholder="Opcional" />
               </div>
               <div className="space-y-2">
                 <Label>Proveedor principal</Label>

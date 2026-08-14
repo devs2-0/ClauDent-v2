@@ -7,6 +7,7 @@ import type {
   CashClosure,
   CashMovement,
   CashShiftSettings,
+  CancelPaymentInput,
   CloseCashRegisterInput,
   CreateCashMovementInput,
   CreatePaymentInput,
@@ -29,7 +30,7 @@ interface CashContextValue {
   openCashRegister: (input: OpenCashRegisterInput) => Promise<string>;
   createCashMovement: (input: CreateCashMovementInput) => Promise<string>;
   createPayment: (payment: CreatePaymentInput) => Promise<string>;
-  cancelPayment: (id: string) => Promise<void>;
+  cancelPayment: (input: CancelPaymentInput) => Promise<void>;
   closeCashRegister: (input: CloseCashRegisterInput) => Promise<string>;
   autoCloseCashRegister: (observaciones?: string) => Promise<string>;
   finalizeQuotationCheckout: (input: FinalizeQuotationCheckoutInput) => Promise<string>;
@@ -125,8 +126,8 @@ export const CashProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return id;
   }, []);
 
-  const cancelPayment = useCallback(async (id: string) => {
-    await cashService.cancelPayment(id);
+  const cancelPayment = useCallback(async (input: CancelPaymentInput) => {
+    await cashService.cancelPayment(input);
     toast.success("Pago cancelado");
   }, []);
 

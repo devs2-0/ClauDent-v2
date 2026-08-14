@@ -29,7 +29,12 @@ export function formatCurrency(amount: number): string {
 
 // Format date
 export function formatDate(date: string): string {
-  return new Date(date).toLocaleDateString('es-CL', {
+  const dateOnlyMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  const parsedDate = dateOnlyMatch
+    ? new Date(Number(dateOnlyMatch[1]), Number(dateOnlyMatch[2]) - 1, Number(dateOnlyMatch[3]))
+    : new Date(date);
+
+  return parsedDate.toLocaleDateString('es-MX', {
     year: 'numeric',
     month: 'long',
     day: 'numeric',

@@ -11,6 +11,7 @@ import {
 } from "firebase/firestore";
 
 import { db } from "@/lib/firebase";
+import { addAuditLog } from "@/modules/audit/services/auditService";
 import type { AppUserStatus, Role } from "@/auth";
 import type { PermissionKey } from "@/auth/types/permission.types";
 
@@ -166,6 +167,7 @@ export const userInvitationService = {
       consumedAt: null,
       consumedBy: null,
     });
+    await addAuditLog("CREATE", "usuarios", `Invitacion creada: ${email}`);
 
     return {
       id: email,
@@ -196,6 +198,7 @@ export const userInvitationService = {
       updatedAt: serverTimestamp(),
       updatedBy: actorUid ?? null,
     });
+    await addAuditLog("UPDATE", "usuarios", `Invitacion cancelada: ${normalizedEmail}`);
   },
 
   softDeleteUserAccess: async (uid: string, actorUid?: string | null) => {
@@ -212,5 +215,6 @@ export const userInvitationService = {
       updatedBy: actorUid ?? null,
       deletedFromAuth: false,
     });
+    await addAuditLog("DELETE", "usuarios", `Acceso eliminado: ${uid}`);
   },
 };

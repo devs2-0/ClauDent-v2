@@ -2,6 +2,11 @@ import type { Timestamp } from "firebase/firestore";
 import type { PermissionKey } from "./permission.types";
 
 export type AppUserStatus = "active" | "inactive" | "blocked";
+export type UserAppearanceMode = "light" | "dark";
+
+export interface UserPreferences {
+  apariencia?: UserAppearanceMode;
+}
 
 export interface AppUser {
   /**
@@ -49,6 +54,7 @@ export interface AppUser {
    */
   doctorId?: string | null;
   assistantId?: string | null;
+  preferencias?: UserPreferences;
 
   createdAt?: Timestamp | null;
   updatedAt?: Timestamp | null;

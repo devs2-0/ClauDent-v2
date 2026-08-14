@@ -71,6 +71,7 @@ export const PatientsProvider: React.FC<{ children: ReactNode }> = ({ children }
 
   const addHistoryEntry = async (patientId: string, entry: Omit<HistoryEntry, "id">) => {
     const id = (await addDoc(collection(db, "pacientes", patientId, "historial"), cleanData({ ...entry, fecha: new Date(entry.fecha + "T00:00:00") }))).id;
+    await addAuditLog("CREATE", "historial_clinico", `Entrada clinica creada: Paciente ${patientId} | Fecha: ${entry.fecha}`);
     toast.success("Historial agregado");
     return id;
   };
@@ -79,10 +80,12 @@ export const PatientsProvider: React.FC<{ children: ReactNode }> = ({ children }
     const data = { ...updates };
     if (updates.fecha) data.fecha = new Date(updates.fecha + "T00:00:00") as any;
     await updateDoc(doc(db, "pacientes", patientId, "historial", entryId), cleanData(data));
+    await addAuditLog("UPDATE", "historial_clinico", `Entrada clinica actualizada: Paciente ${patientId} | Entrada ${entryId}`);
   };
 
   const deleteHistoryEntry = async (patientId: string, entryId: string) => {
     await deleteDoc(doc(db, "pacientes", patientId, "historial", entryId));
+    await addAuditLog("DELETE", "historial_clinico", `Entrada clinica eliminada: Paciente ${patientId} | Entrada ${entryId}`);
   };
 
   const addOdontogram = async (patientId: string, tipo: "adulto" | "niño" | "mixto", nombre?: string) => {
@@ -98,10 +101,12 @@ export const PatientsProvider: React.FC<{ children: ReactNode }> = ({ children }
 
   const updateOdontogramName = async (patientId: string, odontogramId: string, newName: string) => {
     await updateDoc(doc(db, "pacientes", patientId, "odontograma", odontogramId), { nombre: newName });
+    await addAuditLog("UPDATE", "odontograma", `Odontograma renombrado: Paciente ${patientId} | ${newName}`);
   };
 
   const deleteOdontogram = async (patientId: string, odontogramId: string) => {
     await deleteDoc(doc(db, "pacientes", patientId, "odontograma", odontogramId));
+    await addAuditLog("DELETE", "odontograma", `Odontograma eliminado: Paciente ${patientId} | ${odontogramId}`);
   };
 
   const addInitialHistoryForms = async (patientId: string, forms: IHistoriaClinicaCompleta) => {
@@ -121,6 +126,7 @@ export const PatientsProvider: React.FC<{ children: ReactNode }> = ({ children }
     batch.set(doc(db, `pacientes/${patientId}`), { hasHistorial: true }, { merge: true });
 
     await batch.commit();
+    await addAuditLog("CREATE", "historia_clinica", `Historia clinica inicial guardada: Paciente ${patientId}`);
     toast.success("Historia clinica guardada");
   };
 

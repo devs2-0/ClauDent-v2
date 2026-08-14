@@ -25,10 +25,19 @@ const COLLECTION = "cuentasPorCobrar";
 const PAYMENTS_COLLECTION = "pagos";
 const CASH_CLOSURES_COLLECTION = "cortesCaja";
 const CASH_MOVEMENTS_COLLECTION = "cajaMovimientos";
+const paymentMethods: PaymentMethod[] = ["efectivo", "tarjeta", "transferencia"];
 
 const toFirestoreDate = (date: string) => new Date(`${date}T00:00:00`);
 
 const roundMoney = (value: number) => Math.round(value * 100) / 100;
+
+const ensurePaymentMethod = (method?: PaymentMethod | null): PaymentMethod => {
+  const value = method || "efectivo";
+  if (!paymentMethods.includes(value)) {
+    throw new Error("Metodo de pago invalido.");
+  }
+  return value;
+};
 
 const getOpenCashClosureForDate = async (date: string) => {
   const snapshot = await getDocs(query(
@@ -106,6 +115,7 @@ export const accountsReceivableService = {
 
     const userStamp = await getCurrentUserIdentity();
     const openCash = abonoInicial > 0 ? await getOpenCashClosureForDate(input.fecha) : null;
+    const method = ensurePaymentMethod(input.metodo);
     const accountRef = doc(collection(db, COLLECTION));
     const paymentRef = abonoInicial > 0 ? doc(collection(db, PAYMENTS_COLLECTION)) : null;
     const movementRef = abonoInicial > 0 ? doc(collection(db, CASH_MOVEMENTS_COLLECTION)) : null;
@@ -153,7 +163,7 @@ export const accountsReceivableService = {
           tratamientoId: input.tratamientoId ?? null,
           ventaId: paymentRef.id,
           fecha: toFirestoreDate(input.fecha),
-          metodo: input.metodo ?? "efectivo",
+          metodo: method,
           monto: abonoInicial,
           concepto,
           origen: "abono",
@@ -169,7 +179,7 @@ export const accountsReceivableService = {
           corteId: openCash.id,
           fecha: toFirestoreDate(input.fecha),
           tipo: "ingreso",
-          metodo: input.metodo ?? "efectivo",
+          metodo: method,
           concepto,
           monto: abonoInicial,
           referenciaTipo: "pago",
@@ -204,6 +214,7 @@ export const accountsReceivableService = {
 
     const userStamp = await getCurrentUserIdentity();
     const openCash = await getOpenCashClosureForDate(input.fecha);
+    const method = ensurePaymentMethod(input.metodo);
     const accountRef = doc(db, COLLECTION, input.cuentaPorCobrarId);
     const paymentRef = doc(collection(db, PAYMENTS_COLLECTION));
     const movementRef = doc(collection(db, CASH_MOVEMENTS_COLLECTION));
@@ -237,7 +248,7 @@ export const accountsReceivableService = {
         tratamientoId: account.tratamientoId ?? null,
         ventaId: paymentRef.id,
         fecha: toFirestoreDate(input.fecha),
-        metodo: input.metodo,
+        metodo: method,
         monto: amount,
         concepto,
         origen: "abono",
@@ -253,7 +264,7 @@ export const accountsReceivableService = {
         corteId: openCash.id,
         fecha: toFirestoreDate(input.fecha),
         tipo: "ingreso",
-        metodo: input.metodo,
+        metodo: method,
         concepto,
         monto: amount,
         referenciaTipo: "pago",

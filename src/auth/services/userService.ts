@@ -10,6 +10,7 @@ import {
 } from "firebase/firestore";
 
 import { db } from "@/lib/firebase";
+import { addAuditLog } from "@/modules/audit/services/auditService";
 import { permissionKeys } from "../constants/permissionCatalog";
 import type { PermissionKey } from "../types/permission.types";
 import type { Role } from "../types/role.types";
@@ -156,6 +157,7 @@ export const userService = {
       updatedAt: serverTimestamp(),
       updatedBy: actorUid ?? null,
     });
+    await addAuditLog("UPDATE", "usuarios", `Roles asignados: ${user.email || uid}`);
   },
 
   updateUserStatus: async (
@@ -185,6 +187,7 @@ export const userService = {
       updatedAt: serverTimestamp(),
       updatedBy: actorUid ?? null,
     });
+    await addAuditLog("UPDATE", "usuarios", `Estado actualizado: ${user.email || uid} -> ${status}`);
   },
 
   recalculateUserPermissions: async (
@@ -206,6 +209,7 @@ export const userService = {
       updatedAt: serverTimestamp(),
       updatedBy: actorUid ?? null,
     });
+    await addAuditLog("UPDATE", "usuarios", `Permisos recalculados: ${user.email || uid}`);
   },
 
   getActiveAdminCount: countActiveAdmins,
