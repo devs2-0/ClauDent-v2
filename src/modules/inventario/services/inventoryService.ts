@@ -101,6 +101,14 @@ const safeOptionalDate = (timestamp: any): string | null => {
   return safeDate(timestamp);
 };
 
+const toNonNegativeNumber = (value: unknown, fieldLabel: string) => {
+  const amount = Number(value) || 0;
+  if (amount < 0) {
+    throw new Error(`${fieldLabel} no puede ser negativo.`);
+  }
+  return amount;
+};
+
 export const resolveMovementQuantity = (tipo: InventoryMovementType, cantidad: number) => {
   const normalizedQuantity = Math.abs(Number(cantidad) || 0);
   if (tipo === "ajuste") return Number(cantidad) || 0;
@@ -331,10 +339,12 @@ export const inventoryService = {
     await assertUniqueProductName(name, brand);
     await assertCategoryExists(product.categoria || "clinico");
 
-    const initialStock = Number(product.stock) || 0;
-    if (initialStock < 0) {
-      throw new Error("El stock inicial no puede ser negativo.");
-    }
+    const initialStock = toNonNegativeNumber(product.stock, "El stock inicial");
+    const stockMinimo = toNonNegativeNumber(product.stockMinimo, "El stock minimo");
+    const costoUnitario = toNonNegativeNumber(product.costoUnitario, "El costo unitario");
+    const precioVenta = product.precioVenta === null || product.precioVenta === undefined
+      ? null
+      : toNonNegativeNumber(product.precioVenta, "El precio de venta");
 
     const payload = cleanData({
       ...product,
@@ -345,9 +355,9 @@ export const inventoryService = {
       categoria: product.categoria || "clinico",
       unidad: product.unidad.trim() || "pieza",
       stock: initialStock,
-      stockMinimo: Number(product.stockMinimo) || 0,
-      costoUnitario: Number(product.costoUnitario) || 0,
-      precioVenta: product.precioVenta === null || product.precioVenta === undefined ? null : Number(product.precioVenta) || 0,
+      stockMinimo,
+      costoUnitario,
+      precioVenta,
       clasificacion: product.clasificacion ?? normalizeClassification(null, product.categoria),
       proveedor: product.proveedor?.trim() ?? "",
       estado: product.estado ?? "activo",
@@ -362,7 +372,6 @@ export const inventoryService = {
 
     if (initialStock > 0) {
       const movementRef = doc(collection(db, INVENTORY_MOVEMENTS_COLLECTION));
-      const initialCost = Number(product.costoUnitario) || 0;
       batch.set(movementRef, cleanData({
         productoId: productRef.id,
         productoNombre: formatProductDisplayName(name, brand),
@@ -376,8 +385,8 @@ export const inventoryService = {
         referenciaId: productRef.id,
         ...movementUser,
         proveedor: product.proveedor?.trim() ?? "",
-        costoUnitario: initialCost,
-        costoTotal: initialStock * initialCost,
+        costoUnitario,
+        costoTotal: initialStock * costoUnitario,
         createdAt: serverTimestamp(),
       }));
     }
@@ -386,7 +395,7 @@ export const inventoryService = {
     await addAuditLog(
       "CREATE",
       "inventario",
-      `Producto creado: ${formatProductDisplayName(name, brand)} | Stock inicial: ${initialStock} ${product.unidad.trim() || "pieza"} | Minimo: ${Number(product.stockMinimo) || 0}`,
+      `Producto creado: ${formatProductDisplayName(name, brand)} | Stock inicial: ${initialStock} ${product.unidad.trim() || "pieza"} | Minimo: ${stockMinimo}`,
     );
     return productRef.id;
   },
@@ -425,10 +434,16 @@ export const inventoryService = {
       if (updates.precioVenta === null || updates.precioVenta === undefined) {
         payload.precioVenta = updates.precioVenta ?? null;
       } else {
-        payload.precioVenta = Number(updates.precioVenta) || 0;
+        payload.precioVenta = toNonNegativeNumber(updates.precioVenta, "El precio de venta");
       }
     }
 
+    if (updates.stockMinimo !== undefined) {
+      payload.stockMinimo = toNonNegativeNumber(updates.stockMinimo, "El stock minimo");
+    }
+    if (updates.costoUnitario !== undefined) {
+      payload.costoUnitario = toNonNegativeNumber(updates.costoUnitario, "El costo unitario");
+    }
     if (updates.proveedor !== undefined) payload.proveedor = updates.proveedor.trim();
     if (updates.unidad !== undefined) payload.unidad = updates.unidad.trim() || "pieza";
 
@@ -459,6 +474,10 @@ export const inventoryService = {
   },
 
   registerMovement: async (input: RegisterInventoryMovementInput) => {
+    if (input.tipo === "entrada") {
+      throw new Error("Las entradas de inventario se registran desde Reabastecer.");
+    }
+
     const rawQuantity = Number(input.cantidad) || 0;
     if (input.tipo !== "ajuste" && rawQuantity <= 0) {
       throw new Error("La cantidad debe ser positiva.");
@@ -485,8 +504,8 @@ export const inventoryService = {
       const materialClasificado = clasificacion !== "normal";
       const isWithdrawal = quantity < 0;
       const requiereDobleAutorizacion = materialClasificado && requiresDoubleAuthorization(clasificacion);
-      const costoUnitario = Number(input.costoUnitario ?? product.costoUnitario) || 0;
-      const precioUnitarioVenta = Number(input.precioUnitarioVenta ?? product.precioVenta ?? 0) || 0;
+      const costoUnitario = toNonNegativeNumber(input.costoUnitario ?? product.costoUnitario, "El costo unitario");
+      const precioUnitarioVenta = toNonNegativeNumber(input.precioUnitarioVenta ?? product.precioVenta ?? 0, "El precio de venta");
 
       if (nextStock < 0) {
         throw new Error("No hay stock suficiente para registrar este movimiento.");
@@ -561,6 +580,13 @@ export const inventoryService = {
       if (!item.productoId) throw new Error("Selecciona producto en todos los renglones.");
       if ((Number(item.cantidad) || 0) <= 0) throw new Error("Las cantidades de reabastecimiento deben ser positivas.");
       if (!item.lote.trim()) throw new Error("Escribe el lote de todos los productos.");
+    });
+    const repeatedProducts = new Set<string>();
+    input.items.forEach((item) => {
+      if (repeatedProducts.has(item.productoId)) {
+        throw new Error("Cada producto debe aparecer una sola vez por reabastecimiento.");
+      }
+      repeatedProducts.add(item.productoId);
     });
 
     const movementUser = await getCurrentUserIdentity();

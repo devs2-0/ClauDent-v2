@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import {
   AlertTriangle,
@@ -117,6 +117,7 @@ const VentasPage: React.FC = () => {
   const [discount, setDiscount] = useState("");
   const [notes, setNotes] = useState("");
   const [isSaving, setIsSaving] = useState(false);
+  const isSavingRef = useRef(false);
   const [isConfirmSaleOpen, setIsConfirmSaleOpen] = useState(false);
   const [isSummaryHighlighted, setIsSummaryHighlighted] = useState(false);
   const [lastReceipt, setLastReceipt] = useState<SaleReceiptData | null>(null);
@@ -327,8 +328,10 @@ const VentasPage: React.FC = () => {
   };
 
   const handleConfirmSale = async () => {
+    if (isSavingRef.current) return;
     if (!validateSaleBeforeCheckout()) return;
 
+    isSavingRef.current = true;
     setIsSaving(true);
     try {
       const receiptDraft = {
@@ -368,6 +371,7 @@ const VentasPage: React.FC = () => {
     } catch (error: any) {
       toast.error(error.message || "No se pudo registrar la venta");
     } finally {
+      isSavingRef.current = false;
       setIsSaving(false);
     }
   };

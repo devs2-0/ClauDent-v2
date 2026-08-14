@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
-import { ShieldCheck, UserCog, UsersRound } from "lucide-react";
+import { Palette, ShieldCheck, UserCog, UsersRound } from "lucide-react";
 
 import { useCan } from "@/auth";
 import RolesPage from "./RolesPage";
 import UsersPage from "./UsersPage";
+import AppearancePage from "./AppearancePage";
 import { SecurityPage } from "@/modules/security";
 import { SinPermisosPage } from "@/shared";
 import {
@@ -39,6 +40,13 @@ const AdminPanelPage = () => {
         icon: ShieldCheck,
         permission: "security.sessions.view" as const,
         content: <SecurityPage />,
+      },
+      {
+        value: "apariencia",
+        label: "Apariencia",
+        icon: Palette,
+        permission: "settings.view" as const,
+        content: <AppearancePage />,
       },
     ].filter((tab) => can(tab.permission));
   }, [can]);

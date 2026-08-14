@@ -42,10 +42,12 @@ export const DentalServicesProvider: React.FC<{ children: ReactNode }> = ({ chil
 
   const updateService = async (id: string, updates: Partial<Service>) => {
     await updateDoc(doc(db, "servicios", id), cleanData(updates));
+    await addAuditLog("UPDATE", "servicios", `Servicio actualizado: ${updates.nombre ?? id}`);
   };
 
   const deleteService = async (id: string) => {
     await deleteDoc(doc(db, "servicios", id));
+    await addAuditLog("DELETE", "servicios", `Servicio eliminado: ${id}`);
   };
 
   return (

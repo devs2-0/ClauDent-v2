@@ -11,6 +11,18 @@ const ACTION_LABELS: Record<string, string> = {
 const MODULE_LABELS: Record<string, string> = {
   SEGURIDAD: "Seguridad",
   SISTEMA: "Sistema",
+  CAJA: "Caja",
+  VENTAS: "Ventas",
+  CUENTAS_POR_COBRAR: "Cuentas por cobrar",
+  INVENTARIO: "Inventario",
+  PACIENTES: "Pacientes",
+  SERVICIOS: "Servicios",
+  COTIZACIONES: "Cotizaciones",
+  PAQUETES: "Paquetes",
+  ODONTOGRAMA: "Odontograma",
+  HISTORIAL_CLINICO: "Historial clinico",
+  HISTORIA_CLINICA: "Historia clinica",
+  ADJUNTOS: "Adjuntos",
 };
 
 const cleanSessionIds = (detail: string) => {

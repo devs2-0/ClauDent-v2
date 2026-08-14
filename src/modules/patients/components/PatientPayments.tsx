@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   CalendarClock,
@@ -177,6 +177,7 @@ const PatientPayments: React.FC<PatientPaymentsProps> = ({ patientId, patientNam
   const [isAccountDialogOpen, setIsAccountDialogOpen] = useState(false);
   const [selectedAccount, setSelectedAccount] = useState<AccountReceivable | null>(null);
   const [isSavingAccount, setIsSavingAccount] = useState(false);
+  const isSavingAccountRef = useRef(false);
   const [accountForm, setAccountForm] = useState<AccountFormState>(() => createDefaultAccountForm());
   const [installmentForm, setInstallmentForm] = useState<InstallmentFormState>(() => createDefaultInstallmentForm());
 
@@ -254,6 +255,7 @@ const PatientPayments: React.FC<PatientPaymentsProps> = ({ patientId, patientNam
   };
 
   const handleCreateAccount = async () => {
+    if (isSavingAccountRef.current) return;
     const total = parseMoneyInput(accountForm.total);
     const abonoInicial = parseMoneyInput(accountForm.abonoInicial);
 
@@ -270,6 +272,7 @@ const PatientPayments: React.FC<PatientPaymentsProps> = ({ patientId, patientNam
       return;
     }
 
+    isSavingAccountRef.current = true;
     setIsSavingAccount(true);
     try {
       await accountsReceivableService.createAccount({
@@ -290,11 +293,13 @@ const PatientPayments: React.FC<PatientPaymentsProps> = ({ patientId, patientNam
     } catch (error: any) {
       toast.error(error?.message || "No se pudo crear la cuenta por cobrar.");
     } finally {
+      isSavingAccountRef.current = false;
       setIsSavingAccount(false);
     }
   };
 
   const handleRegisterInstallment = async () => {
+    if (isSavingAccountRef.current) return;
     if (!selectedAccount) return;
     const amount = parseMoneyInput(installmentForm.monto);
 
@@ -307,6 +312,7 @@ const PatientPayments: React.FC<PatientPaymentsProps> = ({ patientId, patientNam
       return;
     }
 
+    isSavingAccountRef.current = true;
     setIsSavingAccount(true);
     try {
       await accountsReceivableService.registerInstallment({
@@ -321,6 +327,7 @@ const PatientPayments: React.FC<PatientPaymentsProps> = ({ patientId, patientNam
     } catch (error: any) {
       toast.error(error?.message || "No se pudo registrar el abono.");
     } finally {
+      isSavingAccountRef.current = false;
       setIsSavingAccount(false);
     }
   };
