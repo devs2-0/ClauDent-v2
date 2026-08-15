@@ -198,7 +198,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (!user) return;
 
     await updateDoc(doc(db, `usuarios/${user.uid}/sesiones`, sid), buildRevokedSessionPayload("Sesion cerrada desde seguridad"));
-    await addAuditLog("UPDATE", "seguridad", "Sesion cerrada desde seguridad");
+    await addAuditLog("REVOKE_SESSION", "seguridad", "Sesion propia cerrada desde seguridad");
   };
 
   const closeAllOtherSessions = async () => {
@@ -219,7 +219,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     await batch.commit();
     toast.success("Otras sesiones cerradas correctamente");
-    await addAuditLog("UPDATE", "seguridad", "Cierre masivo de sesiones remotas");
+    await addAuditLog("REVOKE_ALL_SESSIONS", "seguridad", "Cierre masivo de sesiones propias remotas");
   };
 
   return (
