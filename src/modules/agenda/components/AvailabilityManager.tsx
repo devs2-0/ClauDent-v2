@@ -18,8 +18,10 @@ import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { Textarea } from "@/shared/components/ui/textarea";
 
-import { availabilityService } from "../services/availabilityService";
+import { agendaHistoryService } from "../services/agendaHistoryService";
+import type { CreateAgendaHistoryLogInput } from "../services/agendaHistoryService";
 import { agendaNotificationService } from "../services/agendaNotificationService";
+import { availabilityService } from "../services/availabilityService";
 import type {
   AgendaBlock,
   AgendaStaffType,
@@ -111,7 +113,6 @@ const getDayOfWeekFromDate = (dateValue: string): DayOfWeek => {
   return date.getDay() as DayOfWeek;
 };
 
-
 const emptyScheduleForm: ScheduleFormState = {
   staffType: "doctor",
   staffId: "",
@@ -143,8 +144,6 @@ const emptySpecialScheduleForm: SpecialScheduleFormState = {
   notes: "",
 };
 
-
-
 const AvailabilityManager = ({
   doctors,
   assistants,
@@ -161,12 +160,11 @@ const AvailabilityManager = ({
   const [scheduleForm, setScheduleForm] =
     useState<ScheduleFormState>(emptyScheduleForm);
   const [blockForm, setBlockForm] = useState<BlockFormState>(emptyBlockForm);
+  const [specialScheduleForm, setSpecialScheduleForm] =
+    useState<SpecialScheduleFormState>(emptySpecialScheduleForm);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-
-  const [specialScheduleForm, setSpecialScheduleForm] =
-  useState<SpecialScheduleFormState>(emptySpecialScheduleForm);
 
   const canViewAllAvailability =
     agendaUser?.isAdmin === true ||
@@ -186,6 +184,20 @@ const AvailabilityManager = ({
 
   const canDeleteBlocks =
     canManageAllAvailability || can("agenda.blocks.delete");
+
+  const createAgendaHistoryLog = async (
+    input: Omit<CreateAgendaHistoryLogInput, "createdBy" | "createdByEmail">,
+  ) => {
+    try {
+      await agendaHistoryService.createLog({
+        ...input,
+        createdBy: currentUser?.uid ?? agendaUser?.uid ?? null,
+        createdByEmail: currentUser?.email ?? agendaUser?.email ?? null,
+      });
+    } catch (error) {
+      console.warn("No se pudo registrar historial de agenda.", error);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -391,6 +403,21 @@ const AvailabilityManager = ({
         staffId: getFirstStaffId(nextStaffType),
       };
     });
+
+    setSpecialScheduleForm((current) => {
+      if (isVisibleStaff(current.staffType, current.staffId)) {
+        return current;
+      }
+
+      const nextStaffType: AgendaStaffType =
+        visibleDoctors.length > 0 ? "doctor" : "assistant";
+
+      return {
+        ...current,
+        staffType: nextStaffType,
+        staffId: getFirstStaffId(nextStaffType),
+      };
+    });
   }, [
     agendaProfileLoading,
     visibleDoctors,
@@ -426,10 +453,10 @@ const AvailabilityManager = ({
   }, [schedules, visibleAssistantIds, visibleDoctorIds]);
 
   const scopedWeeklySchedules = useMemo(() => {
-  return scopedSchedules.filter((schedule) => {
-    return !schedule.date && (schedule.scheduleType ?? "weekly") === "weekly";
-  });
-}, [scopedSchedules]);
+    return scopedSchedules.filter((schedule) => {
+      return !schedule.date && (schedule.scheduleType ?? "weekly") === "weekly";
+    });
+  }, [scopedSchedules]);
 
   const scopedSpecialSchedules = useMemo(() => {
     return scopedSchedules.filter((schedule) => {
@@ -472,151 +499,213 @@ const AvailabilityManager = ({
     void loadAvailability();
   }, []);
 
-const handleCreateSchedule = async () => {
-  if (!canManageSchedules) {
-    toast.error("No tienes permiso para gestionar horarios.");
-    return;
-  }
+  const handleCreateSchedule = async () => {
+    if (!canManageSchedules) {
+      toast.error("No tienes permiso para gestionar horarios.");
+      return;
+    }
 
-  if (!scheduleForm.staffId) {
-    toast.error("Selecciona el personal.");
-    return;
-  }
+    if (!scheduleForm.staffId) {
+      toast.error("Selecciona el personal.");
+      return;
+    }
 
-  if (!isVisibleStaff(scheduleForm.staffType, scheduleForm.staffId)) {
-    toast.error("No tienes acceso a ese personal.");
-    return;
-  }
+    if (!isVisibleStaff(scheduleForm.staffType, scheduleForm.staffId)) {
+      toast.error("No tienes acceso a ese personal.");
+      return;
+    }
 
-  if (scheduleForm.startTime >= scheduleForm.endTime) {
-    toast.error("La hora de inicio debe ser menor que la hora de fin.");
-    return;
-  }
+    if (scheduleForm.startTime >= scheduleForm.endTime) {
+      toast.error("La hora de inicio debe ser menor que la hora de fin.");
+      return;
+    }
 
-  const daysToCreate = getScheduleDays(
-    scheduleForm.dayMode,
-    scheduleForm.dayOfWeek,
-  );
+    const daysToCreate = getScheduleDays(
+      scheduleForm.dayMode,
+      scheduleForm.dayOfWeek,
+    );
 
-  setSaving(true);
+    setSaving(true);
 
-  try {
-    await Promise.all(
-      daysToCreate.map((dayOfWeek) =>
-        availabilityService.createSchedule({
-          staffType: scheduleForm.staffType,
-          staffId: scheduleForm.staffId,
-          dayOfWeek,
-          startTime: scheduleForm.startTime,
-          endTime: scheduleForm.endTime,
-          status: "active",
-          scheduleType: "weekly",
-          date: null,
-          createdBy: currentUser?.uid ?? null,
-          updatedBy: currentUser?.uid ?? null,
+    try {
+      await Promise.all(
+        daysToCreate.map(async (dayOfWeek) => {
+          const scheduleId = await availabilityService.createSchedule({
+            staffType: scheduleForm.staffType,
+            staffId: scheduleForm.staffId,
+            dayOfWeek,
+            startTime: scheduleForm.startTime,
+            endTime: scheduleForm.endTime,
+            status: "active",
+            scheduleType: "weekly",
+            date: null,
+            createdBy: currentUser?.uid ?? null,
+            updatedBy: currentUser?.uid ?? null,
+          });
+
+          const createdScheduleId =
+            typeof scheduleId === "string" ? scheduleId : "";
+
+          await createAgendaHistoryLog({
+            action: "schedule_created",
+            entityType: "schedule",
+            entityId: createdScheduleId,
+            doctorId:
+              scheduleForm.staffType === "doctor"
+                ? scheduleForm.staffId
+                : null,
+            patientId: null,
+            patientName: null,
+            title: "Horario semanal creado",
+            description: `${dayLabels[dayOfWeek]} · ${scheduleForm.startTime} a ${scheduleForm.endTime}`,
+            date: null,
+            startTime: scheduleForm.startTime,
+            endTime: scheduleForm.endTime,
+            before: null,
+            after: {
+              staffType: scheduleForm.staffType,
+              staffId: scheduleForm.staffId,
+              scheduleType: "weekly",
+              dayOfWeek,
+              startTime: scheduleForm.startTime,
+              endTime: scheduleForm.endTime,
+              status: "active",
+            },
+          });
         }),
-      ),
-    );
+      );
 
-    toast.success(
-      daysToCreate.length === 1
-        ? "Horario agregado correctamente."
-        : "Horarios agregados correctamente.",
-    );
+      toast.success(
+        daysToCreate.length === 1
+          ? "Horario agregado correctamente."
+          : "Horarios agregados correctamente.",
+      );
 
-    await loadAvailability();
-  } catch (error) {
-    console.error(error);
-    toast.error("No se pudo agregar el horario.");
-  } finally {
-    setSaving(false);
-  }
-};
+      await loadAvailability();
+    } catch (error) {
+      console.error(error);
+      toast.error("No se pudo agregar el horario.");
+    } finally {
+      setSaving(false);
+    }
+  };
 
-const handleCreateSpecialSchedule = async () => {
-  if (!canManageAllAvailability) {
-    toast.error("No tienes permiso para crear horarios especiales.");
-    return;
-  }
+  const handleCreateSpecialSchedule = async () => {
+    if (!canManageAllAvailability) {
+      toast.error("No tienes permiso para crear horarios especiales.");
+      return;
+    }
 
-  if (!specialScheduleForm.staffId) {
-    toast.error("Selecciona el personal.");
-    return;
-  }
+    if (!specialScheduleForm.staffId) {
+      toast.error("Selecciona el personal.");
+      return;
+    }
 
-  if (
-    !isVisibleStaff(
-      specialScheduleForm.staffType,
-      specialScheduleForm.staffId,
-    )
-  ) {
-    toast.error("No tienes acceso a ese personal.");
-    return;
-  }
+    if (
+      !isVisibleStaff(
+        specialScheduleForm.staffType,
+        specialScheduleForm.staffId,
+      )
+    ) {
+      toast.error("No tienes acceso a ese personal.");
+      return;
+    }
 
-  if (!specialScheduleForm.reason.trim()) {
-    toast.error("Escribe el motivo del horario especial.");
-    return;
-  }
+    if (!specialScheduleForm.reason.trim()) {
+      toast.error("Escribe el motivo del horario especial.");
+      return;
+    }
 
-  if (specialScheduleForm.startTime >= specialScheduleForm.endTime) {
-    toast.error("La hora de inicio debe ser menor que la hora de fin.");
-    return;
-  }
+    if (specialScheduleForm.startTime >= specialScheduleForm.endTime) {
+      toast.error("La hora de inicio debe ser menor que la hora de fin.");
+      return;
+    }
 
-  setSaving(true);
+    setSaving(true);
 
-  try {
-    const scheduleId = await availabilityService.createSchedule({
-      staffType: specialScheduleForm.staffType,
-      staffId: specialScheduleForm.staffId,
-      dayOfWeek: getDayOfWeekFromDate(specialScheduleForm.date),
-      startTime: specialScheduleForm.startTime,
-      endTime: specialScheduleForm.endTime,
-      status: "active",
-      scheduleType: "special",
-      date: specialScheduleForm.date,
-      reason: specialScheduleForm.reason.trim(),
-      notes: specialScheduleForm.notes.trim(),
-      createdBy: currentUser?.uid ?? null,
-      updatedBy: currentUser?.uid ?? null,
-    });
+    try {
+      const scheduleId = await availabilityService.createSchedule({
+        staffType: specialScheduleForm.staffType,
+        staffId: specialScheduleForm.staffId,
+        dayOfWeek: getDayOfWeekFromDate(specialScheduleForm.date),
+        startTime: specialScheduleForm.startTime,
+        endTime: specialScheduleForm.endTime,
+        status: "active",
+        scheduleType: "special",
+        date: specialScheduleForm.date,
+        reason: specialScheduleForm.reason.trim(),
+        notes: specialScheduleForm.notes.trim(),
+        createdBy: currentUser?.uid ?? null,
+        updatedBy: currentUser?.uid ?? null,
+      });
 
-    if (specialScheduleForm.staffType === "doctor") {
       const createdScheduleId =
         typeof scheduleId === "string" ? scheduleId : "";
 
-      await agendaNotificationService.createForDoctor({
-        targetDoctorId: specialScheduleForm.staffId,
-        type: "special_schedule_created",
-        title: "Horario especial agregado",
-        message: `${specialScheduleForm.reason.trim()} · ${specialScheduleForm.date} de ${specialScheduleForm.startTime} a ${specialScheduleForm.endTime}`,
+      if (specialScheduleForm.staffType === "doctor") {
+        await agendaNotificationService.createForDoctor({
+          targetDoctorId: specialScheduleForm.staffId,
+          type: "special_schedule_created",
+          title: "Horario especial agregado",
+          message: `${specialScheduleForm.reason.trim()} · ${specialScheduleForm.date} de ${specialScheduleForm.startTime} a ${specialScheduleForm.endTime}`,
+          entityType: "schedule",
+          entityId: createdScheduleId,
+          scheduleId: createdScheduleId,
+          startDate: specialScheduleForm.date,
+          startTime: specialScheduleForm.startTime,
+          endTime: specialScheduleForm.endTime,
+          createdBy: currentUser?.uid ?? null,
+        });
+      }
+
+      await createAgendaHistoryLog({
+        action: "special_schedule_created",
         entityType: "schedule",
         entityId: createdScheduleId,
-        scheduleId: createdScheduleId,
-        startDate: specialScheduleForm.date,
+        doctorId:
+          specialScheduleForm.staffType === "doctor"
+            ? specialScheduleForm.staffId
+            : null,
+        patientId: null,
+        patientName: null,
+        title: "Horario especial creado",
+        description: `${specialScheduleForm.reason.trim()} · ${
+          specialScheduleForm.date
+        } de ${specialScheduleForm.startTime} a ${specialScheduleForm.endTime}`,
+        date: specialScheduleForm.date,
         startTime: specialScheduleForm.startTime,
         endTime: specialScheduleForm.endTime,
-        createdBy: currentUser?.uid ?? null,
+        before: null,
+        after: {
+          staffType: specialScheduleForm.staffType,
+          staffId: specialScheduleForm.staffId,
+          scheduleType: "special",
+          date: specialScheduleForm.date,
+          dayOfWeek: getDayOfWeekFromDate(specialScheduleForm.date),
+          startTime: specialScheduleForm.startTime,
+          endTime: specialScheduleForm.endTime,
+          reason: specialScheduleForm.reason.trim(),
+          notes: specialScheduleForm.notes.trim(),
+          status: "active",
+        },
       });
+
+      toast.success("Horario especial agregado correctamente.");
+
+      setSpecialScheduleForm((current) => ({
+        ...emptySpecialScheduleForm,
+        staffType: current.staffType,
+        staffId: current.staffId,
+      }));
+
+      await loadAvailability();
+    } catch (error) {
+      console.error(error);
+      toast.error("No se pudo agregar el horario especial.");
+    } finally {
+      setSaving(false);
     }
-
-    toast.success("Horario especial agregado correctamente.");
-
-    setSpecialScheduleForm((current) => ({
-      ...emptySpecialScheduleForm,
-      staffType: current.staffType,
-      staffId: current.staffId,
-    }));
-
-    await loadAvailability();
-  } catch (error) {
-    console.error(error);
-    toast.error("No se pudo agregar el horario especial.");
-  } finally {
-    setSaving(false);
-  }
-};
+  };
 
   const handleDeactivateSchedule = async (scheduleId: string) => {
     if (!canManageSchedules) {
@@ -697,9 +786,9 @@ const handleCreateSpecialSchedule = async () => {
         updatedBy: currentUser?.uid ?? null,
       });
 
-      if (blockForm.staffType === "doctor") {
-        const createdBlockId = typeof blockId === "string" ? blockId : "";
+      const createdBlockId = typeof blockId === "string" ? blockId : "";
 
+      if (blockForm.staffType === "doctor") {
         await agendaNotificationService.createForDoctor({
           targetDoctorId: blockForm.staffId,
           type: "block_created",
@@ -714,6 +803,33 @@ const handleCreateSpecialSchedule = async () => {
           createdBy: currentUser?.uid ?? null,
         });
       }
+
+      await createAgendaHistoryLog({
+        action: "block_created",
+        entityType: "block",
+        entityId: createdBlockId,
+        doctorId: blockForm.staffType === "doctor" ? blockForm.staffId : null,
+        patientId: null,
+        patientName: null,
+        title: "Bloqueo creado desde disponibilidad",
+        description: blockForm.reason.trim(),
+        date: blockForm.startDate,
+        startTime: blockForm.allDay ? "00:00" : blockForm.startTime,
+        endTime: blockForm.allDay ? "23:59" : blockForm.endTime,
+        before: null,
+        after: {
+          staffType: blockForm.staffType,
+          staffId: blockForm.staffId,
+          startDate: blockForm.startDate,
+          endDate: blockForm.endDate,
+          startTime: blockForm.allDay ? "00:00" : blockForm.startTime,
+          endTime: blockForm.allDay ? "23:59" : blockForm.endTime,
+          allDay: blockForm.allDay,
+          reason: blockForm.reason.trim(),
+          notes: blockForm.notes.trim(),
+          status: "active",
+        },
+      });
 
       toast.success("Bloqueo creado correctamente.");
 
@@ -769,6 +885,16 @@ const handleCreateSpecialSchedule = async () => {
 
   const handleBlockStaffTypeChange = (staffType: AgendaStaffType) => {
     setBlockForm((current) => ({
+      ...current,
+      staffType,
+      staffId: getFirstStaffId(staffType),
+    }));
+  };
+
+  const handleSpecialScheduleStaffTypeChange = (
+    staffType: AgendaStaffType,
+  ) => {
+    setSpecialScheduleForm((current) => ({
       ...current,
       staffType,
       staffId: getFirstStaffId(staffType),
@@ -842,6 +968,7 @@ const handleCreateSpecialSchedule = async () => {
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="schedule-staff-type">Tipo</Label>
+
                   <select
                     id="schedule-staff-type"
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
@@ -864,6 +991,7 @@ const handleCreateSpecialSchedule = async () => {
 
                 <div className="space-y-2">
                   <Label htmlFor="schedule-staff-id">Personal</Label>
+
                   <StaffSearchSelect
                     id="schedule-staff-id"
                     staffType={scheduleForm.staffType}
@@ -881,6 +1009,7 @@ const handleCreateSpecialSchedule = async () => {
 
                 <div className="space-y-2">
                   <Label htmlFor="schedule-day-mode">Aplicar a</Label>
+
                   <select
                     id="schedule-day-mode"
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
@@ -901,6 +1030,7 @@ const handleCreateSpecialSchedule = async () => {
                 {scheduleForm.dayMode === "single" && (
                   <div className="space-y-2">
                     <Label htmlFor="schedule-day">Día</Label>
+
                     <select
                       id="schedule-day"
                       className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
@@ -924,6 +1054,7 @@ const handleCreateSpecialSchedule = async () => {
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-2">
                     <Label htmlFor="schedule-start">Inicio</Label>
+
                     <Input
                       id="schedule-start"
                       type="time"
@@ -939,6 +1070,7 @@ const handleCreateSpecialSchedule = async () => {
 
                   <div className="space-y-2">
                     <Label htmlFor="schedule-end">Fin</Label>
+
                     <Input
                       id="schedule-end"
                       type="time"
@@ -1017,198 +1149,205 @@ const handleCreateSpecialSchedule = async () => {
       </Card>
 
       {canManageAllAvailability && (
-  <Card>
-    <CardHeader>
-      <CardTitle>Horario especial</CardTitle>
-      <CardDescription>
-        Abre disponibilidad en una fecha específica, aunque no forme parte del
-        horario semanal normal.
-      </CardDescription>
-    </CardHeader>
+        <Card>
+          <CardHeader>
+            <CardTitle>Horario especial</CardTitle>
 
-    <CardContent className="space-y-5">
-      <div className="rounded-xl border bg-muted/20 p-4">
-        <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-2">
-            <Label htmlFor="special-staff-type">Tipo</Label>
-            <select
-              id="special-staff-type"
-              className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              value={specialScheduleForm.staffType}
-              onChange={(event) =>
-                setSpecialScheduleForm((current) => ({
-                  ...current,
-                  staffType: event.target.value as AgendaStaffType,
-                  staffId: getFirstStaffId(
-                    event.target.value as AgendaStaffType,
-                  ),
-                }))
-              }
-            >
-              {visibleDoctors.length > 0 && (
-                <option value="doctor">Doctor</option>
-              )}
+            <CardDescription>
+              Abre disponibilidad en una fecha específica, aunque no forme parte
+              del horario semanal normal.
+            </CardDescription>
+          </CardHeader>
 
-              {visibleAssistants.length > 0 && (
-                <option value="assistant">Asistente</option>
-              )}
-            </select>
-          </div>
+          <CardContent className="space-y-5">
+            <div className="rounded-xl border bg-muted/20 p-4">
+              <div className="grid gap-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="special-staff-type">Tipo</Label>
 
-          <div className="space-y-2">
-            <Label htmlFor="special-staff-id">Personal</Label>
-            <StaffSearchSelect
-              id="special-staff-id"
-              staffType={specialScheduleForm.staffType}
-              doctors={visibleDoctors}
-              assistants={visibleAssistants}
-              value={specialScheduleForm.staffId}
-              onValueChange={(staffId) =>
-                setSpecialScheduleForm((current) => ({
-                  ...current,
-                  staffId,
-                }))
-              }
-            />
-          </div>
+                  <select
+                    id="special-staff-type"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={specialScheduleForm.staffType}
+                    onChange={(event) =>
+                      handleSpecialScheduleStaffTypeChange(
+                        event.target.value as AgendaStaffType,
+                      )
+                    }
+                  >
+                    {visibleDoctors.length > 0 && (
+                      <option value="doctor">Doctor</option>
+                    )}
 
-          <div className="space-y-2">
-            <Label htmlFor="special-date">Fecha</Label>
-            <Input
-              id="special-date"
-              type="date"
-              value={specialScheduleForm.date}
-              onChange={(event) =>
-                setSpecialScheduleForm((current) => ({
-                  ...current,
-                  date: event.target.value,
-                }))
-              }
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label htmlFor="special-start-time">Inicio</Label>
-              <Input
-                id="special-start-time"
-                type="time"
-                value={specialScheduleForm.startTime}
-                onChange={(event) =>
-                  setSpecialScheduleForm((current) => ({
-                    ...current,
-                    startTime: event.target.value,
-                  }))
-                }
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="special-end-time">Fin</Label>
-              <Input
-                id="special-end-time"
-                type="time"
-                value={specialScheduleForm.endTime}
-                onChange={(event) =>
-                  setSpecialScheduleForm((current) => ({
-                    ...current,
-                    endTime: event.target.value,
-                  }))
-                }
-              />
-            </div>
-          </div>
-
-          <div className="space-y-2 md:col-span-2">
-            <Label htmlFor="special-reason">Motivo *</Label>
-            <Input
-              id="special-reason"
-              value={specialScheduleForm.reason}
-              onChange={(event) =>
-                setSpecialScheduleForm((current) => ({
-                  ...current,
-                  reason: event.target.value,
-                }))
-              }
-              placeholder="Ej. Jornada especial, sábado de atención, campaña"
-            />
-          </div>
-
-          <div className="space-y-2 md:col-span-2">
-            <Label htmlFor="special-notes">Notas</Label>
-            <Textarea
-              id="special-notes"
-              value={specialScheduleForm.notes}
-              onChange={(event) =>
-                setSpecialScheduleForm((current) => ({
-                  ...current,
-                  notes: event.target.value,
-                }))
-              }
-              placeholder="Detalles internos opcionales."
-            />
-          </div>
-        </div>
-
-        <div className="mt-4">
-          <Button onClick={handleCreateSpecialSchedule} disabled={saving}>
-            <Plus className="mr-2 h-4 w-4" />
-            {saving ? "Guardando..." : "Agregar horario especial"}
-          </Button>
-        </div>
-      </div>
-
-      {scopedSpecialSchedules.length === 0 ? (
-        <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-          No hay horarios especiales activos.
-        </div>
-      ) : (
-        <div className="grid gap-3">
-          {scopedSpecialSchedules.map((schedule) => (
-            <div
-              key={schedule.id}
-              className="rounded-xl border bg-background p-4"
-            >
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <div>
-                  <p className="font-medium">
-                    {schedule.reason || "Horario especial"}
-                  </p>
-
-                  <p className="text-sm text-muted-foreground">
-                    {staffName(schedule.staffType, schedule.staffId)} ·{" "}
-                    {schedule.staffType === "doctor"
-                      ? "Doctor"
-                      : "Asistente"}
-                  </p>
-
-                  <p className="mt-2 text-sm">
-                    {schedule.date} · {schedule.startTime} - {schedule.endTime}
-                  </p>
-
-                  {schedule.notes && (
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {schedule.notes}
-                    </p>
-                  )}
+                    {visibleAssistants.length > 0 && (
+                      <option value="assistant">Asistente</option>
+                    )}
+                  </select>
                 </div>
 
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={saving}
-                  onClick={() => void handleDeactivateSchedule(schedule.id)}
-                >
-                  Desactivar
+                <div className="space-y-2">
+                  <Label htmlFor="special-staff-id">Personal</Label>
+
+                  <StaffSearchSelect
+                    id="special-staff-id"
+                    staffType={specialScheduleForm.staffType}
+                    doctors={visibleDoctors}
+                    assistants={visibleAssistants}
+                    value={specialScheduleForm.staffId}
+                    onValueChange={(staffId) =>
+                      setSpecialScheduleForm((current) => ({
+                        ...current,
+                        staffId,
+                      }))
+                    }
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="special-date">Fecha</Label>
+
+                  <Input
+                    id="special-date"
+                    type="date"
+                    value={specialScheduleForm.date}
+                    onChange={(event) =>
+                      setSpecialScheduleForm((current) => ({
+                        ...current,
+                        date: event.target.value,
+                      }))
+                    }
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="special-start-time">Inicio</Label>
+
+                    <Input
+                      id="special-start-time"
+                      type="time"
+                      value={specialScheduleForm.startTime}
+                      onChange={(event) =>
+                        setSpecialScheduleForm((current) => ({
+                          ...current,
+                          startTime: event.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="special-end-time">Fin</Label>
+
+                    <Input
+                      id="special-end-time"
+                      type="time"
+                      value={specialScheduleForm.endTime}
+                      onChange={(event) =>
+                        setSpecialScheduleForm((current) => ({
+                          ...current,
+                          endTime: event.target.value,
+                        }))
+                      }
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="special-reason">Motivo *</Label>
+
+                  <Input
+                    id="special-reason"
+                    value={specialScheduleForm.reason}
+                    onChange={(event) =>
+                      setSpecialScheduleForm((current) => ({
+                        ...current,
+                        reason: event.target.value,
+                      }))
+                    }
+                    placeholder="Ej. Jornada especial, sábado de atención, campaña"
+                  />
+                </div>
+
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="special-notes">Notas</Label>
+
+                  <Textarea
+                    id="special-notes"
+                    value={specialScheduleForm.notes}
+                    onChange={(event) =>
+                      setSpecialScheduleForm((current) => ({
+                        ...current,
+                        notes: event.target.value,
+                      }))
+                    }
+                    placeholder="Detalles internos opcionales."
+                  />
+                </div>
+              </div>
+
+              <div className="mt-4">
+                <Button onClick={handleCreateSpecialSchedule} disabled={saving}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  {saving ? "Guardando..." : "Agregar horario especial"}
                 </Button>
               </div>
             </div>
-          ))}
-        </div>
+
+            {scopedSpecialSchedules.length === 0 ? (
+              <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
+                No hay horarios especiales activos.
+              </div>
+            ) : (
+              <div className="grid gap-3">
+                {scopedSpecialSchedules.map((schedule) => (
+                  <div
+                    key={schedule.id}
+                    className="rounded-xl border bg-background p-4"
+                  >
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                      <div>
+                        <p className="font-medium">
+                          {schedule.reason || "Horario especial"}
+                        </p>
+
+                        <p className="text-sm text-muted-foreground">
+                          {staffName(schedule.staffType, schedule.staffId)} ·{" "}
+                          {schedule.staffType === "doctor"
+                            ? "Doctor"
+                            : "Asistente"}
+                        </p>
+
+                        <p className="mt-2 text-sm">
+                          {schedule.date} · {schedule.startTime} -{" "}
+                          {schedule.endTime}
+                        </p>
+
+                        {schedule.notes && (
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            {schedule.notes}
+                          </p>
+                        )}
+                      </div>
+
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        disabled={saving}
+                        onClick={() =>
+                          void handleDeactivateSchedule(schedule.id)
+                        }
+                      >
+                        Desactivar
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       )}
-    </CardContent>
-  </Card>
-)}
 
       <Card>
         <CardHeader>
@@ -1229,6 +1368,7 @@ const handleCreateSpecialSchedule = async () => {
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="block-staff-type">Tipo</Label>
+
                   <select
                     id="block-staff-type"
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
@@ -1251,6 +1391,7 @@ const handleCreateSpecialSchedule = async () => {
 
                 <div className="space-y-2">
                   <Label htmlFor="block-staff-id">Personal</Label>
+
                   <StaffSearchSelect
                     id="block-staff-id"
                     staffType={blockForm.staffType}
@@ -1268,6 +1409,7 @@ const handleCreateSpecialSchedule = async () => {
 
                 <div className="space-y-2">
                   <Label htmlFor="block-start-date">Desde</Label>
+
                   <Input
                     id="block-start-date"
                     type="date"
@@ -1287,6 +1429,7 @@ const handleCreateSpecialSchedule = async () => {
 
                 <div className="space-y-2">
                   <Label htmlFor="block-end-date">Hasta</Label>
+
                   <Input
                     id="block-end-date"
                     type="date"
@@ -1310,6 +1453,7 @@ const handleCreateSpecialSchedule = async () => {
                       }))
                     }
                   />
+
                   <span className="text-sm">Bloquear todo el día</span>
                 </label>
 
@@ -1317,6 +1461,7 @@ const handleCreateSpecialSchedule = async () => {
                   <div className="grid grid-cols-2 gap-3 md:col-span-2">
                     <div className="space-y-2">
                       <Label htmlFor="block-start-time">Inicio</Label>
+
                       <Input
                         id="block-start-time"
                         type="time"
@@ -1332,6 +1477,7 @@ const handleCreateSpecialSchedule = async () => {
 
                     <div className="space-y-2">
                       <Label htmlFor="block-end-time">Fin</Label>
+
                       <Input
                         id="block-end-time"
                         type="time"
@@ -1349,6 +1495,7 @@ const handleCreateSpecialSchedule = async () => {
 
                 <div className="space-y-2 md:col-span-2">
                   <Label htmlFor="block-reason">Motivo *</Label>
+
                   <Input
                     id="block-reason"
                     value={blockForm.reason}
@@ -1364,6 +1511,7 @@ const handleCreateSpecialSchedule = async () => {
 
                 <div className="space-y-2 md:col-span-2">
                   <Label htmlFor="block-notes">Notas</Label>
+
                   <Textarea
                     id="block-notes"
                     value={blockForm.notes}

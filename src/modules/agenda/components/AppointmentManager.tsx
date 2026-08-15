@@ -67,6 +67,10 @@ import {
   getStartOfWeek,
 } from "../utils/calendarDateUtils";
 import { agendaNotificationService } from "../services/agendaNotificationService";
+import {
+  agendaHistoryService,
+  type CreateAgendaHistoryLogInput,
+} from "../services/agendaHistoryService";
 
 
 type CalendarViewMode = "month" | "week" | "doctorDay";
@@ -191,6 +195,20 @@ const AppointmentManager = ({
     can("agenda.doctors.viewAll") ||
     can("agenda.doctors.manage") ||
     can("agenda.assistants.manage");
+
+    const createAgendaHistoryLog = async (
+      input: Omit<CreateAgendaHistoryLogInput, "createdBy" | "createdByEmail">,
+    ) => {
+      try {
+        await agendaHistoryService.createLog({
+          ...input,
+          createdBy: currentUser?.uid ?? agendaUser?.uid ?? null,
+          createdByEmail: currentUser?.email ?? agendaUser?.email ?? null,
+        });
+      } catch (error) {
+        console.warn("No se pudo registrar historial de agenda.", error);
+      }
+    };
 
     useEffect(() => {
   let cancelled = false;
@@ -965,6 +983,37 @@ const AppointmentManager = ({
         createdBy: currentUser?.uid ?? null,
       });
 
+      await createAgendaHistoryLog({
+        action: "appointment_created",
+        entityType: "appointment",
+        entityId: createdAppointmentId,
+        doctorId: form.doctorId,
+        patientId: form.patientId,
+        patientName: form.patientName.trim(),
+        title: "Cita creada",
+        description: `${form.patientName.trim()} · ${
+          form.serviceName.trim() || form.reason.trim() || "Cita"
+        }`,
+        date: form.startDate,
+        startTime: form.startTime,
+        endTime: form.endTime,
+        before: null,
+        after: {
+          patientId: form.patientId,
+          patientName: form.patientName.trim(),
+          serviceId: form.serviceId,
+          serviceName: form.serviceName.trim(),
+          doctorId: form.doctorId,
+          assistantIds: form.assistantIds,
+          startDate: form.startDate,
+          startTime: form.startTime,
+          endTime: form.endTime,
+          reason: form.reason.trim(),
+          notes: form.notes.trim(),
+          status: "scheduled",
+        },
+      });
+
       toast.success("Cita creada correctamente.");
       updateSelectedDate(form.startDate);
       setAppointmentDialogOpen(false);
@@ -1110,6 +1159,51 @@ const AppointmentManager = ({
         });
       }
 
+      await createAgendaHistoryLog({
+        action: "appointment_updated",
+        entityType: "appointment",
+        entityId: previousAppointment.id,
+        doctorId: form.doctorId,
+        patientId: form.patientId,
+        patientName: nextPatientName,
+        title:
+          previousAppointment.doctorId !== form.doctorId
+            ? "Cita reasignada"
+            : "Cita modificada",
+        description: updateMessage,
+        date: form.startDate,
+        startTime: form.startTime,
+        endTime: form.endTime,
+        before: {
+          patientId: previousAppointment.patientId,
+          patientName: previousAppointment.patientName,
+          serviceId: previousAppointment.serviceId,
+          serviceName: previousAppointment.serviceName,
+          doctorId: previousAppointment.doctorId,
+          assistantIds: previousAppointment.assistantIds,
+          startDate: previousAppointment.startDate,
+          startTime: previousAppointment.startTime,
+          endTime: previousAppointment.endTime,
+          reason: previousAppointment.reason,
+          notes: previousAppointment.notes ?? "",
+          status: previousAppointment.status,
+        },
+        after: {
+          patientId: form.patientId,
+          patientName: nextPatientName,
+          serviceId: form.serviceId,
+          serviceName: nextServiceName,
+          doctorId: form.doctorId,
+          assistantIds: form.assistantIds,
+          startDate: form.startDate,
+          startTime: form.startTime,
+          endTime: form.endTime,
+          reason: nextReason,
+          notes: nextNotes,
+          status: previousAppointment.status,
+        },
+      });
+
       toast.success("Cita actualizada correctamente.");
       updateSelectedDate(form.startDate);
       setAppointmentDialogOpen(false);
@@ -1185,6 +1279,33 @@ const AppointmentManager = ({
         createdBy: currentUser?.uid ?? null,
       });
 
+      await createAgendaHistoryLog({
+        action: "block_created",
+        entityType: "block",
+        entityId: createdBlockId,
+        doctorId: selectedSlot.doctorId,
+        patientId: null,
+        patientName: null,
+        title: "Bloqueo creado",
+        description: blockForm.reason.trim(),
+        date: selectedSlot.startDate,
+        startTime: blockForm.allDay ? "00:00" : blockForm.startTime,
+        endTime: blockForm.allDay ? "23:59" : blockForm.endTime,
+        before: null,
+        after: {
+          staffType: "doctor",
+          staffId: selectedSlot.doctorId,
+          startDate: selectedSlot.startDate,
+          endDate: selectedSlot.startDate,
+          startTime: blockForm.allDay ? "00:00" : blockForm.startTime,
+          endTime: blockForm.allDay ? "23:59" : blockForm.endTime,
+          allDay: blockForm.allDay,
+          reason: blockForm.reason.trim(),
+          notes: blockForm.notes.trim(),
+          status: "active",
+        },
+      });
+
       toast.success("Horario bloqueado correctamente.");
       updateSelectedDate(selectedSlot.startDate);
       setBlockDialogOpen(false);
@@ -1249,6 +1370,34 @@ const AppointmentManager = ({
         startTime: appointment.startTime,
         endTime: appointment.endTime,
         createdBy: currentUser?.uid ?? null,
+      });
+
+      await createAgendaHistoryLog({
+        action:
+          status === "cancelled"
+            ? "appointment_cancelled"
+            : "appointment_status_changed",
+        entityType: "appointment",
+        entityId: appointment.id,
+        doctorId: appointment.doctorId,
+        patientId: appointment.patientId,
+        patientName: appointment.patientName,
+        title:
+          status === "cancelled"
+            ? "Cita cancelada"
+            : "Estado de cita actualizado",
+        description: `${appointment.patientName}: ${
+          statusLabels[appointment.status]
+        } → ${statusLabels[status]}`,
+        date: appointment.startDate,
+        startTime: appointment.startTime,
+        endTime: appointment.endTime,
+        before: {
+          status: appointment.status,
+        },
+        after: {
+          status,
+        },
       });
 
       toast.success("Cita actualizada correctamente.");
