@@ -3,6 +3,7 @@ import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, updateD
 import { toast } from "sonner";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/auth";
+import { addAuditLog } from "@/modules/audit/services/auditService";
 import { cleanData, safeDate } from "@/shared/utils/firestoreData";
 import type { Quotation } from "../types/quotation.types";
 
@@ -40,7 +41,8 @@ export const QuotationsProvider: React.FC<{ children: ReactNode }> = ({ children
   }, [currentUser]);
 
   const addQuotation = async (quotation: Omit<Quotation, "id">) => {
-    await addDoc(collection(db, "cotizaciones"), cleanData({ ...quotation, fecha: new Date(quotation.fecha + "T00:00:00") }));
+    const ref = await addDoc(collection(db, "cotizaciones"), cleanData({ ...quotation, fecha: new Date(quotation.fecha + "T00:00:00") }));
+    await addAuditLog("CREATE", "cotizaciones", `Cotizacion creada: ${quotation.pacienteNombre ?? quotation.pacienteId ?? ref.id} | Total: ${Number(quotation.total) || 0}`);
     toast.success("Cotizacion creada");
   };
 
@@ -50,10 +52,12 @@ export const QuotationsProvider: React.FC<{ children: ReactNode }> = ({ children
       data.fecha = new Date((typeof updates.fecha === "string" ? updates.fecha : new Date().toISOString().split("T")[0]) + "T00:00:00") as any;
     }
     await updateDoc(doc(db, "cotizaciones", id), cleanData(data));
+    await addAuditLog("UPDATE", "cotizaciones", `Cotizacion actualizada: ${id}`);
   };
 
   const deleteQuotation = async (id: string) => {
     await deleteDoc(doc(db, "cotizaciones", id));
+    await addAuditLog("DELETE", "cotizaciones", `Cotizacion eliminada: ${id}`);
   };
 
   return (

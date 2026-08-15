@@ -8,6 +8,7 @@ import { QuotationsProvider } from "@/modules/quotations";
 import { DentalServicesProvider } from "@/modules/services";
 import { InventoryProvider } from "@/modules/inventario";
 import { CashProvider } from "@/modules/ventas";
+import { AppearanceProvider } from "@/shared/appearance";
 import { Toaster } from "@/shared/components/ui/toaster";
 import { Toaster as Sonner } from "@/shared/components/ui/sonner";
 import { TooltipProvider } from "@/shared/components/ui/tooltip";
@@ -82,7 +83,9 @@ export const AppProviders: React.FC<{ children: React.ReactNode }> = ({
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <BusinessProviders>{children}</BusinessProviders>
+        <AppearanceProvider>
+          <BusinessProviders>{children}</BusinessProviders>
+        </AppearanceProvider>
       </AuthProvider>
     </QueryClientProvider>
   );

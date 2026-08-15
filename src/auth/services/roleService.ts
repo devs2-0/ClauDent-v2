@@ -14,6 +14,7 @@ import {
 } from "firebase/firestore";
 
 import { db } from "@/lib/firebase";
+import { addAuditLog } from "@/modules/audit/services/auditService";
 import { permissionKeys } from "../constants/permissionCatalog";
 import type { PermissionKey } from "../types/permission.types";
 import type { AppUser } from "../types/user.types";
@@ -138,6 +139,7 @@ export const roleService = {
     };
 
     await setDoc(roleRef, role);
+    await addAuditLog("CREATE", "roles", `Rol creado: ${role.name}`);
 
     return role;
   },
@@ -178,6 +180,7 @@ export const roleService = {
 
     await updateDoc(doc(db, "roles", roleId), updatePayload);
     await roleService.recalculateUsersByRole(roleId, actorUid);
+    await addAuditLog("UPDATE", "roles", `Rol actualizado: ${payload.name ?? roleId}`);
   },
 
   deleteRole: async (roleId: string): Promise<void> => {
@@ -200,6 +203,7 @@ export const roleService = {
     }
 
     await deleteDoc(doc(db, "roles", roleId));
+    await addAuditLog("DELETE", "roles", `Rol eliminado: ${role.name}`);
   },
 
   getRoleUsageCount: async (roleId: string): Promise<number> => {
@@ -265,5 +269,6 @@ export const roleService = {
       updatedAt: serverTimestamp(),
       updatedBy: actorUid ?? null,
     });
+    await addAuditLog("UPDATE", "usuarios", `Permisos recalculados: ${user.email || uid}`);
   },
 };

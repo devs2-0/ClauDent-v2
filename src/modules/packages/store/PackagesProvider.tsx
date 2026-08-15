@@ -2,6 +2,7 @@ import React, { createContext, ReactNode, useContext, useEffect, useState } from
 import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth } from "@/auth";
+import { addAuditLog } from "@/modules/audit/services/auditService";
 import { cleanData, safeDate } from "@/shared/utils/firestoreData";
 import type { Paquete } from "../types/package.types";
 
@@ -40,12 +41,13 @@ export const PackagesProvider: React.FC<{ children: ReactNode }> = ({ children }
   }, [currentUser]);
 
   const addPaquete = async (paquete: Omit<Paquete, "id">) => {
-    await addDoc(collection(db, "paquetes"), cleanData({
+    const ref = await addDoc(collection(db, "paquetes"), cleanData({
       ...paquete,
       fechaInicio: new Date(paquete.fechaInicio + "T00:00:00"),
       fechaFin: new Date(paquete.fechaFin + "T00:00:00"),
       fechaCreacion: new Date(),
     }));
+    await addAuditLog("CREATE", "paquetes", `Paquete creado: ${paquete.nombre ?? ref.id}`);
   };
 
   const updatePaquete = async (id: string, updates: Partial<Paquete>) => {
@@ -53,10 +55,12 @@ export const PackagesProvider: React.FC<{ children: ReactNode }> = ({ children }
     if (updates.fechaInicio) data.fechaInicio = new Date(updates.fechaInicio + "T00:00:00") as any;
     if (updates.fechaFin) data.fechaFin = new Date(updates.fechaFin + "T00:00:00") as any;
     await updateDoc(doc(db, "paquetes", id), cleanData(data));
+    await addAuditLog("UPDATE", "paquetes", `Paquete actualizado: ${updates.nombre ?? id}`);
   };
 
   const deletePaquete = async (id: string) => {
     await deleteDoc(doc(db, "paquetes", id));
+    await addAuditLog("DELETE", "paquetes", `Paquete eliminado: ${id}`);
   };
 
   return (

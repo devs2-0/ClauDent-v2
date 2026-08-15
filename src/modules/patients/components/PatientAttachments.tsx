@@ -11,6 +11,7 @@ import { Label } from '@/shared/components/ui/label';
 import { toast } from 'sonner';
 // ¡NUEVO! Importaciones de Firebase
 import { db, storage } from '@/lib/firebase';
+import { addAuditLog } from '@/modules/audit/services/auditService';
 import {
   collection,
   query,
@@ -100,6 +101,7 @@ const PatientAttachments: React.FC<PatientAttachmentsProps> = ({ patientId }) =>
         storagePath: storagePath, // ¡Importante! Guardamos la ruta
         subidoPor: currentUser.email, // Opcional: guardamos quién lo subió
       });
+      await addAuditLog("CREATE", "adjuntos", `Archivo agregado: Paciente ${patientId} | ${file.name}`);
 
       toast.success('Archivo agregado correctamente', { id: uploadToast });
     } catch (error) {
@@ -130,6 +132,7 @@ const PatientAttachments: React.FC<PatientAttachmentsProps> = ({ patientId }) =>
       // 2. Borrar el documento de Firestore
       const docRef = doc(db, 'pacientes', patientId, 'adjuntos', attachment.id);
       await deleteDoc(docRef);
+      await addAuditLog("DELETE", "adjuntos", `Archivo eliminado: Paciente ${patientId} | ${attachment.nombre}`);
 
       toast.success('Archivo eliminado', { id: deleteToast });
     } catch (error) {

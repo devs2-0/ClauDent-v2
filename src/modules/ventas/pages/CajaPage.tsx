@@ -9,6 +9,7 @@ import {
   ClipboardCheck,
   CreditCard,
   Download,
+  Eye,
   FileSpreadsheet,
   Landmark,
   Lock,
@@ -27,6 +28,16 @@ import {
 import { toast } from "sonner";
 import { useCan } from "@/auth";
 import { DataPagination } from "@/shared/components/DataPagination";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/shared/components/ui/alert-dialog";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/components/ui/card";
@@ -56,6 +67,7 @@ import { cn, formatCurrency, formatDate } from "@/shared/utils/utils";
 import { usePagination } from "@/shared/hooks/usePagination";
 import { useInventory, type InventoryMovement } from "@/modules/inventario";
 import { useCashRegister } from "../hooks/useCashRegister";
+import { accountsReceivableService } from "../services/accountsReceivableService";
 import { defaultCashShiftSettings } from "../services/cashShiftSettingsService";
 import {
   exportCashCutCsv,
@@ -65,7 +77,8 @@ import {
   type CashCutExportData,
   type FinancialReportExportData,
 } from "../services/financialReportExport";
-import type { CashClosureTotals, CashCutSummary, CashExpenseCategory, CashMovement, CashMovementType, CashShiftDefinition, CashShiftSettings, PaymentMethod } from "../types/cash.types";
+import type { CashClosureTotals, CashCutSummary, CashExpenseCategory, CashMovement, CashMovementType, CashShiftDefinition, CashShiftSettings, Payment, PaymentMethod } from "../types/cash.types";
+import type { AccountReceivable } from "../types/accountsReceivable.types";
 
 const today = () => {
   const now = new Date();
@@ -142,6 +155,40 @@ const cashExpenseCategoryLabel: Record<CashExpenseCategory, string> = {
 
 const getExpenseCategoryLabel = (category?: CashExpenseCategory | null) => {
   return category ? cashExpenseCategoryLabel[category] ?? "Otros" : "Sin categoria";
+};
+
+const getPaymentOriginLabel = (origin: Payment["origen"]) => {
+  if (origin === "cotizacion") return "Cotizacion";
+  if (origin === "abono") return "Abono";
+  return "Venta directa";
+};
+
+const buildPaymentDetailItems = (payment: Payment) => {
+  const services = (payment.servicios ?? []).map((item) => ({
+    id: item.servicioId ?? item.nombre,
+    nombre: item.nombre || "Tratamiento",
+    descripcion: "Tratamiento",
+    cantidad: Number(item.cantidad) || 0,
+    precioUnitario: Number(item.precioUnitario) || 0,
+  }));
+  const products = (payment.productos ?? []).map((item) => ({
+    id: item.productoId,
+    nombre: item.nombre || "Producto",
+    descripcion: "Producto",
+    cantidad: Number(item.cantidad) || 0,
+    precioUnitario: Number(item.precioUnitario) || 0,
+  }));
+  const items = [...services, ...products].filter((item) => item.cantidad > 0);
+
+  if (items.length > 0) return items;
+
+  return [{
+    id: payment.id,
+    nombre: payment.concepto || "Pago registrado",
+    descripcion: getPaymentOriginLabel(payment.origen),
+    cantidad: 1,
+    precioUnitario: Number(payment.totalVenta || payment.monto) || 0,
+  }];
 };
 
 const emptyTotals: CashClosureTotals = {
@@ -336,12 +383,14 @@ const CajaPage: React.FC = () => {
     openCashRegister,
     createCashMovement,
     createPayment,
+    cancelPayment,
     closeCashRegister,
     autoCloseCashRegister,
     updateCashShiftSettings,
   } = useCashRegister();
   const { can } = useCan();
   const canManageCashSettings = can("settings.update");
+  const canCancelSales = can("sales.cancel");
   const {
     movements: inventoryMovements,
     movementsLoading: inventoryMovementsLoading,
@@ -350,24 +399,34 @@ const CajaPage: React.FC = () => {
   const [search, setSearch] = useState("");
   const [methodFilter, setMethodFilter] = useState<PaymentMethod | "todos">("todos");
   const [dateFilter, setDateFilter] = useState(() => today());
+  const [cashCutStartDate, setCashCutStartDate] = useState(() => startOfCurrentMonth());
+  const [cashCutEndDate, setCashCutEndDate] = useState(() => today());
   const [currentSystemDate, setCurrentSystemDate] = useState(() => today());
   const [reportStartDate, setReportStartDate] = useState(() => startOfCurrentMonth());
   const [reportEndDate, setReportEndDate] = useState(() => today());
   const [activeTab, setActiveTab] = useState("pagos");
   const [selectedClosureId, setSelectedClosureId] = useState<string | null>(null);
+  const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(null);
+  const [paymentCancellationReason, setPaymentCancellationReason] = useState("");
 
   const [isSavingPayment, setIsSavingPayment] = useState(false);
   const [isOpeningCash, setIsOpeningCash] = useState(false);
   const [isClosingCash, setIsClosingCash] = useState(false);
   const [isAutoClosingCash, setIsAutoClosingCash] = useState(false);
   const [isSavingCashMovement, setIsSavingCashMovement] = useState(false);
+  const [isCancellingPayment, setIsCancellingPayment] = useState(false);
   const [isSavingShiftSettings, setIsSavingShiftSettings] = useState(false);
   const [hasUnsavedShiftSettingsChanges, setHasUnsavedShiftSettingsChanges] = useState(false);
+  const isSavingPaymentRef = useRef(false);
+  const isSavingCashMovementRef = useRef(false);
   const midnightAutoCloseAttemptRef = useRef<string | null>(null);
 
   const [isOpenCashDialogOpen, setIsOpenCashDialogOpen] = useState(false);
   const [isCashMovementDialogOpen, setIsCashMovementDialogOpen] = useState(false);
   const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
+  const [isCashCutDetailOpen, setIsCashCutDetailOpen] = useState(false);
+  const [isPaymentDetailOpen, setIsPaymentDetailOpen] = useState(false);
+  const [isCancelPaymentConfirmOpen, setIsCancelPaymentConfirmOpen] = useState(false);
   const [isShiftSettingsConfirmOpen, setIsShiftSettingsConfirmOpen] = useState(false);
 
   const [paymentForm, setPaymentForm] = useState({
@@ -400,11 +459,21 @@ const CajaPage: React.FC = () => {
   });
 
   const [shiftSettingsForm, setShiftSettingsForm] = useState<CashShiftSettings>(cashShiftSettings);
+  const [accountsReceivable, setAccountsReceivable] = useState<AccountReceivable[]>([]);
+  const [accountsReceivableLoading, setAccountsReceivableLoading] = useState(true);
 
   useEffect(() => {
     if (hasUnsavedShiftSettingsChanges) return;
     setShiftSettingsForm(cashShiftSettings);
   }, [cashShiftSettings, hasUnsavedShiftSettingsChanges]);
+
+  useEffect(() => {
+    setAccountsReceivableLoading(true);
+    return accountsReceivableService.listenAllAccounts((nextAccounts) => {
+      setAccountsReceivable(nextAccounts);
+      setAccountsReceivableLoading(false);
+    });
+  }, []);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -429,6 +498,42 @@ const CajaPage: React.FC = () => {
       return matchesText && matchesMethod && matchesDate;
     });
   }, [payments, search, methodFilter, dateFilter]);
+
+  const selectedPayment = useMemo(
+    () => selectedPaymentId ? payments.find((payment) => payment.id === selectedPaymentId) ?? null : null,
+    [payments, selectedPaymentId],
+  );
+  const selectedPaymentItems = useMemo(
+    () => selectedPayment ? buildPaymentDetailItems(selectedPayment) : [],
+    [selectedPayment],
+  );
+  const selectedPaymentSubtotal = useMemo(
+    () => selectedPaymentItems.reduce((total, item) => total + item.cantidad * item.precioUnitario, 0),
+    [selectedPaymentItems],
+  );
+  const selectedPaymentCashCutIsOpen = Boolean(
+    selectedPayment?.corteId && cashClosures.find((closure) => closure.id === selectedPayment.corteId)?.estado === "abierto",
+  );
+
+  const pendingAccounts = useMemo(() => {
+    const term = search.toLowerCase().trim();
+    return accountsReceivable
+      .filter((account) => account.saldoPendiente > 0 && account.estado !== "cancelada")
+      .filter((account) => {
+        if (!term) return true;
+        return [
+          account.pacienteNombre,
+          account.concepto,
+          account.estado,
+          account.id,
+        ].join(" ").toLowerCase().includes(term);
+      });
+  }, [accountsReceivable, search]);
+
+  const totalPendingBalance = useMemo(
+    () => pendingAccounts.reduce((total, account) => total + account.saldoPendiente, 0),
+    [pendingAccounts],
+  );
 
   const openCashClosure = useMemo(
     () => cashClosures.find((closure) => closure.estado === "abierto"),
@@ -469,7 +574,8 @@ const CajaPage: React.FC = () => {
   const hasAnyClosureForDate = closuresForDate.length > 0;
   const hasOpenCashForSelectedDate = openCashClosure?.fecha === dateFilter;
   const hasOpenCashForAnotherDate = Boolean(openCashClosure && openCashClosure.fecha !== dateFilter);
-  const canOpenSelectedDate = !openCashClosure && (cashShiftSettings.permitirMultiplesCortesPorDia || !hasAnyClosureForDate);
+  const isSelectedDateToday = dateFilter === currentSystemDate;
+  const canOpenSelectedDate = isSelectedDateToday && !openCashClosure && (cashShiftSettings.permitirMultiplesCortesPorDia || !hasAnyClosureForDate);
   const openCashButtonLabel = openCashClosure ? "Caja abierta" : "Abrir caja";
   const activeConfiguredShifts = useMemo(
     () => cashShiftSettings.turnos.filter((shift) => shift.activo),
@@ -491,6 +597,27 @@ const CajaPage: React.FC = () => {
     if (!selectedClosureForDetail) return selectedDateCashMovements;
     return cashMovements.filter((movement) => movement.corteId === selectedClosureForDetail.id);
   }, [cashMovements, selectedClosureForDetail, selectedDateCashMovements]);
+
+  const normalizedCashCutStartDate = cashCutStartDate <= cashCutEndDate ? cashCutStartDate : cashCutEndDate;
+  const normalizedCashCutEndDate = cashCutStartDate <= cashCutEndDate ? cashCutEndDate : cashCutStartDate;
+  const cashCutClosuresInRange = useMemo(
+    () => cashClosures.filter((closure) => isDateInRange(closure.fecha, normalizedCashCutStartDate, normalizedCashCutEndDate)),
+    [cashClosures, normalizedCashCutEndDate, normalizedCashCutStartDate],
+  );
+  const selectedCashCutClosure = useMemo(
+    () => selectedClosureId
+      ? cashClosures.find((closure) => closure.id === selectedClosureId) ?? null
+      : null,
+    [cashClosures, selectedClosureId],
+  );
+  const selectedCashCutMovements = useMemo(() => {
+    if (!selectedCashCutClosure) return [];
+    return cashMovements.filter((movement) => movement.corteId === selectedCashCutClosure.id);
+  }, [cashMovements, selectedCashCutClosure]);
+  const selectedCashCutSummary = useMemo(
+    () => buildCashSummary(selectedCashCutMovements),
+    [selectedCashCutMovements],
+  );
 
   const displayedCashMovements = useMemo(() => {
     return selectedClosureMovements;
@@ -594,6 +721,9 @@ const CajaPage: React.FC = () => {
   const paymentsPagination = usePagination(filteredPayments, {
     resetKeys: [search, methodFilter, dateFilter],
   });
+  const pendingAccountsPagination = usePagination(pendingAccounts, {
+    resetKeys: [search],
+  });
   const cashMovementsPagination = usePagination(displayedCashMovements, {
     resetKeys: [selectedClosureForDetail?.id, dateFilter],
   });
@@ -636,7 +766,7 @@ const CajaPage: React.FC = () => {
         label: "CERRADA",
         title: "Caja cerrada",
         description: `Hay ${closedClosuresForDate.length} corte${closedClosuresForDate.length === 1 ? "" : "s"} cerrado${closedClosuresForDate.length === 1 ? "" : "s"} para el ${formatDate(dateFilter)}.`,
-        nextAction: canOpenSelectedDate ? "Puedes abrir caja nuevamente para este dia." : "Consulta el resumen o selecciona otro dia.",
+        nextAction: canOpenSelectedDate ? "Puedes abrir caja nuevamente para este dia." : "Consulta el resumen o selecciona el dia actual.",
         Icon: Lock,
         cardClass: "border-slate-300 bg-slate-50",
         iconClass: "bg-slate-700 text-white",
@@ -648,13 +778,13 @@ const CajaPage: React.FC = () => {
       label: "SIN ABRIR",
       title: "Caja sin abrir",
       description: `Todavia no hay corte para el ${formatDate(dateFilter)}.`,
-      nextAction: "Abre caja para empezar a cobrar.",
+      nextAction: isSelectedDateToday ? "Abre caja para empezar a cobrar." : "Solo se puede abrir caja en el dia actual.",
       Icon: Power,
       cardClass: "border-red-200 bg-red-50",
       iconClass: "bg-red-600 text-white",
       badgeClass: "bg-red-600 text-white hover:bg-red-600",
     };
-  }, [canOpenSelectedDate, closedClosuresForDate.length, dateFilter, hasOpenCashForAnotherDate, hasOpenCashForSelectedDate, lastClosureForDate, openCashClosure]);
+  }, [canOpenSelectedDate, closedClosuresForDate.length, dateFilter, hasOpenCashForAnotherDate, hasOpenCashForSelectedDate, isSelectedDateToday, lastClosureForDate, openCashClosure]);
 
   const CashStatusIcon = cashStatus.Icon;
   const selectedClosureIndex = selectedClosureForDetail
@@ -701,6 +831,7 @@ const CajaPage: React.FC = () => {
 
   const handleAddPayment = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (isSavingPaymentRef.current) return;
 
     if (!paymentForm.pacienteNombre.trim() || !paymentForm.concepto.trim() || !paymentForm.monto) {
       toast.error("Completa paciente, concepto y monto");
@@ -712,6 +843,7 @@ const CajaPage: React.FC = () => {
       return;
     }
 
+    isSavingPaymentRef.current = true;
     setIsSavingPayment(true);
     try {
       await createPayment({
@@ -730,6 +862,7 @@ const CajaPage: React.FC = () => {
     } catch (error: any) {
       toast.error(error.message || "No se pudo registrar el pago");
     } finally {
+      isSavingPaymentRef.current = false;
       setIsSavingPayment(false);
     }
   };
@@ -821,11 +954,89 @@ const CajaPage: React.FC = () => {
     }
   };
 
+  const handleRequestCancelSelectedPayment = () => {
+    if (!selectedPayment) return;
+    if (!canCancelSales) {
+      toast.error("No tienes permiso para cancelar ventas.");
+      return;
+    }
+    if (selectedPayment.estado !== "activo") {
+      toast.error("Este pago ya no esta activo.");
+      return;
+    }
+    if (!selectedPaymentCashCutIsOpen) {
+      toast.error("No se puede cancelar un pago de un corte cerrado.");
+      return;
+    }
+
+    setIsCancelPaymentConfirmOpen(true);
+  };
+
+  const handleCancelSelectedPayment = async () => {
+    if (!selectedPayment) return;
+
+    setIsCancellingPayment(true);
+    try {
+      const reason = paymentCancellationReason.trim() || "Sin motivo especificado";
+      await cancelPayment({ id: selectedPayment.id, motivo: reason });
+      setIsCancelPaymentConfirmOpen(false);
+      setIsPaymentDetailOpen(false);
+      setSelectedPaymentId(null);
+      setPaymentCancellationReason("");
+    } catch (error: any) {
+      toast.error(error.message || "No se pudo cancelar el pago");
+    } finally {
+      setIsCancellingPayment(false);
+    }
+  };
+
+  const handleDownloadSelectedPaymentTicket = () => {
+    if (!selectedPayment) return;
+
+    const ticketLines = [
+      "ClauDent",
+      "Ticket de venta",
+      `Folio: V-${selectedPayment.id.slice(0, 6).toUpperCase()}`,
+      `Fecha: ${formatDate(selectedPayment.fecha)}`,
+      `Cliente: ${selectedPayment.pacienteNombre || "Publico general"}`,
+      `Metodo: ${paymentMethodLabel[selectedPayment.metodo]}`,
+      `Estado: ${selectedPayment.estado === "activo" ? "Exitosa" : "Cancelada"}`,
+      "",
+      "Conceptos:",
+      ...selectedPaymentItems.map((item) =>
+        `${item.cantidad} x ${item.nombre} @ ${formatCurrency(item.precioUnitario)} = ${formatCurrency(item.cantidad * item.precioUnitario)}`,
+      ),
+      "",
+      `Subtotal: ${formatCurrency(selectedPaymentSubtotal)}`,
+      selectedPayment.descuento ? `Descuento: -${formatCurrency(selectedPayment.descuento)}` : "",
+      `Total pagado: ${formatCurrency(selectedPayment.monto)}`,
+      selectedPayment.saldoPendiente ? `Saldo pendiente: ${formatCurrency(selectedPayment.saldoPendiente)}` : "",
+      selectedPayment.notas ? `Observaciones: ${selectedPayment.notas}` : "",
+    ].filter(Boolean);
+
+    const blob = new Blob([ticketLines.join("\n")], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `ticket-${selectedPayment.id.slice(0, 6).toUpperCase()}.txt`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
   const handleOpenCashRegister = async (event: React.FormEvent) => {
     event.preventDefault();
 
     if (openCashClosure) {
       toast.error(`Ya hay una caja abierta del ${openCashClosure.fecha}. Cierrala antes de abrir otra.`);
+      return;
+    }
+
+    if (!canOpenSelectedDate) {
+      toast.error(isSelectedDateToday
+        ? "Ya existe un corte para esta fecha. Cambia la configuracion si necesitas multiples cortes por dia."
+        : "Solo puedes abrir caja para el dia actual.");
       return;
     }
 
@@ -861,6 +1072,7 @@ const CajaPage: React.FC = () => {
 
   const handleRegisterCashMovement = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (isSavingCashMovementRef.current) return;
 
     if (!cashMovementForm.concepto.trim() || !cashMovementForm.monto) {
       toast.error("Completa concepto y monto");
@@ -872,6 +1084,7 @@ const CajaPage: React.FC = () => {
       return;
     }
 
+    isSavingCashMovementRef.current = true;
     setIsSavingCashMovement(true);
     try {
       await createCashMovement({
@@ -898,6 +1111,7 @@ const CajaPage: React.FC = () => {
     } catch (error: any) {
       toast.error(error.message || "No se pudo registrar el movimiento de caja");
     } finally {
+      isSavingCashMovementRef.current = false;
       setIsSavingCashMovement(false);
     }
   };
@@ -1193,8 +1407,9 @@ const CajaPage: React.FC = () => {
       </Card>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className={cn("grid h-auto w-full md:w-fit", canManageCashSettings ? "grid-cols-4" : "grid-cols-3")}>
+        <TabsList className={cn("grid h-auto w-full md:w-fit", canManageCashSettings ? "grid-cols-5" : "grid-cols-4")}>
           <TabsTrigger value="pagos">Pagos</TabsTrigger>
+          <TabsTrigger value="pendientes">Pendientes</TabsTrigger>
           <TabsTrigger value="corte">Corte</TabsTrigger>
           <TabsTrigger value="reportes">Reportes</TabsTrigger>
           {canManageCashSettings && <TabsTrigger value="configuracion">Configuracion</TabsTrigger>}
@@ -1241,22 +1456,24 @@ const CajaPage: React.FC = () => {
                         <TableHead>Folio</TableHead>
                         <TableHead>Paciente</TableHead>
                         <TableHead>Concepto</TableHead>
+                        <TableHead>Fecha</TableHead>
                         <TableHead>Metodo</TableHead>
                         <TableHead>Origen</TableHead>
                         <TableHead>Estado</TableHead>
                         <TableHead className="text-right">Monto</TableHead>
+                        <TableHead className="text-right">Acciones</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {paymentsLoading ? (
                         <TableRow>
-                          <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                          <TableCell colSpan={9} className="py-10 text-center text-muted-foreground">
                             Cargando pagos...
                           </TableCell>
                         </TableRow>
                       ) : filteredPayments.length === 0 ? (
                         <TableRow>
-                          <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                          <TableCell colSpan={9} className="py-10 text-center text-muted-foreground">
                             No hay pagos registrados para este filtro.
                           </TableCell>
                         </TableRow>
@@ -1269,21 +1486,35 @@ const CajaPage: React.FC = () => {
                               <TableCell className="font-mono text-xs">#{payment.id.slice(0, 6)}</TableCell>
                               <TableCell className="font-medium">{payment.pacienteNombre}</TableCell>
                               <TableCell>{payment.concepto}</TableCell>
+                              <TableCell>{formatDate(payment.fecha)}</TableCell>
                               <TableCell>
                                 <Badge variant="outline" className="gap-1">
                                   <Icon className="h-3.5 w-3.5" />
                                   {paymentMethodLabel[payment.metodo]}
                                 </Badge>
                               </TableCell>
-                              <TableCell>
-                                {payment.origen === "cotizacion" ? "Cotizacion" : payment.origen === "abono" ? "Abono" : "Venta directa"}
-                              </TableCell>
+                              <TableCell>{getPaymentOriginLabel(payment.origen)}</TableCell>
                               <TableCell>
                                 <Badge variant={payment.estado === "activo" ? "default" : "secondary"}>
-                                  {payment.estado}
+                                  {payment.estado === "activo" ? "Exitosa" : "Cancelada"}
                                 </Badge>
                               </TableCell>
                               <TableCell className="text-right font-semibold">{formatCurrency(payment.monto)}</TableCell>
+                              <TableCell className="text-right">
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => {
+                                    setSelectedPaymentId(payment.id);
+                                    setPaymentCancellationReason("");
+                                    setIsPaymentDetailOpen(true);
+                                  }}
+                                  aria-label="Ver detalle de venta"
+                                >
+                                  <Eye className="h-4 w-4 text-primary" />
+                                </Button>
+                              </TableCell>
                             </TableRow>
                           );
                         })
@@ -1391,9 +1622,262 @@ const CajaPage: React.FC = () => {
           </div>
         </TabsContent>
 
+        <TabsContent value="pendientes" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                  <CardTitle>Cuentas pendientes</CardTitle>
+                  <CardDescription>
+                    Saldos vivos por paciente. Cada abono aparece en pagos y en el corte de caja del dia en que se registro.
+                  </CardDescription>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                  <Badge variant={totalPendingBalance > 0 ? "secondary" : "outline"} className="w-fit">
+                    Total pendiente: {formatCurrency(totalPendingBalance)}
+                  </Badge>
+                  <div className="relative sm:w-64">
+                    <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      value={search}
+                      onChange={(event) => setSearch(event.target.value)}
+                      placeholder="Buscar pendiente..."
+                      className="pl-9"
+                    />
+                  </div>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="p-0">
+              <div className="overflow-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Paciente</TableHead>
+                      <TableHead>Concepto</TableHead>
+                      <TableHead>Creacion</TableHead>
+                      <TableHead>Ultimo abono</TableHead>
+                      <TableHead>Estado</TableHead>
+                      <TableHead className="text-right">Abonado</TableHead>
+                      <TableHead className="text-right">Saldo</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {accountsReceivableLoading ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                          Cargando pendientes...
+                        </TableCell>
+                      </TableRow>
+                    ) : pendingAccounts.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                          No hay cuentas pendientes para este filtro.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      pendingAccountsPagination.paginatedItems.map((account) => (
+                        <TableRow key={account.id}>
+                          <TableCell className="font-medium">{account.pacienteNombre}</TableCell>
+                          <TableCell>{account.concepto}</TableCell>
+                          <TableCell>{formatDate(account.fechaCreacion)}</TableCell>
+                          <TableCell>{account.fechaUltimoAbono ? formatDate(account.fechaUltimoAbono) : "Sin abonos"}</TableCell>
+                          <TableCell>
+                            <Badge variant={account.estado === "vencida" ? "destructive" : "secondary"}>
+                              {account.estado}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-right">{formatCurrency(account.totalAbonado)}</TableCell>
+                          <TableCell className="text-right font-semibold text-amber-700">
+                            {formatCurrency(account.saldoPendiente)}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+            {!accountsReceivableLoading && pendingAccounts.length > 0 && (
+              <DataPagination
+                itemLabel="pendientes"
+                page={pendingAccountsPagination.page}
+                pageSize={pendingAccountsPagination.pageSize}
+                totalItems={pendingAccountsPagination.totalItems}
+                startIndex={pendingAccountsPagination.startIndex}
+                endIndex={pendingAccountsPagination.endIndex}
+                canPreviousPage={pendingAccountsPagination.canPreviousPage}
+                canNextPage={pendingAccountsPagination.canNextPage}
+                onPageSizeChange={pendingAccountsPagination.setPageSize}
+                onPreviousPage={pendingAccountsPagination.previousPage}
+                onNextPage={pendingAccountsPagination.nextPage}
+              />
+            )}
+          </Card>
+        </TabsContent>
+
         <TabsContent value="corte" className="space-y-4">
-          <div className="grid gap-4 lg:grid-cols-[1fr_360px]">
-            <div className="space-y-4">
+          <Card className="overflow-hidden">
+            <CardHeader>
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <CardTitle className="flex items-center gap-2">
+                    <ReceiptText className="h-5 w-5 text-primary" />
+                    Corte de caja
+                  </CardTitle>
+                  <CardDescription>
+                    Periodo: {normalizedCashCutStartDate} a {normalizedCashCutEndDate} | {cashCutClosuresInRange.length} cortes registrados
+                  </CardDescription>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  {canOpenSelectedDate && (
+                    <Button type="button" onClick={() => setIsOpenCashDialogOpen(true)}>
+                      <Plus className="mr-2 h-4 w-4" />
+                      Nuevo
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      if (selectedCashCutClosure) {
+                        setIsCashCutDetailOpen(true);
+                      }
+                    }}
+                    disabled={!selectedCashCutClosure}
+                  >
+                    <Eye className="mr-2 h-4 w-4" />
+                    Ver detalle
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleExportCashCutCsv}
+                    disabled={displayedCashMovements.length === 0}
+                  >
+                    <FileSpreadsheet className="mr-2 h-4 w-4" />
+                    Exportar CSV
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleExportCashCutPdf}
+                    disabled={displayedCashMovements.length === 0}
+                  >
+                    <Download className="mr-2 h-4 w-4" />
+                    PDF
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 lg:grid-cols-[160px_160px_auto_1fr_auto] lg:items-end">
+                <div className="space-y-2">
+                  <Label>Fecha inicio</Label>
+                  <Input type="date" value={cashCutStartDate} onChange={(event) => setCashCutStartDate(event.target.value)} />
+                </div>
+                <div className="space-y-2">
+                  <Label>Fecha fin</Label>
+                  <Input type="date" value={cashCutEndDate} onChange={(event) => setCashCutEndDate(event.target.value)} />
+                </div>
+                <Button type="button" onClick={() => setDateFilter(normalizedCashCutEndDate)}>
+                  <Search className="mr-2 h-4 w-4" />
+                  Buscar
+                </Button>
+                <div />
+                <div className="rounded-md bg-muted/50 px-5 py-3 text-right">
+                  <p className="text-xs uppercase text-muted-foreground">Efectivo en caja</p>
+                  <p className="text-2xl font-bold text-emerald-700">{formatCurrency(openCashSummary.efectivoFinal)}</p>
+                </div>
+              </div>
+
+              <div className="overflow-auto rounded-md border">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-10" />
+                      <TableHead>Folio</TableHead>
+                      <TableHead>Fecha inicio</TableHead>
+                      <TableHead>Fecha final</TableHead>
+                      <TableHead className="text-right">Ingresos</TableHead>
+                      <TableHead className="text-right">Egresos</TableHead>
+                      <TableHead className="text-right">Caja inicial</TableHead>
+                      <TableHead className="text-right">Caja final</TableHead>
+                      <TableHead>Usuario</TableHead>
+                      <TableHead>Observacion</TableHead>
+                      <TableHead className="text-right">Acciones</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {cashCutClosuresInRange.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={11} className="py-10 text-center text-muted-foreground">
+                          No hay cortes registrados en este periodo.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      cashCutClosuresInRange.map((closure, index) => {
+                        const closureMovements = cashMovements.filter((movement) => movement.corteId === closure.id);
+                        const closureSummary = closure.estado === "abierto"
+                          ? buildCashSummary(closureMovements)
+                          : {
+                            ...createEmptyCashSummary(),
+                            totalIngresos: closure.totales.total,
+                            totalEgresos: closure.totalEgresos,
+                            fondoInicial: closure.fondoInicial,
+                            efectivoFinal: closure.efectivoEsperado,
+                          };
+                        const isSelected = selectedClosureId === closure.id;
+                        const folio = `CC-${String(cashClosures.length - cashClosures.findIndex((item) => item.id === closure.id)).padStart(4, "0")}`;
+
+                        return (
+                          <TableRow
+                            key={closure.id}
+                            className={cn("cursor-pointer", isSelected && "bg-primary/10")}
+                            onClick={() => {
+                              setSelectedClosureId(isSelected ? null : closure.id);
+                              setDateFilter(closure.fecha);
+                            }}
+                          >
+                            <TableCell>
+                              <span className={cn("block h-4 w-4 rounded border", isSelected && "border-primary bg-primary")} />
+                            </TableCell>
+                            <TableCell className="font-semibold">{folio}</TableCell>
+                            <TableCell>{formatDate(closure.inicio || closure.fecha)}</TableCell>
+                            <TableCell>{closure.estado === "abierto" ? "Caja abierta" : closure.fin ? formatDate(closure.fin) : "-"}</TableCell>
+                            <TableCell className="text-right font-semibold text-emerald-700">{formatCurrency(closureSummary.totalIngresos)}</TableCell>
+                            <TableCell className="text-right font-semibold text-destructive">{formatCurrency(closureSummary.totalEgresos)}</TableCell>
+                            <TableCell className="text-right font-semibold">{formatCurrency(closureSummary.fondoInicial)}</TableCell>
+                            <TableCell className="text-right font-semibold text-primary">{formatCurrency(closureSummary.efectivoFinal)}</TableCell>
+                            <TableCell>{getUserDisplayName(closure.usuarioAperturaNombre ?? closure.responsableNombre, closure.usuarioAperturaEmail ?? closure.responsableEmail)}</TableCell>
+                            <TableCell className="max-w-[260px] truncate text-muted-foreground">{closure.observaciones || "-"}</TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="icon"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setSelectedClosureId(isSelected ? null : closure.id);
+                                  setDateFilter(closure.fecha);
+                                  setIsCashCutDetailOpen(!isSelected);
+                                }}
+                              >
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="grid gap-4 lg:grid-cols-[1fr]">
+            <div className="hidden">
               <Card>
                 <CardHeader>
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1829,7 +2313,7 @@ const CajaPage: React.FC = () => {
                         return;
                       }
                     }}
-                    disabled={Boolean(openCashClosure)}
+                    disabled={!canOpenSelectedDate || Boolean(openCashClosure)}
                   >
                     <Plus className="mr-2 h-4 w-4" />
                     {openCashButtonLabel}
@@ -2478,12 +2962,399 @@ const CajaPage: React.FC = () => {
               </p>
             </div>
           </div>
-          <Button variant="secondary">
+          <Button variant="secondary" onClick={() => setActiveTab("pendientes")}>
             <WalletCards className="mr-2 h-4 w-4" />
             Pendientes de cobro
           </Button>
         </CardContent>
       </Card>
+
+      <Dialog open={isCashCutDetailOpen} onOpenChange={setIsCashCutDetailOpen}>
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-primary">
+              <ReceiptText className="h-5 w-5" />
+              Detalle del corte {selectedCashCutClosure ? `CC-${String(cashClosures.length - cashClosures.findIndex((item) => item.id === selectedCashCutClosure.id)).padStart(4, "0")}` : ""}
+            </DialogTitle>
+            <DialogDescription>
+              {selectedCashCutClosure
+                ? `${formatDate(selectedCashCutClosure.fecha)} | ${selectedCashCutClosure.estado === "abierto" ? "Caja abierta" : "Caja cerrada"}`
+                : "Selecciona un corte para ver el detalle."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {selectedCashCutClosure && (
+            <div className="space-y-5">
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-md border bg-muted/30 p-4">
+                  <p className="text-xs uppercase text-muted-foreground">Fecha inicio</p>
+                  <p className="mt-1 font-semibold">{formatDate(selectedCashCutClosure.inicio || selectedCashCutClosure.fecha)}</p>
+                </div>
+                <div className="rounded-md border bg-muted/30 p-4">
+                  <p className="text-xs uppercase text-muted-foreground">Fecha final</p>
+                  <p className="mt-1 font-semibold">
+                    {selectedCashCutClosure.estado === "abierto" ? "Caja abierta" : selectedCashCutClosure.fin ? formatDate(selectedCashCutClosure.fin) : "-"}
+                  </p>
+                </div>
+                <div className="rounded-md border bg-muted/30 p-4">
+                  <p className="text-xs uppercase text-muted-foreground">Usuario</p>
+                  <p className="mt-1 font-semibold">
+                    {getUserDisplayName(
+                      selectedCashCutClosure.usuarioAperturaNombre ?? selectedCashCutClosure.responsableNombre,
+                      selectedCashCutClosure.usuarioAperturaEmail ?? selectedCashCutClosure.responsableEmail,
+                    )}
+                  </p>
+                </div>
+                <div className="rounded-md border bg-muted/30 p-4">
+                  <p className="text-xs uppercase text-muted-foreground">Tipo de cierre</p>
+                  <p className="mt-1 font-semibold">
+                    {selectedCashCutClosure.estado === "abierto"
+                      ? "Abierto"
+                      : selectedCashCutClosure.tipoCierre === "automatico"
+                        ? "Automatico"
+                        : "Manual"}
+                  </p>
+                </div>
+                <div className="rounded-md border bg-muted/30 p-4">
+                  <p className="text-xs uppercase text-muted-foreground">Total ingresos</p>
+                  <p className="mt-1 text-2xl font-bold text-emerald-700">{formatCurrency(selectedCashCutSummary.totalIngresos)}</p>
+                </div>
+                <div className="rounded-md border bg-muted/30 p-4">
+                  <p className="text-xs uppercase text-muted-foreground">Total egresos</p>
+                  <p className="mt-1 text-2xl font-bold text-destructive">{formatCurrency(selectedCashCutSummary.totalEgresos)}</p>
+                </div>
+                <div className="rounded-md border bg-muted/30 p-4">
+                  <p className="text-xs uppercase text-muted-foreground">Caja inicial</p>
+                  <p className="mt-1 text-2xl font-bold">{formatCurrency(selectedCashCutSummary.fondoInicial)}</p>
+                </div>
+                <div className="rounded-md border bg-muted/30 p-4">
+                  <p className="text-xs uppercase text-muted-foreground">Caja final</p>
+                  <p className="mt-1 text-2xl font-bold text-primary">{formatCurrency(selectedCashCutSummary.efectivoFinal)}</p>
+                </div>
+              </div>
+
+              <div className="grid gap-4 md:grid-cols-3">
+                {selectedCashCutSummary.desgloseMetodos.map((methodSummary) => {
+                  const Icon = paymentMethodIcon[methodSummary.metodo];
+                  return (
+                    <div key={methodSummary.metodo} className="rounded-md border p-4">
+                      <div className="mb-4 flex items-center justify-between">
+                        <p className="font-semibold uppercase">{paymentMethodLabel[methodSummary.metodo]}</p>
+                        <Icon className="h-4 w-4 text-primary" />
+                      </div>
+                      <div className="space-y-2 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Ingresos</span>
+                          <span className="font-semibold text-emerald-700">+{formatCurrency(methodSummary.ingresos)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Egresos</span>
+                          <span className="font-semibold text-destructive">-{formatCurrency(methodSummary.egresos)}</span>
+                        </div>
+                        <div className="flex justify-between border-t pt-2">
+                          <span className="text-muted-foreground">Neto</span>
+                          <span className="font-semibold text-primary">{formatCurrency(methodSummary.neto)}</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="rounded-md border bg-muted/20 p-4">
+                <p className="text-xs uppercase text-muted-foreground">Observacion</p>
+                <p className="mt-1 text-sm font-medium">{selectedCashCutClosure.observaciones || "Sin observaciones"}</p>
+              </div>
+
+              <div className="overflow-auto rounded-md border">
+                <div className="border-b bg-muted/30 px-4 py-3">
+                  <p className="font-semibold">Movimientos ({selectedCashCutMovements.length})</p>
+                </div>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Folio</TableHead>
+                      <TableHead>Fecha</TableHead>
+                      <TableHead>Concepto</TableHead>
+                      <TableHead>Usuario</TableHead>
+                      <TableHead>Metodo</TableHead>
+                      <TableHead>Tipo</TableHead>
+                      <TableHead className="text-right">Monto</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {selectedCashCutMovements.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
+                          No hay movimientos registrados en este corte.
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      selectedCashCutMovements.map((movement, index) => (
+                        <TableRow key={movement.id}>
+                          <TableCell className="font-medium">MOV-{String(index + 1).padStart(4, "0")}</TableCell>
+                          <TableCell>{formatDate(movement.fecha)}</TableCell>
+                          <TableCell>
+                            <p className="font-medium">{movement.concepto}</p>
+                            {movement.nota && <p className="text-xs text-muted-foreground">{movement.nota}</p>}
+                          </TableCell>
+                          <TableCell>{getUserDisplayName(movement.usuarioNombre, movement.usuarioEmail)}</TableCell>
+                          <TableCell>{paymentMethodLabel[movement.metodo]}</TableCell>
+                          <TableCell>
+                            <Badge variant={movement.tipo === "ingreso" ? "default" : "destructive"}>
+                              {isOpeningCashMovement(movement) ? "Apertura" : cashMovementLabel[movement.tipo]}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className={cn("text-right font-semibold", movement.tipo === "egreso" ? "text-destructive" : "text-emerald-700")}>
+                            {movement.tipo === "egreso" ? "-" : "+"}
+                            {formatCurrency(movement.monto)}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setIsCashCutDetailOpen(false)}>
+                  Cerrar
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={isPaymentDetailOpen}
+        onOpenChange={(open) => {
+          setIsPaymentDetailOpen(open);
+          if (!open) {
+            setPaymentCancellationReason("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-3">
+              <span className="flex h-12 w-12 items-center justify-center rounded-md border border-primary/30 bg-primary/10 text-primary">
+                <ReceiptText className="h-6 w-6" />
+              </span>
+              <span>
+                Detalle de venta
+                <span className="block text-xs font-medium uppercase text-muted-foreground">Sistema de gestion de caja</span>
+              </span>
+            </DialogTitle>
+          </DialogHeader>
+
+          {selectedPayment && (
+            <div className="space-y-5">
+              <div className="grid gap-4 md:grid-cols-[1fr_auto]">
+                <div>
+                  <p className="text-xs uppercase text-muted-foreground">ID de venta</p>
+                  <p className="text-2xl font-bold text-primary">V-{selectedPayment.id.slice(0, 6).toUpperCase()}</p>
+                  <p className="mt-4 text-xs uppercase text-muted-foreground">Cliente</p>
+                  <p className="text-lg font-semibold">{selectedPayment.pacienteNombre || "Publico general"}</p>
+                </div>
+                <div className="space-y-4 text-left md:text-right">
+                  <div>
+                    <p className="text-xs uppercase text-muted-foreground">Fecha y hora</p>
+                    <p className="font-semibold">{formatDate(selectedPayment.fecha)}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase text-muted-foreground">Metodo de pago</p>
+                    <p className="font-semibold">{paymentMethodLabel[selectedPayment.metodo]}</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="rounded-md border bg-muted/30 p-4 text-center">
+                  <p className="text-xs uppercase text-muted-foreground">Articulos</p>
+                  <p className="mt-2 text-3xl font-bold">{selectedPaymentItems.length}</p>
+                </div>
+                <div className="rounded-md border border-emerald-300 bg-emerald-50 p-4 text-center">
+                  <p className="text-xs uppercase text-emerald-700">Estado</p>
+                  <p className="mt-2 text-xl font-bold text-emerald-700">
+                    {selectedPayment.estado === "activo" ? "Exitosa" : "Cancelada"}
+                  </p>
+                </div>
+                <div className="rounded-md border border-primary/30 bg-primary/10 p-4 text-center">
+                  <p className="text-xs uppercase text-primary">Monto total</p>
+                  <p className="mt-2 text-3xl font-bold text-primary">{formatCurrency(selectedPayment.monto)}</p>
+                </div>
+              </div>
+
+              <div className="rounded-md border">
+                <div className="border-b px-4 py-3">
+                  <p className="text-xs font-semibold uppercase text-muted-foreground">Lista de productos y tratamientos</p>
+                </div>
+                <div className="overflow-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Descripcion</TableHead>
+                        <TableHead className="text-right">Cant</TableHead>
+                        <TableHead className="text-right">Precio unit.</TableHead>
+                        <TableHead className="text-right">Subtotal</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {selectedPaymentItems.map((item) => (
+                        <TableRow key={`${item.id}-${item.nombre}`}>
+                          <TableCell>
+                            <p className="font-semibold">{item.nombre}</p>
+                            <p className="text-xs text-muted-foreground">{item.descripcion}</p>
+                          </TableCell>
+                          <TableCell className="text-right">{item.cantidad}</TableCell>
+                          <TableCell className="text-right">{formatCurrency(item.precioUnitario)}</TableCell>
+                          <TableCell className="text-right font-semibold text-primary">
+                            {formatCurrency(item.cantidad * item.precioUnitario)}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+                <div className="flex flex-col gap-2 border-t px-4 py-4 text-sm sm:items-end">
+                  {selectedPayment.descuento ? (
+                    <>
+                      <div className="flex min-w-[240px] justify-between">
+                        <span className="text-muted-foreground">Subtotal</span>
+                        <span>{formatCurrency(selectedPaymentSubtotal)}</span>
+                      </div>
+                      <div className="flex min-w-[240px] justify-between">
+                        <span className="text-muted-foreground">Descuento</span>
+                        <span>-{formatCurrency(selectedPayment.descuento)}</span>
+                      </div>
+                    </>
+                  ) : null}
+                  <div className="flex min-w-[240px] justify-between text-lg font-bold">
+                    <span>Total pagado</span>
+                    <span className="text-primary">{formatCurrency(selectedPayment.monto)}</span>
+                  </div>
+                  {selectedPayment.saldoPendiente ? (
+                    <div className="flex min-w-[240px] justify-between font-semibold text-amber-700">
+                      <span>Saldo pendiente</span>
+                      <span>{formatCurrency(selectedPayment.saldoPendiente)}</span>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              {selectedPayment.notas && (
+                <div className="rounded-md border bg-muted/20 p-4">
+                  <p className="text-xs uppercase text-muted-foreground">Observaciones</p>
+                  <p className="mt-1 text-sm font-medium">{selectedPayment.notas}</p>
+                </div>
+              )}
+
+              {selectedPayment.estado === "activo" && canCancelSales && (
+                <div className="rounded-md border border-destructive/30 bg-destructive/5 p-4">
+                  <div className="flex items-start gap-3">
+                    <AlertTriangle className="mt-0.5 h-5 w-5 text-destructive" />
+                    <div className="flex-1 space-y-3">
+                      <div>
+                        <p className="font-semibold text-destructive">Cancelacion por correccion</p>
+                        <p className="text-sm text-muted-foreground">
+                          Usala solo si hubo confusion o error de captura. No borra la venta: la marca como cancelada,
+                          cancela el movimiento de caja y devuelve inventario si habia productos descontados.
+                        </p>
+                        {!selectedPaymentCashCutIsOpen && (
+                          <p className="mt-2 text-sm font-medium text-destructive">
+                            Este pago pertenece a un corte cerrado, por eso no se puede cancelar desde caja.
+                          </p>
+                        )}
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Motivo de cancelacion</Label>
+                        <Textarea
+                          value={paymentCancellationReason}
+                          onChange={(event) => setPaymentCancellationReason(event.target.value)}
+                          placeholder="Ej. Se capturo el paciente equivocado / monto incorrecto / venta duplicada"
+                          rows={3}
+                          maxLength={300}
+                          disabled={isCancellingPayment || !selectedPaymentCashCutIsOpen}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Opcional. Si lo dejas vacio se guardara como sin motivo especificado.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <DialogFooter className="gap-2 sm:justify-between">
+                <Button type="button" variant="outline" onClick={handleDownloadSelectedPaymentTicket}>
+                  <Download className="mr-2 h-4 w-4" />
+                  Descargar ticket
+                </Button>
+                <div className="flex gap-2">
+                  {canCancelSales && (
+                    <Button
+                      type="button"
+                      variant="destructive"
+                      onClick={handleRequestCancelSelectedPayment}
+                      disabled={
+                        selectedPayment.estado !== "activo"
+                        || !selectedPaymentCashCutIsOpen
+                        || isCancellingPayment
+                      }
+                    >
+                      <Trash2 className="mr-2 h-4 w-4" />
+                      {isCancellingPayment ? "Cancelando..." : "Confirmar cancelacion"}
+                    </Button>
+                  )}
+                  <Button type="button" onClick={() => setIsPaymentDetailOpen(false)}>
+                    Cerrar detalle
+                  </Button>
+                </div>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <AlertDialog open={isCancelPaymentConfirmOpen} onOpenChange={setIsCancelPaymentConfirmOpen}>
+        <AlertDialogContent className="max-w-md border-destructive/30">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-destructive">
+              <AlertTriangle className="h-5 w-5" />
+              Confirmar cancelacion
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Esta accion marcara la venta como cancelada, anulara el movimiento de caja y devolvera inventario si la venta desconto productos. No se puede usar en cortes cerrados.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {selectedPayment && (
+            <div className="rounded-md border bg-muted/30 p-3 text-sm">
+              <div className="flex justify-between gap-3">
+                <span className="text-muted-foreground">Venta</span>
+                <span className="font-semibold">V-{selectedPayment.id.slice(0, 6).toUpperCase()}</span>
+              </div>
+              <div className="mt-1 flex justify-between gap-3">
+                <span className="text-muted-foreground">Monto</span>
+                <span className="font-semibold">{formatCurrency(selectedPayment.monto)}</span>
+              </div>
+            </div>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isCancellingPayment}>Volver</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                void handleCancelSelectedPayment();
+              }}
+              disabled={isCancellingPayment}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isCancellingPayment ? "Cancelando..." : "Si, cancelar venta"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <Dialog open={isShiftSettingsConfirmOpen} onOpenChange={setIsShiftSettingsConfirmOpen}>
         <DialogContent className="max-w-xl">
@@ -2644,7 +3515,18 @@ const CajaPage: React.FC = () => {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isOpenCashDialogOpen} onOpenChange={setIsOpenCashDialogOpen}>
+      <Dialog
+        open={isOpenCashDialogOpen}
+        onOpenChange={(open) => {
+          if (open && !canOpenSelectedDate) {
+            toast.error(isSelectedDateToday
+              ? "Ya existe un corte para esta fecha. Cambia la configuracion si necesitas multiples cortes por dia."
+              : "Solo puedes abrir caja para el dia actual.");
+            return;
+          }
+          setIsOpenCashDialogOpen(open);
+        }}
+      >
         <DialogContent className="max-w-xl">
           <DialogHeader>
             <DialogTitle>Abrir caja</DialogTitle>

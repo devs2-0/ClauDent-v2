@@ -26,6 +26,7 @@ export interface Payment extends CashUserStamp {
   cotizacionId?: string | null;
   tratamientoId?: string | null;
   ventaId?: string | null;
+  cuentaPorCobrarId?: string | null;
   fecha: string;
   metodo: PaymentMethod;
   monto: number;
@@ -35,6 +36,16 @@ export interface Payment extends CashUserStamp {
   estado: PaymentStatus;
   notas?: string;
   costoProductos?: number;
+  totalVenta?: number;
+  saldoPendiente?: number;
+  estadoPago?: "pagado" | "parcial";
+  subtotalServicios?: number;
+  subtotalProductos?: number;
+  descuento?: number;
+  servicios?: DirectSaleServiceItem[];
+  productos?: DirectSaleProductItem[];
+  motivoCancelacion?: string;
+  canceladoAt?: string | null;
 }
 
 export interface CashClosureTotals {
@@ -110,11 +121,18 @@ export interface CashMovement extends CashUserStamp {
   comprobanteUrl?: string;
   costoProductos?: number;
   estado: PaymentStatus;
+  motivoCancelacion?: string;
+  canceladoAt?: string | null;
 }
 
 export type CreatePaymentInput = Omit<Payment, "id" | "estado"> & {
   estado?: PaymentStatus;
 };
+
+export interface CancelPaymentInput {
+  id: string;
+  motivo: string;
+}
 
 export interface OpenCashRegisterInput {
   fecha: string;
@@ -177,10 +195,18 @@ export interface RegisterDirectSaleInput {
   pacienteNombre: string;
   citaId?: string | null;
   metodo: PaymentMethod;
+  montoPagado?: number;
   servicios?: DirectSaleServiceItem[];
   productos?: DirectSaleProductItem[];
   descuento?: number;
   notas?: string;
+}
+
+export interface RegisterDirectSaleWithReceivableResult {
+  pagoId: string;
+  cuentaPorCobrarId: string;
+  tratamientoId: string;
+  saldoPendiente: number;
 }
 
 export interface FinalizeQuotationCheckoutInput {

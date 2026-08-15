@@ -7,6 +7,7 @@ import type {
   CashClosure,
   CashMovement,
   CashShiftSettings,
+  CancelPaymentInput,
   CloseCashRegisterInput,
   CreateCashMovementInput,
   CreatePaymentInput,
@@ -14,6 +15,7 @@ import type {
   OpenCashRegisterInput,
   Payment,
   RegisterDirectSaleInput,
+  RegisterDirectSaleWithReceivableResult,
 } from "../types/cash.types";
 
 interface CashContextValue {
@@ -28,11 +30,12 @@ interface CashContextValue {
   openCashRegister: (input: OpenCashRegisterInput) => Promise<string>;
   createCashMovement: (input: CreateCashMovementInput) => Promise<string>;
   createPayment: (payment: CreatePaymentInput) => Promise<string>;
-  cancelPayment: (id: string) => Promise<void>;
+  cancelPayment: (input: CancelPaymentInput) => Promise<void>;
   closeCashRegister: (input: CloseCashRegisterInput) => Promise<string>;
   autoCloseCashRegister: (observaciones?: string) => Promise<string>;
   finalizeQuotationCheckout: (input: FinalizeQuotationCheckoutInput) => Promise<string>;
   registerDirectSale: (input: RegisterDirectSaleInput) => Promise<string>;
+  registerDirectSaleWithReceivable: (input: RegisterDirectSaleInput) => Promise<RegisterDirectSaleWithReceivableResult>;
   updateCashShiftSettings: (settings: CashShiftSettings) => Promise<void>;
 }
 
@@ -123,8 +126,8 @@ export const CashProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return id;
   }, []);
 
-  const cancelPayment = useCallback(async (id: string) => {
-    await cashService.cancelPayment(id);
+  const cancelPayment = useCallback(async (input: CancelPaymentInput) => {
+    await cashService.cancelPayment(input);
     toast.success("Pago cancelado");
   }, []);
 
@@ -152,6 +155,12 @@ export const CashProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return id;
   }, []);
 
+  const registerDirectSaleWithReceivable = useCallback(async (input: RegisterDirectSaleInput) => {
+    const result = await cashService.registerDirectSaleWithReceivable(input);
+    toast.success("Abono registrado y saldo pendiente creado");
+    return result;
+  }, []);
+
   const updateCashShiftSettings = useCallback(async (settings: CashShiftSettings) => {
     await cashShiftSettingsService.updateSettings(settings);
     toast.success("Configuracion de turnos guardada");
@@ -176,6 +185,7 @@ export const CashProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         autoCloseCashRegister,
         finalizeQuotationCheckout,
         registerDirectSale,
+        registerDirectSaleWithReceivable,
         updateCashShiftSettings,
       }}
     >

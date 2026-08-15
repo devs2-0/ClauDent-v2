@@ -64,6 +64,9 @@ export const useCurrentUserProfile = (): UseCurrentUserProfileResult => {
 
           doctorId: data.doctorId ?? null,
           assistantId: data.assistantId ?? null,
+          preferencias: {
+            apariencia: data.preferencias?.apariencia === "dark" ? "dark" : "light",
+          },
 
           createdAt: data.createdAt ?? null,
           updatedAt: data.updatedAt ?? null,
