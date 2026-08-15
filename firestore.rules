@@ -39,6 +39,19 @@ service cloud.firestore {
         );
     }
 
+    function canUseAgendaHistory() {
+      return isAdmin()
+        || hasPermission("agenda.view")
+        || hasPermission("agenda.doctors.viewAll")
+        || hasPermission("agenda.doctors.manage")
+        || hasPermission("agenda.assistants.manage")
+        || hasPermission("agenda.appointments.create")
+        || hasPermission("agenda.appointments.update")
+        || hasPermission("agenda.appointments.cancel")
+        || hasPermission("agenda.blocks.create")
+        || hasPermission("agenda.blocks.delete");
+    }
+
     function cashCutPath(corteId) {
       return /databases/$(database)/documents/cortesCaja/$(corteId);
     }
@@ -660,27 +673,35 @@ service cloud.firestore {
     }
 
     match /invitacionesUsuarios/{inviteEmail} {
-      allow get: if hasPermission("users.view")
+      allow get: if isAdmin()
+        || hasPermission("users.view")
         || hasPermission("users.create")
         || isPendingInvitationForSignedInEmail(inviteEmail);
 
-      allow list: if hasPermission("users.view")
-        || hasPermission("users.create");
+      allow list: if isAdmin()
+        || hasPermission("users.view")
+        || hasPermission("users.create")
+        || hasPermission("security.sessions.view");
 
-      allow create: if hasPermission("users.create")
-        && request.resource.data.email == inviteEmail
-        && request.resource.data.displayName is string
-        && request.resource.data.displayName.size() > 0
-        && request.resource.data.roleIds is list
-        && request.resource.data.permissions is list
-        && request.resource.data.consumed == false
-        && request.resource.data.cancelled == false;
+      allow create: if isAdmin()
+        || (
+          hasPermission("users.create")
+          && request.resource.data.email == inviteEmail
+          && request.resource.data.displayName is string
+          && request.resource.data.displayName.size() > 0
+          && request.resource.data.roleIds is list
+          && request.resource.data.permissions is list
+          && request.resource.data.consumed == false
+          && request.resource.data.cancelled == false
+        );
 
-      allow update: if hasPermission("users.update")
+      allow update: if isAdmin()
+        || hasPermission("users.update")
         || hasPermission("users.create")
         || isInviteConsumptionByOwner(inviteEmail);
 
-      allow delete: if hasPermission("users.delete");
+      allow delete: if isAdmin()
+        || hasPermission("users.delete");
     }
 
     match /roles/{roleId} {
@@ -1014,6 +1035,32 @@ service cloud.firestore {
         || isActiveUser();
 
       allow delete: if isAdmin();
+    }
+
+    match /notificacionesAgenda/{notificationId} {
+      allow read: if canUseAgendaHistory();
+
+      allow create: if canUseAgendaHistory();
+
+      allow update: if isSignedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          "read",
+          "readAt",
+          "readBy",
+          "updatedAt"
+        ])
+        && request.resource.data.read == true
+        && request.resource.data.readBy == request.auth.uid;
+
+      allow delete: if isAdmin();
+    }
+
+    match /historialAgenda/{historyId} {
+      allow read: if canUseAgendaHistory();
+
+      allow create: if canUseAgendaHistory();
+
+      allow update, delete: if isAdmin();
     }
 
     match /{document=**} {

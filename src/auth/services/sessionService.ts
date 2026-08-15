@@ -172,7 +172,7 @@ export const registerOrUpdateSession = async (uid: string, user?: User | null) =
     createdNewSession = true;
   }
 
-  await setDoc(sessionRef, {
+  const sessionPayload: Record<string, unknown> = {
     userId: uid,
     userEmail: user?.email ?? null,
     userName: user?.displayName || user?.email || null,
@@ -191,8 +191,14 @@ export const registerOrUpdateSession = async (uid: string, user?: User | null) =
     visibility,
     status: 'active',
     lastActive: serverTimestamp(),
-    updatedAt: serverTimestamp()
-  }, { merge: true });
+    updatedAt: serverTimestamp(),
+  };
+
+  if (createdNewSession) {
+    sessionPayload.startedAt = serverTimestamp();
+  }
+
+  await setDoc(sessionRef, sessionPayload, { merge: true });
 
   return {
     sessionId,
