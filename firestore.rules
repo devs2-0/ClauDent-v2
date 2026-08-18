@@ -999,9 +999,12 @@ service cloud.firestore {
     }
 
     match /bitacora/{logId} {
-      allow read: if hasPermission("audit.view");
-      allow create: if isValidAuditCreate();
-      allow update, delete: if false;
+      allow read: if isAdmin()
+        || hasPermission("audit.view");
+
+      allow create: if isActiveUser();
+
+      allow update, delete: if isAdmin();
     }
 
     match /notificaciones/{notificationId} {
@@ -1064,7 +1067,7 @@ service cloud.firestore {
     }
 
     match /{document=**} {
-      allow read, write: if false;
+      allow read, write: if isAdmin();
     }
   }
 }

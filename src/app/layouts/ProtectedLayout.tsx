@@ -1,22 +1,25 @@
-// RF-General: Layout Limpio + Responsive original + Tuerca móvil (afuera del buscador)
-import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate, Outlet } from 'react-router-dom';
+import React, { useEffect, useRef, useState } from "react";
+import { Outlet, useNavigate } from "react-router-dom";
 import {
-  Search,
-  LogOut,
-  User,
-  Settings,
   ClipboardList,
+  LogOut,
+  Search,
+  Settings,
   ShieldCheck,
-} from 'lucide-react';
+  User,
+} from "lucide-react";
 
-import { SidebarProvider, SidebarInset, useSidebar } from "@/shared/components/ui/sidebar";
 import { Can, useAuth } from "@/auth";
 import { usePatients } from "@/modules/patients";
 import { AppSidebar } from "@/shared/components/layout/AppSidebar";
 import { BottomNav } from "@/shared/components/layout/BottomNav";
-import { Input } from '@/shared/components/ui/input';
-import { Button } from '@/shared/components/ui/button';
+import { Button } from "@/shared/components/ui/button";
+import { Input } from "@/shared/components/ui/input";
+import {
+  SidebarInset,
+  SidebarProvider,
+  useSidebar,
+} from "@/shared/components/ui/sidebar";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,27 +29,28 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-} from '@/shared/components/ui/alert-dialog';
+} from "@/shared/components/ui/alert-dialog";
 
-
-// HEADER
 const HeaderOriginal = () => {
   const { currentUser, logout } = useAuth();
   const { patients } = usePatients();
   const navigate = useNavigate();
 
-  const [searchInput, setSearchInput] = useState('');
+  const [searchInput, setSearchInput] = useState("");
   const [showResults, setShowResults] = useState(false);
-  const searchRef = useRef<HTMLDivElement>(null);
-
   const [adminMenuOpen, setAdminMenuOpen] = useState(false);
-  const adminMenuRef = useRef<HTMLDivElement>(null);
+  const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
 
-  const filteredPatients = patients.filter(patient => {
+  const searchRef = useRef<HTMLDivElement | null>(null);
+  const adminMenuRef = useRef<HTMLDivElement | null>(null);
+
+  const filteredPatients = patients.filter((patient) => {
     if (!searchInput.trim()) return false;
+
     const term = searchInput.toLowerCase();
     const fullName = `${patient.nombres} ${patient.apellidos}`.toLowerCase();
-    const curp = (patient.curp || '').toLowerCase();
+    const curp = (patient.curp || "").toLowerCase();
+
     return fullName.includes(term) || curp.includes(term);
   });
 
@@ -64,20 +68,19 @@ const HeaderOriginal = () => {
     };
 
     document.addEventListener("mousedown", handleClickOutside);
+
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   const handleSelectPatient = (patientId: string) => {
     navigate(`/pacientes/${patientId}`);
     setShowResults(false);
-    setSearchInput('');
+    setSearchInput("");
   };
 
-  const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
-
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
+  const handleLogout = async () => {
+    await logout();
+    navigate("/login");
   };
 
   const go = (path: string) => {
@@ -86,56 +89,54 @@ const HeaderOriginal = () => {
   };
 
   return (
-    <header className="h-16 border-b border-border bg-card sticky top-0 z-40 flex items-center px-4 gap-4 w-full shadow-sm">
+    <header className="sticky top-0 z-40 flex h-20 items-center gap-4 border-b bg-background/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/60 lg:px-6">
+      <div className="hidden w-1 lg:block" />
 
-      {/* Espacio PC */}
-      <div className="hidden lg:block w-1"></div>
-
-      {/* Logo */}
       <div className="flex items-center gap-3">
         <img
           src="/logo.png"
           alt="Logo"
-          className="w-16 object-contain rounded-md hidden md:block"
+          className="hidden w-16 rounded-md object-contain md:block"
         />
+
         <h1 className="text-lg font-bold text-foreground">ClauDent</h1>
       </div>
 
-      {/* Contenedor buscador + tuerca */}
-      <div className="flex items-center gap-2 flex-1 max-w-md mx-auto">
-
-        {/* Buscador */}
+      <div className="mx-auto flex max-w-md flex-1 items-center gap-2">
         <div ref={searchRef} className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+
           <Input
             type="search"
             placeholder="Buscar..."
             value={searchInput}
-            onChange={(e) => {
-              setSearchInput(e.target.value);
+            onChange={(event) => {
+              setSearchInput(event.target.value);
               setShowResults(true);
             }}
             onFocus={() => setShowResults(true)}
             className="pl-10"
           />
 
-          {showResults && searchInput.trim() !== '' && (
-            <div className="absolute top-full left-0 w-full mt-2 bg-popover text-popover-foreground rounded-lg border shadow-lg z-50 max-h-[300px] overflow-y-auto">
+          {showResults && searchInput.trim() !== "" && (
+            <div className="absolute left-0 top-full z-50 mt-2 max-h-[300px] w-full overflow-y-auto rounded-lg border bg-popover text-popover-foreground shadow-lg">
               {filteredPatients.length > 0 ? (
                 <ul className="py-1">
                   {filteredPatients.map((patient) => (
                     <li
                       key={patient.id}
                       onClick={() => handleSelectPatient(patient.id)}
-                      className="px-4 py-3 hover:bg-muted/50 cursor-pointer transition-colors border-b last:border-0 border-border/50 flex items-center gap-3"
+                      className="flex cursor-pointer items-center gap-3 border-b border-border/50 px-4 py-3 transition-colors last:border-0 hover:bg-muted/50"
                     >
-                      <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10">
                         <User className="h-4 w-4 text-primary" />
                       </div>
+
                       <div className="flex flex-col">
                         <span className="text-sm font-medium">
                           {patient.nombres} {patient.apellidos}
                         </span>
+
                         {patient.curp && (
                           <span className="text-xs text-muted-foreground">
                             {patient.curp}
@@ -154,30 +155,26 @@ const HeaderOriginal = () => {
           )}
         </div>
 
-        {/* Tuerca solo móvil */}
-        <div className="lg:hidden relative" ref={adminMenuRef}>
+        <div className="relative lg:hidden" ref={adminMenuRef}>
           <Button
             variant="ghost"
             size="icon"
             className="h-11 w-11 md:h-16 md:w-16"
-            onClick={(e) => {
-              e.stopPropagation();
-              setAdminMenuOpen((v) => !v);
+            onClick={(event) => {
+              event.stopPropagation();
+              setAdminMenuOpen((current) => !current);
             }}
           >
-            <Settings className="h-9 w-9 md:h-12 md:w-12 text-muted-foreground" />
-
-
+            <Settings className="h-9 w-9 text-muted-foreground md:h-12 md:w-12" />
           </Button>
 
           {adminMenuOpen && (
-            <div className="absolute right-0 mt-2 w-52 bg-popover text-popover-foreground rounded-lg border shadow-lg z-50 overflow-hidden">
-              
+            <div className="absolute right-0 z-50 mt-2 w-52 overflow-hidden rounded-lg border bg-popover text-popover-foreground shadow-lg">
               <Can permission="audit.view">
                 <button
                   type="button"
                   onClick={() => go("/bitacora")}
-                  className="w-full flex items-center gap-2 px-4 py-3 text-sm hover:bg-muted/50 text-left"
+                  className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm hover:bg-muted/50"
                 >
                   <ClipboardList className="h-4 w-4" />
                   Bitácora
@@ -188,26 +185,30 @@ const HeaderOriginal = () => {
                 <button
                   type="button"
                   onClick={() => go("/seguridad")}
-                  className="w-full flex items-center gap-2 px-4 py-3 text-sm hover:bg-muted/50 text-left"
+                  className="flex w-full items-center gap-2 px-4 py-3 text-left text-sm hover:bg-muted/50"
                 >
                   <ShieldCheck className="h-4 w-4" />
                   Seguridad
                 </button>
               </Can>
-              
             </div>
           )}
         </div>
-
       </div>
 
-      {/* Perfil PC */}
-      <div className="hidden lg:flex items-center gap-3">
+      <div className="hidden items-center gap-3 lg:flex">
         <div className="text-right">
-          <p className="text-sm font-medium text-foreground">{currentUser?.email}</p>
+          <p className="text-sm font-medium text-foreground">
+            {currentUser?.email}
+          </p>
           <p className="text-xs text-muted-foreground">Dentista</p>
         </div>
-        <Button variant="ghost" size="icon" onClick={() => setLogoutDialogOpen(true)}>
+
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setLogoutDialogOpen(true)}
+        >
           <LogOut className="h-5 w-5" />
         </Button>
       </div>
@@ -217,13 +218,16 @@ const HeaderOriginal = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>¿Cerrar sesión?</AlertDialogTitle>
             <AlertDialogDescription>
-              Tu sesión se cerrará y deberás volver a iniciar sesión para continuar.
+              Tu sesión se cerrará y deberás volver a iniciar sesión para
+              continuar.
             </AlertDialogDescription>
           </AlertDialogHeader>
+
           <AlertDialogFooter>
             <AlertDialogCancel>Cancelar</AlertDialogCancel>
+
             <AlertDialogAction
-              onClick={handleLogout}
+              onClick={() => void handleLogout()}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Sí, cerrar sesión
@@ -236,39 +240,32 @@ const HeaderOriginal = () => {
 };
 
 const SidebarOverlayHandler = () => {
-  const { state, toggleSidebar, isMobile } = useSidebar();
+  const { state, isMobile } = useSidebar();
 
-  if (state === 'expanded' && !isMobile) {
-    return (
-      <div
-        className="fixed inset-0 bg-black/20 z-40"
-        onClick={toggleSidebar}
-        aria-hidden="true"
-      />
-    );
+  if (state === "expanded" && !isMobile) {
+    return <div className="fixed inset-0 z-20 bg-background/40 lg:hidden" />;
   }
+
   return null;
 };
 
 export const ProtectedLayout: React.FC = () => {
   return (
-    <SidebarProvider defaultOpen={false}>
-      <div className="hidden lg:block fixed left-0 top-0 bottom-0 z-50 h-full">
-        <AppSidebar />
-      </div>
+    <SidebarProvider>
+      <AppSidebar />
 
       <div className="hidden lg:block">
         <SidebarOverlayHandler />
       </div>
 
-      <SidebarInset className="bg-background flex flex-col min-h-screen w-full overflow-x-hidden lg:pl-[3rem] transition-all">
+      <SidebarInset className="flex min-h-screen w-full flex-col overflow-x-hidden bg-background transition-all lg:pl-[3rem]">
         <HeaderOriginal />
 
-        <main className="flex-1 p-4 lg:p-6 pb-24 lg:pb-6 w-full max-w-full overflow-y-auto">
+        <main className="flex-1 overflow-y-auto p-4 pb-24 lg:p-6 lg:pb-6">
           <Outlet />
         </main>
 
-        <div className="lg:hidden block">
+        <div className="block lg:hidden">
           <BottomNav />
         </div>
       </SidebarInset>

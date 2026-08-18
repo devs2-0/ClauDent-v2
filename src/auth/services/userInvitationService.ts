@@ -15,6 +15,8 @@ import { addAuditLog } from "@/modules/audit/services/auditService";
 import type { AppUserStatus, Role } from "@/auth";
 import type { PermissionKey } from "@/auth/types/permission.types";
 
+export type InvitationStaffType = "administrative" | "doctor" | "assistant";
+
 export interface UserInvitation {
   id: string;
   email: string;
@@ -25,6 +27,11 @@ export interface UserInvitation {
   primaryRoleId: string | null;
   permissions: PermissionKey[];
   isAdmin: boolean;
+
+  staffType: InvitationStaffType;
+  doctorId: string | null;
+  assistantId: string | null;
+
   consumed: boolean;
   cancelled?: boolean;
   visible?: boolean;
@@ -39,6 +46,9 @@ export interface CreateUserInvitationInput {
   phone?: string;
   status: AppUserStatus;
   roleIds: string[];
+  staffType?: InvitationStaffType;
+  doctorId?: string | null;
+  assistantId?: string | null;
 }
 
 const invitationsCollection = collection(db, "invitacionesUsuarios");
@@ -100,6 +110,14 @@ const mapInvitation = (id: string, data: Record<string, unknown>): UserInvitatio
     createdBy: typeof data.createdBy === "string" ? data.createdBy : null,
     updatedBy: typeof data.updatedBy === "string" ? data.updatedBy : null,
     consumedBy: typeof data.consumedBy === "string" ? data.consumedBy : null,
+
+    staffType:
+      data.staffType === "doctor" || data.staffType === "assistant"
+        ? data.staffType
+        : "administrative",
+    doctorId: typeof data.doctorId === "string" ? data.doctorId : null,
+    assistantId:
+      typeof data.assistantId === "string" ? data.assistantId : null,
   };
 };
 
@@ -126,6 +144,24 @@ export const userInvitationService = {
     const phone = input.phone?.trim() || null;
     const roleIds = Array.from(new Set(input.roleIds.filter(Boolean)));
     const status = input.status;
+    const staffType =
+      input.staffType === "doctor" || input.staffType === "assistant"
+        ? input.staffType
+        : "administrative";
+
+    const doctorId =
+      staffType === "doctor" ? input.doctorId?.trim() || null : null;
+
+    const assistantId =
+      staffType === "assistant" ? input.assistantId?.trim() || null : null;
+
+    if (staffType === "doctor" && !doctorId) {
+      throw new Error("Selecciona el doctor vinculado a esta invitación.");
+    }
+
+    if (staffType === "assistant" && !assistantId) {
+      throw new Error("Selecciona el asistente vinculado a esta invitación.");
+    }
 
     if (!email) {
       throw new Error("El correo es obligatorio.");
@@ -157,6 +193,9 @@ export const userInvitationService = {
       primaryRoleId: roleIds[0] ?? null,
       permissions: effective.permissions,
       isAdmin: effective.isAdmin,
+      staffType,
+      doctorId,
+      assistantId,
       consumed: false,
       cancelled: false,
       visible: true,
@@ -185,6 +224,9 @@ export const userInvitationService = {
       createdBy: actorUid ?? null,
       updatedBy: actorUid ?? null,
       consumedBy: null,
+      staffType,
+      doctorId,
+      assistantId,
     } satisfies UserInvitation;
   },
 

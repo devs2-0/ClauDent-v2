@@ -39,9 +39,13 @@ interface InvitationData {
   primaryRoleId?: string | null;
   permissions: PermissionKey[];
   isAdmin: boolean;
+  staffType?: "administrative" | "doctor" | "assistant";
+  doctorId?: string | null;
+  assistantId?: string | null;
   consumed: boolean;
   cancelled?: boolean;
   createdBy?: string | null;
+  
 }
 
 const FirstAccessPage = () => {
@@ -125,8 +129,8 @@ const FirstAccessPage = () => {
         permissions: invitation.permissions ?? [],
         isAdmin: invitation.isAdmin === true,
         photoURL: null,
-        doctorId: null,
-        assistantId: null,
+        doctorId: invitation.doctorId ?? null,
+        assistantId: invitation.assistantId ?? null,
         visible: true,
         invitationId: normalizedEmail,
         createdAt: serverTimestamp(),
@@ -142,6 +146,26 @@ const FirstAccessPage = () => {
         consumedBy: createdUser.uid,
         updatedAt: serverTimestamp(),
       });
+
+       if (invitation.staffType === "doctor" && invitation.doctorId) {
+        const doctorRef = doc(db, "doctores", invitation.doctorId);
+
+        batch.update(doctorRef, {
+          userUid: createdUser.uid,
+          updatedAt: serverTimestamp(),
+          updatedBy: createdUser.uid,
+        });
+      }
+
+      if (invitation.staffType === "assistant" && invitation.assistantId) {
+        const assistantRef = doc(db, "asistentes", invitation.assistantId);
+
+        batch.update(assistantRef, {
+          userUid: createdUser.uid,
+          updatedAt: serverTimestamp(),
+          updatedBy: createdUser.uid,
+        });
+      }
 
       await batch.commit();
 
