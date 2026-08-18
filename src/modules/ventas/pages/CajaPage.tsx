@@ -125,7 +125,6 @@ const formatVariation = (value: number) => `${value > 0 ? "+" : ""}${value.toFix
 const createShiftId = () => `turno-${Date.now()}`;
 
 const paymentMethods: PaymentMethod[] = ["efectivo", "tarjeta", "transferencia"];
-const cashExpenseCategories: CashExpenseCategory[] = ["suministros", "servicios", "renta", "nomina", "mantenimiento", "otros"];
 
 const paymentMethodLabel: Record<PaymentMethod, string> = {
   efectivo: "Efectivo",
@@ -219,13 +218,13 @@ const isOpeningCashMovement = (movement: Pick<CashMovement, "concepto" | "refere
 
 const getUserDisplayName = (name?: string, email?: string) => name || email || "Admin";
 
-const cashConceptOrder = ["Ventas directas", "Tratamientos / cotizaciones", "Abonos", "Ingresos manuales", "Otros ingresos"];
+const cashConceptOrder = ["Ventas directas", "Tratamientos / cotizaciones", "Abonos", "Ajustes historicos", "Otros ingresos"];
 
 const getIncomeConceptLabel = (
   movement: CashMovement,
   paymentById: Map<string, { origen?: string }>,
 ) => {
-  if (movement.referenciaTipo === "manual") return "Ingresos manuales";
+  if (movement.referenciaTipo === "manual") return "Ajustes historicos";
   if (movement.referenciaTipo === "cotizacion" || movement.referenciaTipo === "tratamiento") return "Tratamientos / cotizaciones";
 
   const paymentOrigin = movement.referenciaId ? paymentById.get(movement.referenciaId)?.origen : null;
@@ -381,8 +380,6 @@ const CajaPage: React.FC = () => {
     cashShiftSettings,
     cashShiftSettingsLoading,
     openCashRegister,
-    createCashMovement,
-    createPayment,
     cancelPayment,
     closeCashRegister,
     autoCloseCashRegister,
@@ -409,33 +406,19 @@ const CajaPage: React.FC = () => {
   const [selectedPaymentId, setSelectedPaymentId] = useState<string | null>(null);
   const [paymentCancellationReason, setPaymentCancellationReason] = useState("");
 
-  const [isSavingPayment, setIsSavingPayment] = useState(false);
   const [isOpeningCash, setIsOpeningCash] = useState(false);
   const [isClosingCash, setIsClosingCash] = useState(false);
   const [isAutoClosingCash, setIsAutoClosingCash] = useState(false);
-  const [isSavingCashMovement, setIsSavingCashMovement] = useState(false);
   const [isCancellingPayment, setIsCancellingPayment] = useState(false);
   const [isSavingShiftSettings, setIsSavingShiftSettings] = useState(false);
   const [hasUnsavedShiftSettingsChanges, setHasUnsavedShiftSettingsChanges] = useState(false);
-  const isSavingPaymentRef = useRef(false);
-  const isSavingCashMovementRef = useRef(false);
   const midnightAutoCloseAttemptRef = useRef<string | null>(null);
 
   const [isOpenCashDialogOpen, setIsOpenCashDialogOpen] = useState(false);
-  const [isCashMovementDialogOpen, setIsCashMovementDialogOpen] = useState(false);
-  const [isPaymentDialogOpen, setIsPaymentDialogOpen] = useState(false);
   const [isCashCutDetailOpen, setIsCashCutDetailOpen] = useState(false);
   const [isPaymentDetailOpen, setIsPaymentDetailOpen] = useState(false);
   const [isCancelPaymentConfirmOpen, setIsCancelPaymentConfirmOpen] = useState(false);
   const [isShiftSettingsConfirmOpen, setIsShiftSettingsConfirmOpen] = useState(false);
-
-  const [paymentForm, setPaymentForm] = useState({
-    pacienteNombre: "",
-    concepto: "",
-    monto: "",
-    metodo: "efectivo" as PaymentMethod,
-    notas: "",
-  });
 
   const [cashCloseForm, setCashCloseForm] = useState({
     efectivoContado: "",
@@ -446,16 +429,6 @@ const CajaPage: React.FC = () => {
     fondoInicial: "",
     turnoId: "",
     observaciones: "",
-  });
-
-  const [cashMovementForm, setCashMovementForm] = useState({
-    tipo: "egreso" as CashMovementType,
-    metodo: "efectivo" as PaymentMethod,
-    categoriaGasto: "otros" as CashExpenseCategory,
-    comprobanteUrl: "",
-    concepto: "",
-    monto: "",
-    nota: "",
   });
 
   const [shiftSettingsForm, setShiftSettingsForm] = useState<CashShiftSettings>(cashShiftSettings);
@@ -829,44 +802,6 @@ const CajaPage: React.FC = () => {
     })),
   }), [cashSummary, cutExpensesByCategory, cutIncomeByConcept, dateFilter, displayedCashMovements, selectedClosureForDetail, selectedClosureLabel]);
 
-  const handleAddPayment = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (isSavingPaymentRef.current) return;
-
-    if (!paymentForm.pacienteNombre.trim() || !paymentForm.concepto.trim() || !paymentForm.monto) {
-      toast.error("Completa paciente, concepto y monto");
-      return;
-    }
-
-    if (!hasOpenCashForSelectedDate) {
-      toast.error(openCashClosure ? `Cierra primero la caja del ${openCashClosure.fecha}` : "Abre caja antes de cobrar");
-      return;
-    }
-
-    isSavingPaymentRef.current = true;
-    setIsSavingPayment(true);
-    try {
-      await createPayment({
-        pacienteNombre: paymentForm.pacienteNombre.trim(),
-        concepto: paymentForm.concepto.trim(),
-        fecha: dateFilter || today(),
-        metodo: paymentForm.metodo,
-        monto: Number(paymentForm.monto) || 0,
-        origen: "venta_directa",
-        pacienteId: null,
-        cotizacionId: null,
-        notas: paymentForm.notas,
-      });
-      setPaymentForm({ pacienteNombre: "", concepto: "", monto: "", metodo: "efectivo", notas: "" });
-      setIsPaymentDialogOpen(false);
-    } catch (error: any) {
-      toast.error(error.message || "No se pudo registrar el pago");
-    } finally {
-      isSavingPaymentRef.current = false;
-      setIsSavingPayment(false);
-    }
-  };
-
   const updateShiftSettingsForm = (updates: Partial<CashShiftSettings>) => {
     setHasUnsavedShiftSettingsChanges(true);
     setShiftSettingsForm((current) => ({ ...current, ...updates }));
@@ -1070,52 +1005,6 @@ const CajaPage: React.FC = () => {
     }
   };
 
-  const handleRegisterCashMovement = async (event: React.FormEvent) => {
-    event.preventDefault();
-    if (isSavingCashMovementRef.current) return;
-
-    if (!cashMovementForm.concepto.trim() || !cashMovementForm.monto) {
-      toast.error("Completa concepto y monto");
-      return;
-    }
-
-    if (!hasOpenCashForSelectedDate) {
-      toast.error(openCashClosure ? `Cierra primero la caja del ${openCashClosure.fecha}` : "Abre caja antes de registrar movimientos");
-      return;
-    }
-
-    isSavingCashMovementRef.current = true;
-    setIsSavingCashMovement(true);
-    try {
-      await createCashMovement({
-        fecha: dateFilter || today(),
-        tipo: cashMovementForm.tipo,
-        metodo: cashMovementForm.metodo,
-        concepto: cashMovementForm.concepto.trim(),
-        monto: Number(cashMovementForm.monto) || 0,
-        nota: cashMovementForm.nota,
-        categoriaGasto: cashMovementForm.tipo === "egreso" ? cashMovementForm.categoriaGasto : null,
-        comprobanteUrl: cashMovementForm.comprobanteUrl,
-        referenciaTipo: "manual",
-      });
-      setCashMovementForm({
-        tipo: "egreso",
-        metodo: "efectivo",
-        categoriaGasto: "otros",
-        comprobanteUrl: "",
-        concepto: "",
-        monto: "",
-        nota: "",
-      });
-      setIsCashMovementDialogOpen(false);
-    } catch (error: any) {
-      toast.error(error.message || "No se pudo registrar el movimiento de caja");
-    } finally {
-      isSavingCashMovementRef.current = false;
-      setIsSavingCashMovement(false);
-    }
-  };
-
   const handleCloseCashRegister = async (event: React.FormEvent) => {
     event.preventDefault();
 
@@ -1259,19 +1148,6 @@ const CajaPage: React.FC = () => {
             )}
             {canOpenSelectedDate ? openCashButtonLabel : "Ver caja"}
           </Button>
-          <Button className="justify-start" onClick={() => setIsPaymentDialogOpen(true)} disabled={!hasOpenCashForSelectedDate}>
-            <CircleDollarSign className="mr-2 h-4 w-4" />
-            Nuevo cobro
-          </Button>
-          <Button
-            variant="outline"
-            className="justify-start"
-            onClick={() => setIsCashMovementDialogOpen(true)}
-            disabled={!hasOpenCashForSelectedDate}
-          >
-            <ReceiptText className="mr-2 h-4 w-4" />
-            Movimiento
-          </Button>
         </div>
       </div>
 
@@ -1293,7 +1169,7 @@ const CajaPage: React.FC = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(cashSummary.efectivoFinal)}</div>
-            <p className="text-xs text-muted-foreground">Fondo + ingresos - egresos</p>
+            <p className="text-xs text-muted-foreground">Fondo + cobros del dia</p>
           </CardContent>
         </Card>
         <Card>
@@ -1303,7 +1179,7 @@ const CajaPage: React.FC = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{formatCurrency(cashSummary.totalEgresos)}</div>
-            <p className="text-xs text-muted-foreground">Salidas manuales de caja</p>
+            <p className="text-xs text-muted-foreground">Ajustes historicos o anulaciones</p>
           </CardContent>
         </Card>
         <Card>
@@ -1416,13 +1292,15 @@ const CajaPage: React.FC = () => {
         </TabsList>
 
         <TabsContent value="pagos" className="space-y-4">
-          <div className="grid gap-4 xl:grid-cols-[1fr_360px]">
+          <div className="space-y-4">
             <Card className="overflow-hidden">
               <CardHeader>
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                   <div>
                     <CardTitle>Pagos reales</CardTitle>
-                    <CardDescription>El corte se calcula desde estos movimientos, no desde cotizaciones.</CardDescription>
+                    <CardDescription>
+                      El corte se calcula desde cobros registrados en Ventas, abonos de Pendientes y movimientos autorizados.
+                    </CardDescription>
                   </div>
                   <div className="flex flex-col gap-2 sm:flex-row">
                     <div className="relative sm:w-64">
@@ -1540,83 +1418,10 @@ const CajaPage: React.FC = () => {
               )}
             </Card>
 
-            <Card>
-              <CardHeader>
-                <CardTitle>Registrar pago</CardTitle>
-                <CardDescription>
-                  {hasOpenCashForSelectedDate
-                    ? "Para cobros directos o pagos no ligados aun a cotizacion."
-                    : openCashClosure
-                      ? `Cierra la caja del ${formatDate(openCashClosure.fecha)} antes de cobrar en esta fecha.`
-                      : "Abre caja antes de registrar cobros."}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <form onSubmit={handleAddPayment} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label>Paciente</Label>
-                    <Input
-                      value={paymentForm.pacienteNombre}
-                      onChange={(event) => setPaymentForm({ ...paymentForm, pacienteNombre: event.target.value })}
-                      placeholder="Nombre del paciente"
-                      disabled={isSavingPayment}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Concepto</Label>
-                    <Input
-                      value={paymentForm.concepto}
-                      onChange={(event) => setPaymentForm({ ...paymentForm, concepto: event.target.value })}
-                      placeholder="Tratamiento o producto"
-                      disabled={isSavingPayment}
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <Label>Monto</Label>
-                      <Input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={paymentForm.monto}
-                        onChange={(event) => setPaymentForm({ ...paymentForm, monto: event.target.value })}
-                        placeholder="0.00"
-                        disabled={isSavingPayment}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Metodo</Label>
-                      <Select
-                        value={paymentForm.metodo}
-                        onValueChange={(value) => setPaymentForm({ ...paymentForm, metodo: value as PaymentMethod })}
-                        disabled={isSavingPayment}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="efectivo">Efectivo</SelectItem>
-                          <SelectItem value="tarjeta">Tarjeta</SelectItem>
-                          <SelectItem value="transferencia">Transferencia</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                  <div className="space-y-2">
-                    <Label>Notas</Label>
-                    <Textarea
-                      value={paymentForm.notas}
-                      onChange={(event) => setPaymentForm({ ...paymentForm, notas: event.target.value })}
-                      placeholder="Referencia, observaciones o descuento aplicado"
-                      rows={3}
-                      disabled={isSavingPayment}
-                    />
-                  </div>
-                  <Button type="submit" className="w-full" disabled={isSavingPayment || !hasOpenCashForSelectedDate}>
-                    <ReceiptText className="mr-2 h-4 w-4" />
-                    {isSavingPayment ? "Registrando..." : "Registrar en caja"}
-                  </Button>
-                </form>
+            <Card className="border-sky-200 bg-sky-50">
+              <CardContent className="p-4 text-sm text-sky-900">
+                Los cobros nuevos se registran desde Ventas. Los abonos a saldos se registran desde Pendientes.
+                Esta vista solo audita pagos ya registrados para el corte de caja.
               </CardContent>
             </Card>
           </div>
@@ -2149,7 +1954,7 @@ const CajaPage: React.FC = () => {
                 <Card>
                   <CardHeader>
                     <CardTitle>Ingresos por concepto</CardTitle>
-                    <CardDescription>Ventas directas, tratamientos, abonos e ingresos manuales del corte.</CardDescription>
+                    <CardDescription>Ventas directas, tratamientos, abonos y ajustes historicos del corte.</CardDescription>
                   </CardHeader>
                   <CardContent className="space-y-3">
                     {cutIncomeByConcept.length === 0 ? (
@@ -2206,14 +2011,10 @@ const CajaPage: React.FC = () => {
                   <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <div>
                       <CardTitle>Movimientos de caja</CardTitle>
-                      <CardDescription>Apertura, cobros, ingresos manuales y egresos del dia.</CardDescription>
-                    </div>
-                    <Button variant="outline" onClick={() => setIsCashMovementDialogOpen(true)} disabled={!hasOpenCashForSelectedDate}>
-                      <ReceiptText className="mr-2 h-4 w-4" />
-                      Nuevo movimiento
-                    </Button>
+                    <CardDescription>Apertura, cobros, abonos y movimientos generados por ventas del dia.</CardDescription>
                   </div>
-                </CardHeader>
+                </div>
+              </CardHeader>
                 <CardContent className="p-0">
                   <div className="overflow-auto">
                     <Table>
@@ -2318,10 +2119,6 @@ const CajaPage: React.FC = () => {
                     <Plus className="mr-2 h-4 w-4" />
                     {openCashButtonLabel}
                   </Button>
-                  <Button type="button" variant="outline" onClick={() => setIsCashMovementDialogOpen(true)} disabled={!hasOpenCashForSelectedDate}>
-                    <ReceiptText className="mr-2 h-4 w-4" />
-                    Movimiento de caja
-                  </Button>
                   <Button
                     type="button"
                     variant="secondary"
@@ -2382,7 +2179,7 @@ const CajaPage: React.FC = () => {
                     Reporte financiero
                   </CardTitle>
                   <CardDescription>
-                    Balance por periodo con ingresos reales, gastos operativos y costo de productos vendidos.
+                    Balance por periodo con ingresos reales, anulaciones, ajustes historicos y costo de productos vendidos.
                   </CardDescription>
                 </div>
                 <div className="flex flex-col gap-2 sm:flex-row">
@@ -2505,7 +2302,7 @@ const CajaPage: React.FC = () => {
             <Card>
               <CardHeader>
                 <CardTitle>Gastos por categoria</CardTitle>
-                <CardDescription>Suministros, servicios y otros egresos del periodo.</CardDescription>
+                <CardDescription>Ajustes historicos, anulaciones u otros egresos registrados previamente.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 {financialReport.gastosPorCategoria.length === 0 ? (
@@ -2597,7 +2394,7 @@ const CajaPage: React.FC = () => {
           <Card className="overflow-hidden">
             <CardHeader>
               <CardTitle>Movimientos del periodo</CardTitle>
-              <CardDescription>Base del reporte: cobros, ingresos manuales y gastos operativos.</CardDescription>
+              <CardDescription>Base del reporte: cobros, abonos, anulaciones y ajustes historicos.</CardDescription>
             </CardHeader>
             <CardContent className="p-0">
               <div className="overflow-auto">
@@ -2958,7 +2755,7 @@ const CajaPage: React.FC = () => {
             <div>
               <p className="font-semibold">Flujo separado</p>
               <p className="text-sm text-muted-foreground">
-                Caja solo registra dinero real: cobros, ingresos, egresos, aperturas y cierres.
+                Caja solo audita dinero real: cobros, abonos, anulaciones, aperturas y cierres.
               </p>
             </div>
           </div>
@@ -3431,90 +3228,6 @@ const CajaPage: React.FC = () => {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isPaymentDialogOpen} onOpenChange={setIsPaymentDialogOpen}>
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle>Nuevo cobro</DialogTitle>
-            <DialogDescription>
-              {hasOpenCashForSelectedDate
-                ? `El cobro entrara a la caja abierta del ${formatDate(dateFilter)}.`
-                : openCashClosure
-                  ? `La caja abierta es del ${formatDate(openCashClosure.fecha)}. Cambia a esa fecha para cobrar.`
-                  : "Abre caja antes de registrar cobros."}
-            </DialogDescription>
-          </DialogHeader>
-          <form id="payment-dialog-form" onSubmit={handleAddPayment} className="space-y-4">
-            <div className="space-y-2">
-              <Label>Paciente</Label>
-              <Input
-                value={paymentForm.pacienteNombre}
-                onChange={(event) => setPaymentForm({ ...paymentForm, pacienteNombre: event.target.value })}
-                placeholder="Nombre del paciente"
-                disabled={isSavingPayment}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Concepto</Label>
-              <Input
-                value={paymentForm.concepto}
-                onChange={(event) => setPaymentForm({ ...paymentForm, concepto: event.target.value })}
-                placeholder="Tratamiento, abono o producto"
-                disabled={isSavingPayment}
-              />
-            </div>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Monto</Label>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={paymentForm.monto}
-                  onChange={(event) => setPaymentForm({ ...paymentForm, monto: event.target.value })}
-                  placeholder="0.00"
-                  disabled={isSavingPayment}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Metodo</Label>
-                <Select
-                  value={paymentForm.metodo}
-                  onValueChange={(value) => setPaymentForm({ ...paymentForm, metodo: value as PaymentMethod })}
-                  disabled={isSavingPayment}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="efectivo">Efectivo</SelectItem>
-                    <SelectItem value="tarjeta">Tarjeta</SelectItem>
-                    <SelectItem value="transferencia">Transferencia</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Notas</Label>
-              <Textarea
-                value={paymentForm.notas}
-                onChange={(event) => setPaymentForm({ ...paymentForm, notas: event.target.value })}
-                placeholder="Referencia, observaciones o descuento aplicado"
-                rows={3}
-                disabled={isSavingPayment}
-              />
-            </div>
-          </form>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setIsPaymentDialogOpen(false)} disabled={isSavingPayment}>
-              Cancelar
-            </Button>
-            <Button type="submit" form="payment-dialog-form" disabled={isSavingPayment || !hasOpenCashForSelectedDate}>
-              {isSavingPayment ? "Registrando..." : "Registrar cobro"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       <Dialog
         open={isOpenCashDialogOpen}
         onOpenChange={(open) => {
@@ -3611,129 +3324,6 @@ const CajaPage: React.FC = () => {
               }
             >
               {isOpeningCash ? "Abriendo..." : openCashButtonLabel}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={isCashMovementDialogOpen} onOpenChange={setIsCashMovementDialogOpen}>
-        <DialogContent className="max-w-xl">
-          <DialogHeader>
-            <DialogTitle>Movimiento de caja</DialogTitle>
-            <DialogDescription>
-              {hasOpenCashForSelectedDate
-                ? "Registra ingresos o egresos manuales de la caja abierta."
-                : openCashClosure
-                  ? `La caja abierta es del ${formatDate(openCashClosure.fecha)}. Cambia a esa fecha para registrar movimientos.`
-                  : "Abre caja antes de registrar movimientos."}
-            </DialogDescription>
-          </DialogHeader>
-          <form id="cash-movement-form" onSubmit={handleRegisterCashMovement} className="space-y-4">
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label>Tipo</Label>
-                <Select
-                  value={cashMovementForm.tipo}
-                  onValueChange={(value) => setCashMovementForm({ ...cashMovementForm, tipo: value as CashMovementType })}
-                  disabled={isSavingCashMovement}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ingreso">Ingreso</SelectItem>
-                    <SelectItem value="egreso">Egreso</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Metodo</Label>
-                <Select
-                  value={cashMovementForm.metodo}
-                  onValueChange={(value) => setCashMovementForm({ ...cashMovementForm, metodo: value as PaymentMethod })}
-                  disabled={isSavingCashMovement}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="efectivo">Efectivo</SelectItem>
-                    <SelectItem value="tarjeta">Tarjeta</SelectItem>
-                    <SelectItem value="transferencia">Transferencia</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Concepto</Label>
-              <Input
-                value={cashMovementForm.concepto}
-                onChange={(event) => setCashMovementForm({ ...cashMovementForm, concepto: event.target.value })}
-                placeholder="Compra, retiro, ajuste, ingreso extra..."
-                disabled={isSavingCashMovement}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>Monto</Label>
-              <Input
-                type="number"
-                step="0.01"
-                min="0"
-                value={cashMovementForm.monto}
-                onChange={(event) => setCashMovementForm({ ...cashMovementForm, monto: event.target.value })}
-                placeholder="0.00"
-                disabled={isSavingCashMovement}
-              />
-            </div>
-            {cashMovementForm.tipo === "egreso" && (
-              <div className="grid gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label>Categoria de gasto</Label>
-                  <Select
-                    value={cashMovementForm.categoriaGasto}
-                    onValueChange={(value) => setCashMovementForm({ ...cashMovementForm, categoriaGasto: value as CashExpenseCategory })}
-                    disabled={isSavingCashMovement}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {cashExpenseCategories.map((category) => (
-                        <SelectItem key={category} value={category}>
-                          {cashExpenseCategoryLabel[category]}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label>Comprobante opcional</Label>
-                  <Input
-                    value={cashMovementForm.comprobanteUrl}
-                    onChange={(event) => setCashMovementForm({ ...cashMovementForm, comprobanteUrl: event.target.value })}
-                    placeholder="URL, folio o referencia"
-                    disabled={isSavingCashMovement}
-                  />
-                </div>
-              </div>
-            )}
-            <div className="space-y-2">
-              <Label>Nota</Label>
-              <Textarea
-                rows={3}
-                value={cashMovementForm.nota}
-                onChange={(event) => setCashMovementForm({ ...cashMovementForm, nota: event.target.value })}
-                placeholder="Detalle opcional del movimiento"
-                disabled={isSavingCashMovement}
-              />
-            </div>
-          </form>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setIsCashMovementDialogOpen(false)} disabled={isSavingCashMovement}>
-              Cancelar
-            </Button>
-            <Button type="submit" form="cash-movement-form" disabled={isSavingCashMovement || !hasOpenCashForSelectedDate}>
-              {isSavingCashMovement ? "Registrando..." : "Registrar movimiento"}
             </Button>
           </DialogFooter>
         </DialogContent>

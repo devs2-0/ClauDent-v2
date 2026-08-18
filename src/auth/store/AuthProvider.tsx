@@ -310,9 +310,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
 
       try {
         await addAuditLog(
-          "UPDATE",
+          "REVOKE_SESSION",
           "seguridad",
-          "Sesion cerrada desde seguridad",
+          "Sesion propia cerrada desde seguridad",
         );
       } catch (error) {
         console.warn("No se pudo registrar auditoría de revocación.", error);
@@ -347,9 +347,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
 
       try {
         await addAuditLog(
-          "UPDATE",
+          "REVOKE_ALL_SESSIONS",
           "seguridad",
-          "Cierre masivo de sesiones remotas",
+          "Cierre masivo de sesiones propias remotas",
         );
       } catch (error) {
         console.warn("No se pudo registrar auditoría de sesiones.", error);
@@ -359,7 +359,6 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
       toast.error("No se pudieron cerrar las otras sesiones.");
     }
   };
-
   return (
     <AuthContext.Provider
       value={{

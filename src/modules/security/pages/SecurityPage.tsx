@@ -1,8 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { collection, doc, onSnapshot, serverTimestamp, updateDoc, writeBatch } from "firebase/firestore";
 import {
+  AlertTriangle,
+  CalendarClock,
   CheckCircle2,
   Clock,
+  Fingerprint,
   Globe2,
   Laptop,
   LogOut,
@@ -80,10 +83,31 @@ const formatLastActive = (value: any) => {
   });
 };
 
+const formatDateTime = (value: any) => {
+  const date = toDate(value);
+  if (!date) return "Sin registro";
+
+  return date.toLocaleString("es-MX", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+};
+
 const isRecentlyActive = (session: SessionWithUser) => {
   const date = toDate(session.lastActive);
   if (!date) return false;
   return Date.now() - date.getTime() < 2 * 60 * 1000;
+};
+
+const isStaleSession = (session: SessionWithUser) => {
+  const date = toDate(session.lastActive);
+  if (!date) return true;
+  return Date.now() - date.getTime() > 24 * 60 * 60 * 1000;
+};
+
+const shortSessionId = (sessionId: string) => {
+  if (!sessionId) return "sin id";
+  return sessionId.length <= 12 ? sessionId : `${sessionId.slice(0, 6)}...${sessionId.slice(-4)}`;
 };
 
 const getDeviceIcon = (type: string) => {
@@ -282,6 +306,7 @@ const SecurityPage: React.FC = () => {
   const activeNowCount = enrichedSessions.filter(isRecentlyActive).length;
   const uniqueUserCount = new Set(enrichedSessions.map((session) => session.userId)).size;
   const remoteSessionCount = enrichedSessions.filter((session) => !session.isCurrent).length;
+  const staleSessionCount = enrichedSessions.filter(isStaleSession).length;
 
   const buildRevokedSessionPayload = (reason: string) => ({
     status: "revoked",
@@ -320,11 +345,6 @@ const SecurityPage: React.FC = () => {
     if (session.userId === currentUser?.uid) {
       try {
         await revokeSession(session.id);
-        await addAuditLog(
-          "REVOKE_SESSION",
-          "seguridad",
-          `Sesion propia cerrada en ${session.browser} (${session.os || session.platform || "sistema no detectado"})`,
-        );
       } finally {
         setIsRevoking(false);
         setSessionToRevoke(null);
@@ -379,11 +399,6 @@ const SecurityPage: React.FC = () => {
         toast.success("Sesiones remotas cerradas");
       } else {
         await closeAllOtherSessions();
-        await addAuditLog(
-          "REVOKE_ALL_SESSIONS",
-          "seguridad",
-          `Cierre de sesiones propias remotas: ${sessionsToClose.length} sesion(es) cerrada(s).`,
-        );
       }
     } finally {
       setIsRevoking(false);
@@ -412,7 +427,7 @@ const SecurityPage: React.FC = () => {
         )}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-muted-foreground">Sesiones activas</CardTitle>
@@ -438,6 +453,15 @@ const SecurityPage: React.FC = () => {
           <CardContent>
             <div className="text-2xl font-bold">{activeNowCount}</div>
             <p className="text-xs text-muted-foreground">Actualizadas en los ultimos 2 minutos</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm text-muted-foreground">Sesiones por revisar</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="text-2xl font-bold">{staleSessionCount}</div>
+            <p className="text-xs text-muted-foreground">Sin pulso en mas de 24 horas</p>
           </CardContent>
         </Card>
       </div>
@@ -506,6 +530,11 @@ const SecurityPage: React.FC = () => {
                               <CheckCircle2 className="mr-1 h-3 w-3" />
                               Activa
                             </Badge>
+                          ) : isStaleSession(session) ? (
+                            <Badge variant="destructive">
+                              <AlertTriangle className="mr-1 h-3 w-3" />
+                              Revisar
+                            </Badge>
                           ) : (
                             <Badge variant="secondary">Sin actividad reciente</Badge>
                           )}
@@ -515,6 +544,13 @@ const SecurityPage: React.FC = () => {
                     </div>
 
                     <div className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
+                      <div>
+                        <p className="text-xs uppercase text-muted-foreground">ID de sesion</p>
+                        <p className="flex items-center gap-1 font-medium" title={session.id}>
+                          <Fingerprint className="h-3.5 w-3.5 text-primary" />
+                          {shortSessionId(session.id)}
+                        </p>
+                      </div>
                       <div>
                         <p className="text-xs uppercase text-muted-foreground">Dispositivo</p>
                         <p className="font-medium">{session.deviceLabel || session.deviceType}</p>
@@ -528,6 +564,13 @@ const SecurityPage: React.FC = () => {
                       <div>
                         <p className="text-xs uppercase text-muted-foreground">Sistema</p>
                         <p className="font-medium">{session.os || session.platform || "No detectado"}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs uppercase text-muted-foreground">Inicio de sesion</p>
+                        <p className="flex items-center gap-1 font-medium">
+                          <CalendarClock className="h-3.5 w-3.5 text-primary" />
+                          {formatDateTime(session.startedAt)}
+                        </p>
                       </div>
                       <div>
                         <p className="text-xs uppercase text-muted-foreground">Ultima actividad</p>
@@ -546,6 +589,7 @@ const SecurityPage: React.FC = () => {
                         </span>
                       )}
                       {session.language && <span className="rounded-md bg-muted px-2 py-1">{session.language}</span>}
+                      {session.visibility && <span className="rounded-md bg-muted px-2 py-1">Pestana {session.visibility === "visible" ? "visible" : "en segundo plano"}</span>}
                       {session.screen && <span className="rounded-md bg-muted px-2 py-1">Pantalla {session.screen}</span>}
                       {session.viewport && <span className="rounded-md bg-muted px-2 py-1">Ventana {session.viewport}</span>}
                       <span className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1">
@@ -588,8 +632,8 @@ const SecurityPage: React.FC = () => {
 
       <Card className="border-amber-200 bg-amber-50">
         <CardContent className="p-4 text-sm text-amber-900">
-          El navegador no expone IP publica confiable, direccion fisica ni ubicacion exacta. Para eso se necesita backend o Cloud Functions.
-          Este panel usa informacion real disponible desde el cliente y la ultima actividad registrada en Firestore.
+          Este panel permite detectar sesiones activas, sesiones viejas y dispositivos usados. El navegador no expone IP publica confiable,
+          direccion fisica ni ubicacion exacta; para esos datos se necesita backend o Cloud Functions.
         </CardContent>
       </Card>
 
@@ -599,13 +643,14 @@ const SecurityPage: React.FC = () => {
             <AlertDialogTitle>Cerrar sesion remota</AlertDialogTitle>
             <AlertDialogDescription>
               {sessionToRevoke
-                ? `Se cerrara la sesion de ${sessionToRevoke.userName} (${sessionToRevoke.userEmail}) en ${sessionToRevoke.browser}. Esta accion quedara registrada en bitacora.`
+                ? `Se cerrara la sesion de ${sessionToRevoke.userName} (${sessionToRevoke.userEmail}) en ${sessionToRevoke.browser} / ${sessionToRevoke.os || sessionToRevoke.platform || "sistema no detectado"}. Ultima actividad: ${formatLastActive(sessionToRevoke.lastActive)}. Esta accion quedara registrada en bitacora.`
                 : "Esta accion cerrara una sesion remota."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel disabled={isRevoking}>Cancelar</AlertDialogCancel>
             <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               disabled={isRevoking || !sessionToRevoke}
               onClick={(event) => {
                 event.preventDefault();
@@ -634,6 +679,7 @@ const SecurityPage: React.FC = () => {
                 event.preventDefault();
                 revokeAllRemoteSessions();
               }}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {isRevoking ? "Cerrando..." : "Si, cerrar sesiones"}
             </AlertDialogAction>
