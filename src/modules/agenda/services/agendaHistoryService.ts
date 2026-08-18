@@ -177,4 +177,15 @@ export const agendaHistoryService = {
           timestampToMillis(b.createdAt) - timestampToMillis(a.createdAt),
       );
   },
+    listRecent: async (): Promise<AgendaHistoryLog[]> => {
+    const snapshot = await getDocs(historyCollection);
+
+    return snapshot.docs
+      .map(toHistoryLog)
+      .sort(
+        (a, b) =>
+          timestampToMillis(b.createdAt) - timestampToMillis(a.createdAt),
+      )
+      .slice(0, 100);
+  },
 };

@@ -14,6 +14,7 @@ import { db } from "@/lib/firebase";
 import type {
   Appointment,
   AppointmentStatus,
+  AppointmentType,
   CreateAppointmentInput,
   UpdateAppointmentInput,
 } from "../types/agenda.types";
@@ -39,6 +40,22 @@ const normalizeAppointmentStatus = (
   return "scheduled";
 };
 
+const normalizeAppointmentType = (value: unknown): AppointmentType => {
+  if (value === "walk_in") {
+    return "walk_in";
+  }
+
+  return "scheduled";
+};
+
+const normalizeWaitMinutes = (value: unknown) => {
+  if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
+    return value;
+  }
+
+  return null;
+};
+
 const toAppointment = (
   snapshot: QueryDocumentSnapshot<DocumentData>,
 ): Appointment => {
@@ -48,10 +65,10 @@ const toAppointment = (
     id: snapshot.id,
     patientId: typeof data.patientId === "string" ? data.patientId : null,
     patientName:
-    typeof data.patientName === "string" ? data.patientName : "",
+      typeof data.patientName === "string" ? data.patientName : "",
     serviceId: typeof data.serviceId === "string" ? data.serviceId : null,
     serviceName:
-    typeof data.serviceName === "string" ? data.serviceName : "",
+      typeof data.serviceName === "string" ? data.serviceName : "",
     doctorId: typeof data.doctorId === "string" ? data.doctorId : "",
     assistantIds: Array.isArray(data.assistantIds)
       ? data.assistantIds.filter(
@@ -66,6 +83,14 @@ const toAppointment = (
     reason: typeof data.reason === "string" ? data.reason : "",
     notes: typeof data.notes === "string" ? data.notes : "",
     status: normalizeAppointmentStatus(data.status),
+    appointmentType: normalizeAppointmentType(data.appointmentType),
+    arrivalTime:
+      typeof data.arrivalTime === "string" ? data.arrivalTime : null,
+    waitMinutes: normalizeWaitMinutes(data.waitMinutes),
+    walkInAssistantId:
+      typeof data.walkInAssistantId === "string"
+        ? data.walkInAssistantId
+        : null,
     createdAt: data.createdAt ?? null,
     updatedAt: data.updatedAt ?? null,
     createdBy: typeof data.createdBy === "string" ? data.createdBy : null,
@@ -91,13 +116,15 @@ export const appointmentService = {
   createAppointment: async (
     input: CreateAppointmentInput,
   ): Promise<string> => {
+    const appointmentType = input.appointmentType ?? "scheduled";
+
     const created = await addDoc(appointmentsCollection, {
       ...input,
-        patientId: input.patientId ?? null,
-        patientName: input.patientName.trim(),
-        serviceId: input.serviceId ?? null,
-        serviceName: input.serviceName.trim(),
-        doctorId: input.doctorId,
+      patientId: input.patientId ?? null,
+      patientName: input.patientName.trim(),
+      serviceId: input.serviceId ?? null,
+      serviceName: input.serviceName.trim(),
+      doctorId: input.doctorId,
       assistantIds: input.assistantIds ?? [],
       startDate: input.startDate,
       startTime: input.startTime,
@@ -111,6 +138,13 @@ export const appointmentService = {
       reason: input.reason.trim(),
       notes: input.notes?.trim() || "",
       status: input.status ?? "scheduled",
+      appointmentType,
+      arrivalTime:
+        appointmentType === "walk_in" ? input.arrivalTime ?? null : null,
+      waitMinutes:
+        appointmentType === "walk_in" ? input.waitMinutes ?? null : null,
+      walkInAssistantId:
+        appointmentType === "walk_in" ? input.walkInAssistantId ?? null : null,
       createdAt: serverTimestamp(),
       updatedAt: serverTimestamp(),
     });
@@ -122,10 +156,36 @@ export const appointmentService = {
     appointmentId: string,
     input: UpdateAppointmentInput,
   ): Promise<void> => {
+    const appointmentType = input.appointmentType;
+
     const payload: Record<string, unknown> = {
       ...input,
+      patientId: input.patientId ?? null,
+      serviceId: input.serviceId ?? null,
       updatedAt: serverTimestamp(),
     };
+
+    if (typeof input.patientName === "string") {
+      payload.patientName = input.patientName.trim();
+    }
+
+    if (typeof input.serviceName === "string") {
+      payload.serviceName = input.serviceName.trim();
+    }
+
+    if (typeof input.reason === "string") {
+      payload.reason = input.reason.trim();
+    }
+
+    if (typeof input.notes === "string") {
+      payload.notes = input.notes.trim();
+    }
+
+    if (appointmentType === "scheduled") {
+      payload.arrivalTime = null;
+      payload.waitMinutes = null;
+      payload.walkInAssistantId = null;
+    }
 
     if (input.startDate && input.startTime) {
       payload.startAt = Timestamp.fromDate(

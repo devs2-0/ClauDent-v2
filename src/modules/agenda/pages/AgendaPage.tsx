@@ -42,9 +42,11 @@ import { Textarea } from "@/shared/components/ui/textarea";
 import { assistantService } from "../services/assistantService";
 import { doctorService } from "../services/doctorService";
 import type { Assistant, Doctor } from "../types/agenda.types";
+
 import AppointmentManager from "../components/AppointmentManager";
 import AvailabilityManager from "../components/AvailabilityManager";
 import AgendaNotificationsButton from "../components/AgendaNotificationsButton";
+import AgendaHistoryPanel from "../components/AgendaHistoryPanel";
 
 const DEFAULT_DOCTOR_COLOR = "#2563EB";
 
@@ -115,6 +117,20 @@ const AgendaPage = () => {
   can("agenda.blocks.create") ||
   can("agenda.blocks.delete");
 
+  const canViewAgendaHistory =
+    can("agenda.view") ||
+    canManageDoctors ||
+    canManageAssistants ||
+    can("agenda.appointments.create") ||
+    can("agenda.appointments.update") ||
+    can("agenda.appointments.cancel") ||
+    can("agenda.blocks.create") ||
+    can("agenda.blocks.delete");
+
+  const canViewAllHistory =
+    canManageDoctors ||
+    canManageAssistants ||
+    can("agenda.doctors.viewAll");
 
   const activeDoctors = useMemo(() => {
     return doctors.filter((doctor) => doctor.status === "active");
@@ -146,8 +162,20 @@ const AgendaPage = () => {
         icon: Clock,
         visible: canManageAvailability,
       },
+      {
+        value: "historial",
+        label: "Historial",
+        icon: CalendarDays,
+        visible: canViewAgendaHistory,
+      },
     ].filter((tab) => tab.visible);
-  }, [can, canManageDoctors, canManageAssistants, canManageAvailability]);
+  }, [
+    can,
+    canManageDoctors,
+    canManageAssistants,
+    canManageAvailability,
+    canViewAgendaHistory,
+  ]);
 
   const activeTab = visibleTabs.some((tab) => tab.value === selectedTab)
     ? selectedTab
@@ -734,6 +762,13 @@ const AgendaPage = () => {
 
         <TabsContent value="disponibilidad" className="mt-6">
           <AvailabilityManager doctors={doctors} assistants={assistants} />
+        </TabsContent>
+
+        <TabsContent value="historial" className="mt-6">
+          <AgendaHistoryPanel
+            doctors={doctors}
+            canViewAllDoctors={canViewAllHistory}
+          />
         </TabsContent>
 
       </Tabs>

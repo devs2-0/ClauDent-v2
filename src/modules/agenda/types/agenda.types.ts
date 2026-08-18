@@ -129,6 +129,8 @@ export type AppointmentStatus =
   | "cancelled"
   | "no_show";
 
+export type AppointmentType = "scheduled" | "walk_in";
+
 export interface Appointment {
   id: string;
   patientId: string | null;
@@ -145,6 +147,12 @@ export interface Appointment {
   reason: string;
   notes?: string;
   status: AppointmentStatus;
+
+  appointmentType?: AppointmentType;
+  arrivalTime?: string | null;
+  waitMinutes?: number | null;
+  walkInAssistantId?: string | null;
+
   createdAt?: Timestamp | null;
   updatedAt?: Timestamp | null;
   createdBy?: string | null;

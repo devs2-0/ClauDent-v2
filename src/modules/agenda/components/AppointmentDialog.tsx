@@ -1,6 +1,6 @@
 import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
 
-import { CalendarCheck } from "lucide-react";
+import { CalendarCheck, UserPlus } from "lucide-react";
 
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
@@ -19,7 +19,11 @@ import { Textarea } from "@/shared/components/ui/textarea";
 
 import type { PatientLookup } from "../services/patientLookupService";
 import type { ServiceLookup } from "../services/serviceLookupService";
-import type { Assistant, Doctor } from "../types/agenda.types";
+import type {
+  AppointmentType,
+  Assistant,
+  Doctor,
+} from "../types/agenda.types";
 import SearchableSelect, {
   type SearchableSelectOption,
 } from "./SearchableSelect";
@@ -36,6 +40,10 @@ export interface AppointmentFormState {
   endTime: string;
   reason: string;
   notes: string;
+  appointmentType: AppointmentType;
+  arrivalTime: string;
+  waitMinutes: number | null;
+  walkInAssistantId: string | null;
 }
 
 interface AppointmentDialogProps {
@@ -53,6 +61,33 @@ interface AppointmentDialogProps {
   submitLabel?: string;
   onSubmit: () => Promise<void>;
 }
+
+const getWaitMinutes = (arrivalTime: string, startTime: string) => {
+  if (!arrivalTime || !startTime) return null;
+
+  const [arrivalHours = "0", arrivalMinutes = "0"] = arrivalTime.split(":");
+  const [startHours = "0", startMinutes = "0"] = startTime.split(":");
+
+  const arrivalTotal = Number(arrivalHours) * 60 + Number(arrivalMinutes);
+  const startTotal = Number(startHours) * 60 + Number(startMinutes);
+
+  const diff = startTotal - arrivalTotal;
+
+  return diff > 0 ? diff : 0;
+};
+
+const addMinutesToTime = (time: string, minutesToAdd: number) => {
+  const [hours = "0", minutes = "0"] = time.split(":");
+  const totalMinutes = Number(hours) * 60 + Number(minutes) + minutesToAdd;
+  const normalizedMinutes = Math.max(0, Math.min(totalMinutes, 23 * 60 + 59));
+  const nextHours = Math.floor(normalizedMinutes / 60);
+  const nextMinutes = normalizedMinutes % 60;
+
+  return `${String(nextHours).padStart(2, "0")}:${String(nextMinutes).padStart(
+    2,
+    "0",
+  )}`;
+};
 
 const AppointmentDialog = ({
   open,
@@ -126,6 +161,8 @@ const AppointmentDialog = ({
     (service) => service.id === form.serviceId,
   );
 
+  const isWalkIn = form.appointmentType === "walk_in";
+
   const availableAssistants = useMemo(() => {
     return assistants.filter((assistant) => {
       if (!form.doctorId) return true;
@@ -136,6 +173,23 @@ const AppointmentDialog = ({
       );
     });
   }, [assistants, form.doctorId]);
+
+  const assistantOptions = useMemo<SearchableSelectOption[]>(() => {
+    return availableAssistants.map((assistant) => ({
+      value: assistant.id,
+      label: assistant.nombre,
+      description:
+        assistant.doctorIdsAsignados.length > 0
+          ? `${assistant.doctorIdsAsignados.length} doctor(es) asignado(s)`
+          : "Sin doctores asignados",
+      searchText: [
+        assistant.nombre,
+        assistant.email ?? "",
+        assistant.telefono ?? "",
+        assistant.notas ?? "",
+      ].join(" "),
+    }));
+  }, [availableAssistants]);
 
   const filteredAssistants = useMemo(() => {
     const query = assistantSearch.trim().toLowerCase();
@@ -160,6 +214,10 @@ const AppointmentDialog = ({
       assistants.find((assistant) => assistant.id === assistantId),
     )
     .filter((assistant): assistant is Assistant => Boolean(assistant));
+
+  const selectedWalkInAssistant = assistants.find(
+    (assistant) => assistant.id === form.walkInAssistantId,
+  );
 
   const toggleAssistant = (assistantId: string) => {
     setForm((current) => {
@@ -222,9 +280,66 @@ const AppointmentDialog = ({
       ...current,
       doctorId,
       assistantIds: [],
+      walkInAssistantId: null,
     }));
 
     setAssistantSearch("");
+  };
+
+  const handleAppointmentTypeChange = (appointmentType: AppointmentType) => {
+    setForm((current) => ({
+      ...current,
+      appointmentType,
+      endTime:
+        appointmentType === "walk_in"
+          ? addMinutesToTime(current.startTime, 30)
+          : current.endTime,
+      arrivalTime: appointmentType === "walk_in" ? current.arrivalTime : "",
+      waitMinutes:
+        appointmentType === "walk_in"
+          ? getWaitMinutes(current.arrivalTime, current.startTime)
+          : null,
+      walkInAssistantId:
+        appointmentType === "walk_in" ? current.walkInAssistantId : null,
+    }));
+  };
+
+  const handleArrivalTimeChange = (arrivalTime: string) => {
+    setForm((current) => ({
+      ...current,
+      arrivalTime,
+      waitMinutes: getWaitMinutes(arrivalTime, current.startTime),
+    }));
+  };
+
+  const handleStartTimeChange = (startTime: string) => {
+    setForm((current) => ({
+      ...current,
+      startTime,
+      endTime:
+        current.appointmentType === "walk_in"
+          ? addMinutesToTime(startTime, 30)
+          : current.endTime,
+      waitMinutes:
+        current.appointmentType === "walk_in"
+          ? getWaitMinutes(current.arrivalTime, startTime)
+          : current.waitMinutes,
+    }));
+  };
+
+  const handleWalkInAssistantChange = (assistantId: string) => {
+    setForm((current) => {
+      const nextAssistantId = assistantId || null;
+
+      return {
+        ...current,
+        walkInAssistantId: nextAssistantId,
+        assistantIds:
+          nextAssistantId && !current.assistantIds.includes(nextAssistantId)
+            ? [...current.assistantIds, nextAssistantId]
+            : current.assistantIds,
+      };
+    });
   };
 
   return (
@@ -237,17 +352,106 @@ const AppointmentDialog = ({
 
         {(selectedDoctor || form.startDate) && (
           <div className="rounded-xl border bg-muted/30 p-4">
-            {selectedDoctor && (
-              <p className="text-sm font-medium">{selectedDoctor.nombre}</p>
-            )}
+            <div className="flex flex-wrap items-center gap-2">
+              {selectedDoctor && (
+                <p className="text-sm font-medium">{selectedDoctor.nombre}</p>
+              )}
+
+              {isWalkIn && <Badge variant="secondary">Walk-in</Badge>}
+            </div>
 
             <p className="text-xs text-muted-foreground">
               {form.startDate} · {form.startTime} - {form.endTime}
             </p>
+
+            {isWalkIn && form.arrivalTime && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Llegada: {form.arrivalTime}
+                {form.waitMinutes !== null
+                  ? ` · Espera estimada: ${form.waitMinutes} min`
+                  : ""}
+              </p>
+            )}
           </div>
         )}
 
         <div className="grid gap-4 lg:grid-cols-2">
+          <div className="space-y-2 lg:col-span-2">
+            <Label htmlFor="appointment-type">Tipo de registro</Label>
+
+            <div className="grid gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                className={`rounded-xl border p-4 text-left transition ${
+                  form.appointmentType === "scheduled"
+                    ? "border-primary bg-primary/5"
+                    : "bg-background hover:bg-muted/40"
+                }`}
+                onClick={() => handleAppointmentTypeChange("scheduled")}
+              >
+                <div className="flex items-center gap-2 font-medium">
+                  <CalendarCheck className="h-4 w-4" />
+                  Cita programada
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Para pacientes agendados con anticipación.
+                </p>
+              </button>
+
+              <button
+                type="button"
+                className={`rounded-xl border p-4 text-left transition ${
+                  form.appointmentType === "walk_in"
+                    ? "border-primary bg-primary/5"
+                    : "bg-background hover:bg-muted/40"
+                }`}
+                onClick={() => handleAppointmentTypeChange("walk_in")}
+              >
+                <div className="flex items-center gap-2 font-medium">
+                  <UserPlus className="h-4 w-4" />
+                  Walk-in
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Para pacientes que llegan sin cita previa.
+                </p>
+              </button>
+            </div>
+          </div>
+
+          {isWalkIn && (
+            <>
+              <div className="space-y-2">
+                <Label htmlFor="walkin-arrival-time">Hora de llegada *</Label>
+                <Input
+                  id="walkin-arrival-time"
+                  type="time"
+                  value={form.arrivalTime}
+                  onChange={(event) =>
+                    handleArrivalTimeChange(event.target.value)
+                  }
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="walkin-assistant">Asistente responsable</Label>
+                <SearchableSelect
+                  id="walkin-assistant"
+                  options={assistantOptions}
+                  value={form.walkInAssistantId ?? ""}
+                  placeholder="Buscar asistente..."
+                  emptyMessage="No se encontraron asistentes."
+                  onValueChange={handleWalkInAssistantChange}
+                />
+
+                {selectedWalkInAssistant && (
+                  <p className="text-xs text-muted-foreground">
+                    Responsable del registro: {selectedWalkInAssistant.nombre}
+                  </p>
+                )}
+              </div>
+            </>
+          )}
+
           <div className="space-y-2 lg:col-span-2">
             <Label htmlFor="appointment-patient">Paciente *</Label>
 
@@ -275,7 +479,7 @@ const AppointmentDialog = ({
 
             {selectedPatient ? (
               <p className="text-xs text-muted-foreground">
-                Paciente vinculado al expediente:{" "}
+                Paciente vinculado al expediente: {" "}
                 {selectedPatient.nombreCompleto}
               </p>
             ) : form.patientName.trim() ? (
@@ -287,7 +491,9 @@ const AppointmentDialog = ({
           </div>
 
           <div className="space-y-2 lg:col-span-2">
-            <Label htmlFor="appointment-service">Servicio a realizar *</Label>
+            <Label htmlFor="appointment-service">
+              {isWalkIn ? "Servicio o motivo" : "Servicio a realizar *"}
+            </Label>
 
             <SearchableSelect
               id="appointment-service"
@@ -354,53 +560,65 @@ const AppointmentDialog = ({
             />
           </div>
 
-          <div className="grid grid-cols-3 gap-3 lg:col-span-2">
-            <div className="space-y-2">
-              <Label htmlFor="appointment-date">Fecha</Label>
+          {isWalkIn ? (
+            <div className="space-y-2 lg:col-span-2">
+              <Label htmlFor="walkin-start">Hora de atención</Label>
               <Input
-                id="appointment-date"
-                type="date"
-                value={form.startDate}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    startDate: event.target.value,
-                  }))
-                }
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="appointment-start">Inicio</Label>
-              <Input
-                id="appointment-start"
+                id="walkin-start"
                 type="time"
                 value={form.startTime}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    startTime: event.target.value,
-                  }))
-                }
+                onChange={(event) => handleStartTimeChange(event.target.value)}
               />
+              <p className="text-xs text-muted-foreground">
+                El walk-in se registra para {form.startDate}. La duración se
+                aparta automáticamente por 30 minutos.
+              </p>
             </div>
+          ) : (
+            <div className="grid grid-cols-3 gap-3 lg:col-span-2">
+              <div className="space-y-2">
+                <Label htmlFor="appointment-date">Fecha</Label>
+                <Input
+                  id="appointment-date"
+                  type="date"
+                  value={form.startDate}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      startDate: event.target.value,
+                    }))
+                  }
+                />
+              </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="appointment-end">Fin</Label>
-              <Input
-                id="appointment-end"
-                type="time"
-                value={form.endTime}
-                onChange={(event) =>
-                  setForm((current) => ({
-                    ...current,
-                    endTime: event.target.value,
-                  }))
-                }
-              />
+              <div className="space-y-2">
+                <Label htmlFor="appointment-start">Inicio</Label>
+                <Input
+                  id="appointment-start"
+                  type="time"
+                  value={form.startTime}
+                  onChange={(event) => handleStartTimeChange(event.target.value)}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="appointment-end">Fin</Label>
+                <Input
+                  id="appointment-end"
+                  type="time"
+                  value={form.endTime}
+                  onChange={(event) =>
+                    setForm((current) => ({
+                      ...current,
+                      endTime: event.target.value,
+                    }))
+                  }
+                />
+              </div>
             </div>
-          </div>
+          )}
 
+          {!isWalkIn && (
           <div className="space-y-3 lg:col-span-2">
             <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
               <div className="space-y-1">
@@ -452,6 +670,7 @@ const AppointmentDialog = ({
               </div>
             )}
           </div>
+          )}
 
           <div className="space-y-2 lg:col-span-2">
             <Label htmlFor="appointment-notes">Notas internas</Label>
@@ -479,7 +698,11 @@ const AppointmentDialog = ({
           </Button>
 
           <Button onClick={() => void onSubmit()} disabled={saving}>
-            <CalendarCheck className="mr-2 h-4 w-4" />
+            {isWalkIn ? (
+              <UserPlus className="mr-2 h-4 w-4" />
+            ) : (
+              <CalendarCheck className="mr-2 h-4 w-4" />
+            )}
             {saving ? "Guardando..." : submitLabel}
           </Button>
         </DialogFooter>

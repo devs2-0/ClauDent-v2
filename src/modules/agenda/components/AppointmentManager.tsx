@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  CalendarCheck,
   Clock,
   Plus,
   RefreshCw,
@@ -103,6 +102,10 @@ const emptyAppointmentForm: AppointmentFormState = {
   endTime: "09:30",
   reason: "",
   notes: "",
+  appointmentType: "scheduled",
+  arrivalTime: "",
+  waitMinutes: null,
+  walkInAssistantId: null,
 };
 
 const statusLabels: Record<AppointmentStatus, string> = {
@@ -117,6 +120,16 @@ const timeToMinutes = (time: string) => {
   const [hours = "0", minutes = "0"] = time.split(":");
 
   return Number(hours) * 60 + Number(minutes);
+};
+
+
+
+const getWaitMinutes = (arrivalTime: string, startTime: string) => {
+  if (!arrivalTime || !startTime) return null;
+
+  const diff = timeToMinutes(startTime) - timeToMinutes(arrivalTime);
+
+  return diff > 0 ? diff : 0;
 };
 
 const rangesOverlap = (
@@ -304,6 +317,10 @@ const AppointmentManager = ({
         (assistant) => assistant.id === linkedAssistantId,
       );
 
+      if (linkedAssistant && linkedAssistant.doctorIdsAsignados.length === 0) {
+        return activeDoctors;
+      }
+
       linkedAssistant?.doctorIdsAsignados.forEach((doctorId) => {
         allowedDoctorIds.add(doctorId);
       });
@@ -337,11 +354,15 @@ const AppointmentManager = ({
       );
     }
 
-    return activeAssistants.filter((assistant) =>
-      assistant.doctorIdsAsignados.some((doctorId) =>
+    return activeAssistants.filter((assistant) => {
+      if (assistant.doctorIdsAsignados.length === 0) {
+        return true;
+      }
+
+      return assistant.doctorIdsAsignados.some((doctorId) =>
         visibleDoctorIds.has(doctorId),
-      ),
-    );
+      );
+    });
   }, [
     activeAssistants,
     agendaUser?.assistantId,
@@ -465,6 +486,11 @@ const AppointmentManager = ({
         .filter((name): name is string => Boolean(name))
     : [];
 
+  const selectedAppointmentWalkInAssistantName =
+  selectedAppointment?.walkInAssistantId
+    ? assistantsById.get(selectedAppointment.walkInAssistantId)?.nombre ?? ""
+    : "";
+
   const filteredAppointments = useMemo(() => {
     return appointments.filter((appointment) => {
       if (!visibleDoctorIds.has(appointment.doctorId)) {
@@ -515,6 +541,37 @@ const AppointmentManager = ({
       (appointment) => appointment.startDate === selectedDate,
     );
   }, [filteredAppointments, selectedDate]);
+
+  const daySummary = useMemo(() => {
+    const walkIns = dayAppointments.filter(
+      (appointment) => appointment.appointmentType === "walk_in",
+    ).length;
+
+    const scheduledAppointments = dayAppointments.filter(
+      (appointment) => appointment.appointmentType !== "walk_in",
+    ).length;
+
+    const completed = dayAppointments.filter(
+      (appointment) => appointment.status === "completed",
+    ).length;
+
+    const cancelled = dayAppointments.filter(
+      (appointment) => appointment.status === "cancelled",
+    ).length;
+
+    const pending = dayAppointments.filter((appointment) =>
+      ["scheduled", "confirmed"].includes(appointment.status),
+    ).length;
+
+    return {
+      total: dayAppointments.length,
+      scheduledAppointments,
+      walkIns,
+      completed,
+      cancelled,
+      pending,
+    };
+  }, [dayAppointments]);
 
   const calendarTitle = useMemo(() => {
     if (viewMode === "month") {
@@ -619,12 +676,32 @@ const AppointmentManager = ({
     return "";
   };
 
+
+  const getNormalizedAssistantIds = (
+    targetForm: AppointmentFormState = form,
+  ): string[] => {
+    const assistantIds = new Set<string>(targetForm.assistantIds);
+
+    if (
+      targetForm.appointmentType === "walk_in" &&
+      targetForm.walkInAssistantId
+    ) {
+      assistantIds.add(targetForm.walkInAssistantId);
+    }
+
+    return Array.from(assistantIds);
+  };
+
   const resetForm = (date = selectedDate) => {
     setForm({
       ...emptyAppointmentForm,
       startDate: date,
       doctorId: getDefaultDoctorId(),
       assistantIds: [],
+      appointmentType: "scheduled",
+      arrivalTime: "",
+      waitMinutes: null,
+      walkInAssistantId: null,
     });
   };
 
@@ -653,6 +730,10 @@ const AppointmentManager = ({
       startDate: selectedDate,
       doctorId: getDefaultDoctorId(),
       assistantIds: [],
+      appointmentType: "scheduled",
+      arrivalTime: "",
+      waitMinutes: null,
+      walkInAssistantId: null,
     });
 
     setAppointmentDialogOpen(true);
@@ -676,6 +757,10 @@ const AppointmentManager = ({
       startTime: selectedSlot.startTime,
       endTime: selectedSlot.endTime,
       assistantIds: [],
+      appointmentType: "scheduled",
+      arrivalTime: "",
+      waitMinutes: null,
+      walkInAssistantId: null,
     });
 
     setSlotActionDialogOpen(false);
@@ -712,6 +797,10 @@ const AppointmentManager = ({
       endTime: appointment.endTime,
       reason: appointment.reason,
       notes: appointment.notes ?? "",
+      appointmentType: appointment.appointmentType ?? "scheduled",
+      arrivalTime: appointment.arrivalTime ?? "",
+      waitMinutes: appointment.waitMinutes ?? null,
+      walkInAssistantId: appointment.walkInAssistantId ?? null,
     });
 
     setAppointmentDialogOpen(true);
@@ -836,8 +925,12 @@ const AppointmentManager = ({
       return false;
     }
 
-    if (!serviceName) {
-      toast.error("Selecciona o escribe el servicio a realizar.");
+    if (!serviceName && !(form.appointmentType === "walk_in" && form.reason.trim())) {
+      toast.error(
+        form.appointmentType === "walk_in"
+          ? "Escribe el servicio o motivo del walk-in."
+          : "Selecciona o escribe el servicio a realizar.",
+      );
       return false;
     }
 
@@ -854,6 +947,28 @@ const AppointmentManager = ({
     if (!form.startDate) {
       toast.error("Selecciona la fecha de la cita.");
       return false;
+    }
+
+    if (form.appointmentType === "walk_in") {
+      if (form.startDate !== today) {
+        toast.error("Los walk-ins solo se registran para el día actual.");
+        return false;
+      }
+
+      if (!form.arrivalTime) {
+        toast.error("Selecciona la hora de llegada del walk-in.");
+        return false;
+      }
+
+      if (!form.walkInAssistantId) {
+        toast.error("Selecciona el asistente responsable del walk-in.");
+        return false;
+      }
+
+      if (!visibleAssistantIds.has(form.walkInAssistantId)) {
+        toast.error("No tienes acceso al asistente seleccionado para el walk-in.");
+        return false;
+      }
     }
 
     if (form.startTime >= form.endTime) {
@@ -899,7 +1014,9 @@ const AppointmentManager = ({
       return false;
     }
 
-    const blockedAssistant = form.assistantIds.find((assistantId) =>
+    const assistantIdsToValidate = getNormalizedAssistantIds();
+
+    const blockedAssistant = assistantIdsToValidate.find((assistantId) =>
       hasActiveBlock(
         "assistant",
         assistantId,
@@ -916,7 +1033,7 @@ const AppointmentManager = ({
       return false;
     }
 
-    const busyAssistant = form.assistantIds.find((assistantId) =>
+    const busyAssistant = assistantIdsToValidate.find((assistantId) =>
       hasAssistantConflict(
         assistantId,
         form.startDate,
@@ -947,19 +1064,31 @@ const AppointmentManager = ({
     setSaving(true);
 
     try {
+      const appointmentType = form.appointmentType ?? "scheduled";
+      const normalizedAssistantIds = getNormalizedAssistantIds();
+      const waitMinutes =
+        appointmentType === "walk_in"
+          ? getWaitMinutes(form.arrivalTime, form.startTime)
+          : null;
+
       const appointmentId = await appointmentService.createAppointment({
         patientId: form.patientId,
         patientName: form.patientName.trim(),
         serviceId: form.serviceId,
         serviceName: form.serviceName.trim(),
         doctorId: form.doctorId,
-        assistantIds: form.assistantIds,
+        assistantIds: normalizedAssistantIds,
         startDate: form.startDate,
         startTime: form.startTime,
         endTime: form.endTime,
         reason: form.reason.trim(),
         notes: form.notes.trim(),
         status: "scheduled",
+        appointmentType,
+        arrivalTime: appointmentType === "walk_in" ? form.arrivalTime : null,
+        waitMinutes,
+        walkInAssistantId:
+          appointmentType === "walk_in" ? form.walkInAssistantId : null,
         createdBy: agendaUser?.uid ?? null,
         updatedBy: agendaUser?.uid ?? null,
       });
@@ -970,7 +1099,10 @@ const AppointmentManager = ({
       await agendaNotificationService.createForDoctor({
         targetDoctorId: form.doctorId,
         type: "appointment_created",
-        title: "Nueva cita agendada",
+        title:
+          appointmentType === "walk_in"
+            ? "Walk-in registrado"
+            : "Nueva cita agendada",
         message: `${form.patientName.trim()} · ${
           form.serviceName.trim() || form.reason.trim() || "Cita"
         }`,
@@ -990,7 +1122,10 @@ const AppointmentManager = ({
         doctorId: form.doctorId,
         patientId: form.patientId,
         patientName: form.patientName.trim(),
-        title: "Cita creada",
+        title:
+          appointmentType === "walk_in"
+            ? "Walk-in registrado"
+            : "Cita creada",
         description: `${form.patientName.trim()} · ${
           form.serviceName.trim() || form.reason.trim() || "Cita"
         }`,
@@ -1004,13 +1139,18 @@ const AppointmentManager = ({
           serviceId: form.serviceId,
           serviceName: form.serviceName.trim(),
           doctorId: form.doctorId,
-          assistantIds: form.assistantIds,
+          assistantIds: normalizedAssistantIds,
           startDate: form.startDate,
           startTime: form.startTime,
           endTime: form.endTime,
           reason: form.reason.trim(),
           notes: form.notes.trim(),
           status: "scheduled",
+          appointmentType,
+          arrivalTime: appointmentType === "walk_in" ? form.arrivalTime : null,
+          waitMinutes,
+          walkInAssistantId:
+            appointmentType === "walk_in" ? form.walkInAssistantId : null,
         },
       });
 
@@ -1043,6 +1183,14 @@ const AppointmentManager = ({
     const nextServiceName = form.serviceName.trim();
     const nextReason = form.reason.trim();
     const nextNotes = form.notes.trim();
+    const nextAppointmentType = form.appointmentType ?? "scheduled";
+    const nextWaitMinutes =
+      nextAppointmentType === "walk_in"
+        ? getWaitMinutes(form.arrivalTime, form.startTime)
+        : null;
+    const nextWalkInAssistantId =
+      nextAppointmentType === "walk_in" ? form.walkInAssistantId : null;
+    const nextAssistantIds = getNormalizedAssistantIds();
 
     const previousDoctorName =
       doctorsById.get(previousAppointment.doctorId)?.nombre ??
@@ -1055,6 +1203,14 @@ const AppointmentManager = ({
 
     if (previousAppointment.doctorId !== form.doctorId) {
       changes.push(`Doctor: ${previousDoctorName} → ${nextDoctorName}`);
+    }
+
+    if ((previousAppointment.appointmentType ?? "scheduled") !== nextAppointmentType) {
+      changes.push(
+        nextAppointmentType === "walk_in"
+          ? "Tipo: cita programada → walk-in"
+          : "Tipo: walk-in → cita programada",
+      );
     }
 
     if (previousAppointment.patientName !== nextPatientName) {
@@ -1092,6 +1248,18 @@ const AppointmentManager = ({
       changes.push("Notas actualizadas");
     }
 
+    if ((previousAppointment.arrivalTime ?? "") !== form.arrivalTime) {
+      changes.push("Hora de llegada actualizada");
+    }
+
+    if ((previousAppointment.waitMinutes ?? null) !== nextWaitMinutes) {
+      changes.push("Tiempo de espera actualizado");
+    }
+
+    if ((previousAppointment.walkInAssistantId ?? null) !== nextWalkInAssistantId) {
+      changes.push("Asistente de walk-in actualizado");
+    }
+
     const updateMessage =
       changes.length > 0
         ? changes.join(" · ")
@@ -1106,12 +1274,17 @@ const AppointmentManager = ({
         serviceId: form.serviceId,
         serviceName: nextServiceName,
         doctorId: form.doctorId,
-        assistantIds: form.assistantIds,
+        assistantIds: nextAssistantIds,
         startDate: form.startDate,
         startTime: form.startTime,
         endTime: form.endTime,
         reason: nextReason,
         notes: nextNotes,
+        appointmentType: nextAppointmentType,
+        arrivalTime:
+          nextAppointmentType === "walk_in" ? form.arrivalTime : null,
+        waitMinutes: nextWaitMinutes,
+        walkInAssistantId: nextWalkInAssistantId,
         updatedBy: agendaUser?.uid ?? null,
       });
 
@@ -1187,6 +1360,10 @@ const AppointmentManager = ({
           reason: previousAppointment.reason,
           notes: previousAppointment.notes ?? "",
           status: previousAppointment.status,
+          appointmentType: previousAppointment.appointmentType ?? "scheduled",
+          arrivalTime: previousAppointment.arrivalTime ?? null,
+          waitMinutes: previousAppointment.waitMinutes ?? null,
+          walkInAssistantId: previousAppointment.walkInAssistantId ?? null,
         },
         after: {
           patientId: form.patientId,
@@ -1194,13 +1371,18 @@ const AppointmentManager = ({
           serviceId: form.serviceId,
           serviceName: nextServiceName,
           doctorId: form.doctorId,
-          assistantIds: form.assistantIds,
+          assistantIds: nextAssistantIds,
           startDate: form.startDate,
           startTime: form.startTime,
           endTime: form.endTime,
           reason: nextReason,
           notes: nextNotes,
           status: previousAppointment.status,
+          appointmentType: nextAppointmentType,
+          arrivalTime:
+            nextAppointmentType === "walk_in" ? form.arrivalTime : null,
+          waitMinutes: nextWaitMinutes,
+          walkInAssistantId: nextWalkInAssistantId,
         },
       });
 
@@ -1427,94 +1609,37 @@ const AppointmentManager = ({
   };
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <CalendarCheck className="h-5 w-5" />
-              Calendario de citas
-            </CardTitle>
-
-            <CardDescription>
-              Selecciona día y doctor. Da clic en una celda disponible para
-              crear una cita o bloquear un horario.
-            </CardDescription>
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            {canCreateAppointment && (
-              <Button onClick={openManualAppointmentDialog}>
-                <Plus className="mr-2 h-4 w-4" />
-                Nueva cita
-              </Button>
-            )}
-
-            <Button
-              variant="outline"
-              onClick={loadAppointments}
-              disabled={loading}
-            >
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Actualizar
-            </Button>
-          </div>
-        </CardHeader>
-
-        <CardContent>
-          <div className="mb-5 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+    <div className="space-y-5">
+      <Card className="overflow-hidden border bg-background/95 shadow-sm">
+        <CardContent className="p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <div>
-              <p className="text-sm font-medium capitalize">{calendarTitle}</p>
-              <p className="text-xs text-muted-foreground">
-                Cambia entre vista mensual, semanal o día por doctores.
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Agenda
               </p>
+              <h2 className="text-xl font-semibold">Calendario clínico</h2>
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <Button variant="outline" size="sm" onClick={goToPreviousPeriod}>
-                Anterior
-              </Button>
-
-              <Button variant="outline" size="sm" onClick={goToToday}>
-                Hoy
-              </Button>
-
-              <Button variant="outline" size="sm" onClick={goToNextPeriod}>
-                Siguiente
-              </Button>
-
-              <div className="flex rounded-lg border bg-muted/30 p-1">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={viewMode === "month" ? "default" : "ghost"}
-                  onClick={() => setViewMode("month")}
-                >
-                  Mes
+              {canCreateAppointment && (
+                <Button onClick={openManualAppointmentDialog}>
+                  <Plus className="mr-2 h-4 w-4" />
+                  Nueva cita
                 </Button>
+              )}
 
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={viewMode === "week" ? "default" : "ghost"}
-                  onClick={() => setViewMode("week")}
-                >
-                  Semana
-                </Button>
-
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={viewMode === "doctorDay" ? "default" : "ghost"}
-                  onClick={() => setViewMode("doctorDay")}
-                >
-                  Día por doctores
-                </Button>
-              </div>
+              <Button
+                variant="outline"
+                onClick={loadAppointments}
+                disabled={loading}
+              >
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Actualizar
+              </Button>
             </div>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-4">
+          <div className="mt-4 grid gap-3 lg:grid-cols-4">
             <div className="space-y-2">
               <Label htmlFor="agenda-date">Día</Label>
               <Input
@@ -1576,73 +1701,170 @@ const AppointmentManager = ({
         </CardContent>
       </Card>
 
-      {agendaProfileLoading ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Cargando perfil de agenda</CardTitle>
-            <CardDescription>
-              Estamos verificando qué calendario puede ver tu usuario.
-            </CardDescription>
-          </CardHeader>
+      <section className="space-y-3">
+        <div className="flex flex-col gap-3 rounded-2xl border bg-background p-4 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+              Vista actual
+            </p>
+            <h2 className="text-2xl font-semibold capitalize leading-tight">
+              {calendarTitle}
+            </h2>
+          </div>
+
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={goToPreviousPeriod}>
+              Anterior
+            </Button>
+
+            <Button variant="outline" size="sm" onClick={goToToday}>
+              Hoy
+            </Button>
+
+            <Button variant="outline" size="sm" onClick={goToNextPeriod}>
+              Siguiente
+            </Button>
+
+            <div className="flex rounded-lg border bg-muted/30 p-1">
+              <Button
+                type="button"
+                size="sm"
+                variant={viewMode === "month" ? "default" : "ghost"}
+                onClick={() => setViewMode("month")}
+              >
+                Mes
+              </Button>
+
+              <Button
+                type="button"
+                size="sm"
+                variant={viewMode === "week" ? "default" : "ghost"}
+                onClick={() => setViewMode("week")}
+              >
+                Semana
+              </Button>
+
+              <Button
+                type="button"
+                size="sm"
+                variant={viewMode === "doctorDay" ? "default" : "ghost"}
+                onClick={() => setViewMode("doctorDay")}
+              >
+                Día
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {agendaProfileLoading ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">
+                Cargando perfil de agenda
+              </CardTitle>
+              <CardDescription>
+                Verificando calendarios visibles.
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        ) : visibleDoctors.length === 0 ? (
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">
+                No hay doctor vinculado
+              </CardTitle>
+              <CardDescription>
+                Revisa que usuarios/{currentUser?.uid} tenga doctorId o que un
+                doctor tenga userUid igual a tu UID.
+              </CardDescription>
+            </CardHeader>
+          </Card>
+        ) : (
+          <>
+            {viewMode === "month" && (
+              <MonthlyCalendarView
+                selectedDate={selectedDate}
+                appointments={filteredAppointments}
+                blocks={scopedBlocks}
+                doctors={visibleDoctors}
+                onSelectDate={handleSelectDateFromSummaryView}
+                onSelectAppointment={openAppointmentDetails}
+              />
+            )}
+
+            {viewMode === "week" && (
+              <WeeklyCalendarView
+                selectedDate={selectedDate}
+                appointments={filteredAppointments}
+                blocks={scopedBlocks}
+                doctors={visibleDoctors}
+                onSelectDate={handleSelectDateFromSummaryView}
+                onSelectAppointment={openAppointmentDetails}
+              />
+            )}
+
+            {viewMode === "doctorDay" && (
+              <DailyCalendarView
+                doctors={visibleDoctors}
+                appointments={filteredAppointments}
+                schedules={schedules}
+                blocks={scopedBlocks}
+                selectedDate={selectedDate}
+                selectedDoctorId={selectedDoctorId}
+                onSelectSlot={handleSelectCalendarSlot}
+                onSelectAppointment={openAppointmentDetails}
+              />
+            )}
+          </>
+        )}
+      </section>
+
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+        <Card className="transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground">Total</p>
+            <p className="mt-1 text-2xl font-semibold">{daySummary.total}</p>
+          </CardContent>
         </Card>
-      ) : visibleDoctors.length === 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">
-              No hay doctor vinculado
-            </CardTitle>
-            <CardDescription>
-              Tu usuario entró correctamente, pero no tiene un doctor asociado.
-              Revisa que usuarios/{currentUser?.uid} tenga doctorId o que algún
-              documento en doctores tenga userUid igual a tu UID.
-            </CardDescription>
-          </CardHeader>
+
+        <Card className="transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground">Programadas</p>
+            <p className="mt-1 text-2xl font-semibold">
+              {daySummary.scheduledAppointments}
+            </p>
+          </CardContent>
         </Card>
-      ) : (
-        <>
-          {viewMode === "month" && (
-            <MonthlyCalendarView
-              selectedDate={selectedDate}
-              appointments={filteredAppointments}
-              blocks={scopedBlocks}
-              doctors={visibleDoctors}
-              onSelectDate={handleSelectDateFromSummaryView}
-              onSelectAppointment={openAppointmentDetails}
-            />
-          )}
 
-          {viewMode === "week" && (
-            <WeeklyCalendarView
-              selectedDate={selectedDate}
-              appointments={filteredAppointments}
-              blocks={scopedBlocks}
-              doctors={visibleDoctors}
-              onSelectDate={handleSelectDateFromSummaryView}
-              onSelectAppointment={openAppointmentDetails}
-            />
-          )}
+        <Card className="transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground">Walk-ins</p>
+            <p className="mt-1 text-2xl font-semibold">{daySummary.walkIns}</p>
+          </CardContent>
+        </Card>
 
-          {viewMode === "doctorDay" && (
-            <DailyCalendarView
-              doctors={visibleDoctors}
-              appointments={filteredAppointments}
-              schedules={schedules}
-              blocks={scopedBlocks}
-              selectedDate={selectedDate}
-              selectedDoctorId={selectedDoctorId}
-              onSelectSlot={handleSelectCalendarSlot}
-              onSelectAppointment={openAppointmentDetails}
-            />
-          )}
-        </>
-      )}
+        <Card className="transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground">Pendientes</p>
+            <p className="mt-1 text-2xl font-semibold">{daySummary.pending}</p>
+          </CardContent>
+        </Card>
 
-      <Card>
-        <CardHeader>
+        <Card className="transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground">
+              Atendidas / canceladas
+            </p>
+            <p className="mt-1 text-2xl font-semibold">
+              {daySummary.completed} / {daySummary.cancelled}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card className="overflow-hidden">
+        <CardHeader className="pb-3">
           <CardTitle className="text-base">Pacientes del día</CardTitle>
-          <CardDescription>
-            Lista rápida de las citas programadas para el día seleccionado.
-          </CardDescription>
         </CardHeader>
 
         <CardContent>
@@ -1661,11 +1883,17 @@ const AppointmentManager = ({
                 const appointmentAssistants = appointment.assistantIds
                   .map((assistantId) => assistantsById.get(assistantId)?.nombre)
                   .filter(Boolean);
+                const doctorColor = doctor?.color || "#2563EB";
 
                 return (
                   <div
                     key={appointment.id}
-                    className="rounded-xl border bg-background p-4"
+                    className="rounded-xl border bg-background p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+                    style={{
+                      borderLeftWidth: 5,
+                      borderLeftColor: doctorColor,
+                      backgroundColor: `${doctorColor}0D`,
+                    }}
                   >
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                       <div className="space-y-2">
@@ -1682,6 +1910,10 @@ const AppointmentManager = ({
                             {statusLabels[appointment.status]}
                           </Badge>
 
+                          {appointment.appointmentType === "walk_in" && (
+                            <Badge variant="secondary">Walk-in</Badge>
+                          )}
+
                           <span className="inline-flex items-center gap-1 text-sm text-muted-foreground">
                             <Clock className="h-4 w-4" />
                             {appointment.startTime} - {appointment.endTime}
@@ -1696,9 +1928,12 @@ const AppointmentManager = ({
                           {appointment.serviceName || appointment.reason}
                         </p>
 
-                        {appointment.reason && appointment.serviceName && (
+                        {appointment.appointmentType === "walk_in" && (
                           <p className="text-xs text-muted-foreground">
-                            Motivo: {appointment.reason}
+                            Llegada: {appointment.arrivalTime || "No registrada"}
+                            {appointment.waitMinutes != null
+                              ? ` · Espera: ${appointment.waitMinutes} min`
+                              : ""}
                           </p>
                         )}
 
@@ -1745,6 +1980,7 @@ const AppointmentManager = ({
         appointment={selectedAppointment}
         doctorName={selectedAppointmentDoctor}
         assistantNames={selectedAppointmentAssistantNames}
+        walkInAssistantName={selectedAppointmentWalkInAssistantName}
         canUpdate={canUpdateAppointment}
         canCancel={canCancelAppointment}
         saving={saving}
@@ -1773,13 +2009,27 @@ const AppointmentManager = ({
         doctors={visibleDoctors}
         assistants={visibleAssistants}
         saving={saving}
-        title={editingAppointment ? "Editar cita" : "Nueva cita"}
+        title={
+          editingAppointment
+            ? "Editar cita"
+            : form.appointmentType === "walk_in"
+              ? "Registrar walk-in"
+              : "Nueva cita"
+        }
         description={
           editingAppointment
             ? "Actualiza los datos de la cita seleccionada."
-            : "Busca paciente y servicio desde los catálogos existentes. También puedes escribirlos manualmente cuando todavía no estén registrados."
+            : form.appointmentType === "walk_in"
+              ? "Registra rápidamente a un paciente que llegó sin cita previa."
+              : "Busca paciente y servicio desde los catálogos existentes. También puedes escribirlos manualmente cuando todavía no estén registrados."
         }
-        submitLabel={editingAppointment ? "Guardar cambios" : "Crear cita"}
+        submitLabel={
+          editingAppointment
+            ? "Guardar cambios"
+            : form.appointmentType === "walk_in"
+              ? "Registrar walk-in"
+              : "Crear cita"
+        }
         onSubmit={handleSubmitAppointment}
       />
 

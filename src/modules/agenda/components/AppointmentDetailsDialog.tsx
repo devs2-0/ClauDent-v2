@@ -2,8 +2,10 @@ import {
   CalendarCheck,
   CheckCircle2,
   Clock,
+  Hourglass,
   Stethoscope,
   UserCheck,
+  UserPlus,
   UserRound,
   XCircle,
 } from "lucide-react";
@@ -27,6 +29,7 @@ interface AppointmentDetailsDialogProps {
   appointment: Appointment | null;
   doctorName: string;
   assistantNames: string[];
+  walkInAssistantName?: string;
   canUpdate: boolean;
   canCancel: boolean;
   saving: boolean;
@@ -59,6 +62,7 @@ const AppointmentDetailsDialog = ({
   appointment,
   doctorName,
   assistantNames,
+  walkInAssistantName,
   canUpdate,
   canCancel,
   saving,
@@ -67,6 +71,8 @@ const AppointmentDetailsDialog = ({
 }: AppointmentDetailsDialogProps) => {
   if (!appointment) return null;
 
+  const isWalkIn = appointment.appointmentType === "walk_in";
+
   const canStillChange =
     appointment.status !== "cancelled" && appointment.status !== "completed";
 
@@ -74,7 +80,9 @@ const AppointmentDetailsDialog = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Detalle de cita</DialogTitle>
+          <DialogTitle>
+            {isWalkIn ? "Detalle de walk-in" : "Detalle de cita"}
+          </DialogTitle>
           <DialogDescription>
             Consulta la información de la cita y actualiza su estado.
           </DialogDescription>
@@ -86,6 +94,13 @@ const AppointmentDetailsDialog = ({
               <Badge variant={getStatusVariant(appointment.status)}>
                 {statusLabels[appointment.status]}
               </Badge>
+
+              {isWalkIn && (
+                <Badge variant="secondary" className="gap-1">
+                  <UserPlus className="h-3.5 w-3.5" />
+                  Walk-in
+                </Badge>
+              )}
 
               <span className="inline-flex items-center gap-1 text-sm text-muted-foreground">
                 <Clock className="h-4 w-4" />
@@ -106,6 +121,24 @@ const AppointmentDetailsDialog = ({
               <p className="mt-1 text-xs text-muted-foreground">
                 Motivo: {appointment.reason}
               </p>
+            )}
+
+            {isWalkIn && (
+              <div className="mt-3 flex flex-wrap gap-2 text-xs text-muted-foreground">
+                {appointment.arrivalTime && (
+                  <span className="inline-flex items-center gap-1 rounded-full border bg-background px-2 py-1">
+                    <Clock className="h-3.5 w-3.5" />
+                    Llegada: {appointment.arrivalTime}
+                  </span>
+                )}
+
+                {typeof appointment.waitMinutes === "number" && (
+                  <span className="inline-flex items-center gap-1 rounded-full border bg-background px-2 py-1">
+                    <Hourglass className="h-3.5 w-3.5" />
+                    Espera estimada: {appointment.waitMinutes} min
+                  </span>
+                )}
+              </div>
             )}
           </div>
 
@@ -131,6 +164,19 @@ const AppointmentDetailsDialog = ({
                   : "Sin asistentes asignados"}
               </p>
             </div>
+
+            {isWalkIn && (
+              <div className="rounded-xl border p-4">
+                <p className="mb-2 flex items-center gap-2 text-sm font-medium">
+                  <UserPlus className="h-4 w-4" />
+                  Responsable walk-in
+                </p>
+
+                <p className="text-sm text-muted-foreground">
+                  {walkInAssistantName || "Sin responsable asignado"}
+                </p>
+              </div>
+            )}
 
             <div className="rounded-xl border p-4">
               <p className="mb-2 flex items-center gap-2 text-sm font-medium">
