@@ -19,6 +19,7 @@ import { db } from "@/lib/firebase";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { Card } from "@/shared/components/ui/card";
+import { SectionHelp } from "@/shared/components/SectionHelp";
 import { Input } from "@/shared/components/ui/input";
 import {
   Select,
@@ -186,10 +187,19 @@ const Bitacora: React.FC = () => {
     <div className="p-4 md:p-8 space-y-6 animate-in fade-in duration-500 pb-24 lg:pb-6">
       <div className="flex flex-col gap-4">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2 italic text-primary">
-            <History className="h-7 w-7 md:h-8 md:w-8" /> Bitacora
-          </h1>
-          <p className="text-muted-foreground text-sm">Seguimiento detallado de movimientos del sistema.</p>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2 italic text-primary">
+              <History className="h-7 w-7 md:h-8 md:w-8" /> Bitacora
+            </h1>
+            <SectionHelp title="Acerca de Bitácora">
+              <p>
+                Consulta el historial de acciones relevantes realizadas dentro del sistema.
+              </p>
+              <p>
+                Usa los filtros para localizar movimientos por usuario, módulo, acción o periodo.
+              </p>
+            </SectionHelp>
+          </div>
         </div>
 
         <Card className="p-4 border-border bg-card">

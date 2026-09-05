@@ -13,6 +13,7 @@ import { toast } from "sonner";
 import { useAuth, useCan } from "@/auth";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
+import { SectionHelp } from "@/shared/components/SectionHelp";
 import {
   Card,
   CardContent,
@@ -476,12 +477,17 @@ const AgendaPage = () => {
     <main className="space-y-6">
       <section className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">Agenda</h1>
-
-          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            Gestiona el calendario interno del consultorio, doctores,
-            asistentes y disponibilidad operativa.
-          </p>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-semibold text-foreground">Agenda</h1>
+            <SectionHelp title="Acerca de Agenda">
+              <p>
+                Organiza el calendario interno del consultorio y las citas de los pacientes.
+              </p>
+              <p>
+                También permite configurar doctores, asistentes, disponibilidad y consultar el historial de movimientos de agenda.
+              </p>
+            </SectionHelp>
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-2">

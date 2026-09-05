@@ -1,7 +1,7 @@
 // RF01: Login page (CON RECUPERACIÓN INTEGRADA)
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { Stethoscope, Eye, EyeOff } from 'lucide-react'; 
+import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { Eye, EyeOff, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 // Importamos sendPasswordResetEmail
 import { signInWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
@@ -10,18 +10,31 @@ import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
 import { Label } from '@/shared/components/ui/label';
 import { toast } from 'sonner';
+import { useAuth } from '@/auth/hooks/useAuth';
 
 const Login: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
-  const navigate = useNavigate();
+  const { currentUser } = useAuth();
+
+  // Firebase confirma las credenciales antes de que el proveedor global
+  // publique la nueva sesión. Conservamos el estado de carga hasta que esa
+  // sesión exista en el contexto, para no permitir un segundo intento ni
+  // navegar a una ruta protegida antes de tiempo.
+  useEffect(() => {
+    if (isLoading && currentUser) {
+      setIsLoading(false);
+    }
+  }, [currentUser, isLoading]);
 
   // --- Iniciar Sesión ---
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim() || !password.trim()) {
+    if (isLoading) return;
+
+    if (!email.trim() || !password) {
       toast.error('Por favor, ingresa email y contraseña');
       return;
     }
@@ -29,8 +42,9 @@ const Login: React.FC = () => {
     setIsLoading(true);
     
     try {
-      await signInWithEmailAndPassword(auth, email, password);
-      navigate('/dashboard');
+      await signInWithEmailAndPassword(auth, email.trim(), password);
+      // AppRouter redirige cuando AuthProvider confirma la sesión. Navegar
+      // aquí provocaba una redirección intermitente de regreso a /login.
     } catch (error: any) {
       console.error(error);
       let errorMessage = 'Error al iniciar sesión';
@@ -42,7 +56,6 @@ const Login: React.FC = () => {
         errorMessage = 'Demasiados intentos fallidos. Intenta más tarde.';
       }
       toast.error(errorMessage);
-    } finally {
       setIsLoading(false);
     }
   };
@@ -120,14 +133,21 @@ const Login: React.FC = () => {
                 >
                   ¿Olvidaste tu contraseña?
                 </button>
-                <div className="mt-4 text-center">
+                {isLoading ? (
+                  <span
+                    className="text-sm font-medium text-muted-foreground"
+                    aria-disabled="true"
+                  >
+                    ¿Es tu primer acceso? Crear contraseña
+                  </span>
+                ) : (
                   <Link
                     to="/primer-acceso"
                     className="text-sm font-medium text-primary underline-offset-4 hover:underline"
                   >
                     ¿Es tu primer acceso? Crear contraseña
                   </Link>
-                </div>
+                )}
               </div>
               
               <div className="relative">
@@ -144,8 +164,9 @@ const Login: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus:outline-none"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground focus:outline-none disabled:cursor-not-allowed"
                   tabIndex={-1}
+                  disabled={isLoading}
                 >
                   {showPassword ? (
                     <EyeOff className="h-5 w-5" />
@@ -156,8 +177,21 @@ const Login: React.FC = () => {
               </div>
             </div>
 
-            <Button type="submit" className="w-full h-12" size="lg" disabled={isLoading}>
-              {isLoading ? 'Iniciando...' : 'Iniciar Sesión'}
+            <Button
+              type="submit"
+              className="w-full h-12 disabled:bg-primary disabled:opacity-100"
+              size="lg"
+              disabled={isLoading}
+              aria-busy={isLoading}
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+                  Iniciando sesión...
+                </>
+              ) : (
+                'Iniciar Sesión'
+              )}
             </Button>
           </form>
         </div>

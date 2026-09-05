@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { DataPagination } from "@/shared/components/DataPagination";
+import { SectionHelp } from "@/shared/components/SectionHelp";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/components/ui/card";
@@ -634,10 +635,17 @@ const InventarioPage: React.FC = () => {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Inventario</h1>
-          <p className="text-muted-foreground">
-            Administra productos, categorias, reabastecimientos por lote y movimientos de stock.
-          </p>
+          <div className="flex items-center gap-2">
+            <h1 className="text-3xl font-bold text-foreground">Inventario</h1>
+            <SectionHelp title="Acerca de Inventario">
+              <p>
+                Administra los productos y categorías que utiliza o vende el consultorio.
+              </p>
+              <p>
+                Aquí registras reabastecimientos por lote, consultas alertas de stock y documentas movimientos como uso clínico, mermas o ajustes.
+              </p>
+            </SectionHelp>
+          </div>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
           <Input type="date" value={dateFilter} onChange={(event) => setDateFilter(event.target.value)} />

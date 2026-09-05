@@ -7,6 +7,7 @@ import UsersPage from "./UsersPage";
 import AppearancePage from "./AppearancePage";
 import { SecurityPage } from "@/modules/security";
 import { SinPermisosPage } from "@/shared";
+import { SectionHelp } from "@/shared/components/SectionHelp";
 import {
   Tabs,
   TabsContent,
@@ -70,14 +71,19 @@ const AdminPanelPage = () => {
   return (
     <main className="space-y-6">
       <section className="rounded-2xl border bg-card p-6 shadow-sm">
-        <h1 className="text-2xl font-semibold text-foreground">
-          Panel de administración
-        </h1>
-
-        <p className="mt-2 max-w-3xl text-sm text-muted-foreground">
-          Administra usuarios, roles, permisos y seguridad desde un solo lugar.
-          Las pestañas visibles dependen de los permisos asignados al usuario.
-        </p>
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-semibold text-foreground">
+            Panel de administración
+          </h1>
+          <SectionHelp title="Acerca del Panel de administración">
+            <p>
+              Reúne la gestión de usuarios, roles, permisos, seguridad y apariencia del sistema.
+            </p>
+            <p>
+              Solo verás las pestañas para las que tu cuenta tenga autorización.
+            </p>
+          </SectionHelp>
+        </div>
       </section>
 
       <Tabs value={activeTab} onValueChange={setSelectedTab}>

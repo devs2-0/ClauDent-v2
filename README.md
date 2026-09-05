@@ -2,6 +2,10 @@
 
 Sistema integral de gestión para consultorios dentales con historial clínico, odontograma interactivo y generación de cotizaciones.
 
+## Cambios documentados
+
+- [Inicio de sesión y ayuda contextual de interfaz](docs/2026-09-05-login-y-ayuda-de-interfaz.md)
+
 ## 🦷 Características
 
 ### Módulos Implementados

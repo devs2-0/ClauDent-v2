@@ -36,6 +36,7 @@ import {
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/components/ui/card";
+import { SectionHelp } from "@/shared/components/SectionHelp";
 import { Input } from "@/shared/components/ui/input";
 import { cn } from "@/shared/utils/utils";
 
@@ -410,13 +411,20 @@ const SecurityPage: React.FC = () => {
     <div className="space-y-6 pb-24 lg:pb-6">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h1 className="flex items-center gap-2 text-2xl font-semibold text-foreground">
-            <ShieldCheck className="h-7 w-7 text-primary" />
-            Seguridad de acceso
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Supervisa usuarios conectados, navegadores activos y actividad reciente.
-          </p>
+          <div className="flex items-center gap-2">
+            <h1 className="flex items-center gap-2 text-2xl font-semibold text-foreground">
+              <ShieldCheck className="h-7 w-7 text-primary" />
+              Seguridad de acceso
+            </h1>
+            <SectionHelp title="Acerca de Seguridad de acceso">
+              <p>
+                Revisa las sesiones activas, los navegadores y la actividad reciente de las cuentas.
+              </p>
+              <p>
+                Puedes cerrar sesiones remotas cuando detectes un acceso que ya no debe permanecer activo.
+              </p>
+            </SectionHelp>
+          </div>
         </div>
 
         {remoteSessionCount > 0 && (
