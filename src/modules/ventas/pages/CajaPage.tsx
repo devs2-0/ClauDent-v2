@@ -6,7 +6,6 @@ import {
   CheckCircle2,
   CircleDollarSign,
   Clock,
-  ClipboardCheck,
   CreditCard,
   Download,
   Eye,
@@ -23,11 +22,11 @@ import {
   TrendingDown,
   TrendingUp,
   Unlock,
-  WalletCards,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useCan } from "@/auth";
 import { DataPagination } from "@/shared/components/DataPagination";
+import { SectionHelp } from "@/shared/components/SectionHelp";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -1099,11 +1098,19 @@ const CajaPage: React.FC = () => {
         <div>
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-3xl font-bold text-foreground">Caja</h1>
+            <SectionHelp title="Acerca de Caja">
+              <p>
+                Consulta los cobros reales, abonos y movimientos que afectan el efectivo del consultorio.
+              </p>
+              <p>
+                Desde aquí puedes abrir y cerrar cortes, revisar el efectivo esperado y consultar reportes del periodo seleccionado.
+              </p>
+              <p>
+                El flujo está separado de Ventas: Caja solo audita el dinero real de cobros, abonos, anulaciones, aperturas y cierres.
+              </p>
+            </SectionHelp>
             <Badge className={cashStatus.badgeClass}>{cashStatus.label}</Badge>
           </div>
-          <p className="text-muted-foreground">
-            Controla cobros reales, cortes y movimientos contables.
-          </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
           <div className="flex gap-2">
@@ -2471,13 +2478,17 @@ const CajaPage: React.FC = () => {
               <CardHeader>
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div>
-                    <CardTitle className="flex items-center gap-2">
-                      <Settings className="h-5 w-5 text-primary" />
-                      Configuracion de turnos
-                    </CardTitle>
-                    <CardDescription>
-                      Define como se abre caja, que reglas aplican al cierre y que turnos puede seleccionar recepcion.
-                    </CardDescription>
+                    <div className="flex items-center gap-2">
+                      <CardTitle className="flex items-center gap-2">
+                        <Settings className="h-5 w-5 text-primary" />
+                        Configuracion de turnos
+                      </CardTitle>
+                      <SectionHelp title="Acerca de Configuración de turnos">
+                        <p>
+                          Define cómo se abre la caja, las reglas de cierre y los turnos disponibles para recepción.
+                        </p>
+                      </SectionHelp>
+                    </div>
                   </div>
                   <div className="flex flex-col items-stretch gap-2 sm:items-end">
                     <Button
@@ -2517,50 +2528,66 @@ const CajaPage: React.FC = () => {
                 </div>
 
                 <div className="grid gap-3 lg:grid-cols-3">
-                  <button
-                    type="button"
-                    className={cn(
-                      "rounded-lg border bg-background p-4 text-left transition-colors",
-                      shiftSettingsForm.modo === "manual" && "border-primary bg-primary/5 ring-1 ring-primary/30",
-                    )}
-                    onClick={() => updateShiftSettingsForm({ modo: "manual" })}
-                    disabled={isSavingShiftSettings}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Unlock className="h-4 w-4 text-primary" />
-                      <p className="font-semibold">Manual</p>
-                      {shiftSettingsForm.modo === "manual" && <Badge>Activo</Badge>}
+                  <div className="relative">
+                    <button
+                      type="button"
+                      className={cn(
+                        "w-full rounded-lg border bg-background p-4 pr-12 text-left transition-colors",
+                        shiftSettingsForm.modo === "manual" && "border-primary bg-primary/5 ring-1 ring-primary/30",
+                      )}
+                      onClick={() => updateShiftSettingsForm({ modo: "manual" })}
+                      disabled={isSavingShiftSettings}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Unlock className="h-4 w-4 text-primary" />
+                        <p className="font-semibold">Manual</p>
+                        {shiftSettingsForm.modo === "manual" && <Badge>Activo</Badge>}
+                      </div>
+                    </button>
+                    <div className="absolute right-3 top-3">
+                      <SectionHelp title="Modo Manual">
+                        <p>
+                          Permite abrir caja sin escoger horario. Es útil para guardias, días especiales o clínicas con una sola recepción.
+                        </p>
+                      </SectionHelp>
                     </div>
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      Permite abrir caja sin escoger horario. Sirve para guardias, dias especiales o clinicas con una sola recepcion.
-                    </p>
-                  </button>
-                  <button
-                    type="button"
-                    className={cn(
-                      "rounded-lg border bg-background p-4 text-left transition-colors",
-                      shiftSettingsForm.modo === "programado" && "border-primary bg-primary/5 ring-1 ring-primary/30",
-                    )}
-                    onClick={() => updateShiftSettingsForm({ modo: "programado" })}
-                    disabled={isSavingShiftSettings}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-primary" />
-                      <p className="font-semibold">Por horario</p>
-                      {shiftSettingsForm.modo === "programado" && <Badge>Activo</Badge>}
+                  </div>
+                  <div className="relative">
+                    <button
+                      type="button"
+                      className={cn(
+                        "w-full rounded-lg border bg-background p-4 pr-12 text-left transition-colors",
+                        shiftSettingsForm.modo === "programado" && "border-primary bg-primary/5 ring-1 ring-primary/30",
+                      )}
+                      onClick={() => updateShiftSettingsForm({ modo: "programado" })}
+                      disabled={isSavingShiftSettings}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-4 w-4 text-primary" />
+                        <p className="font-semibold">Por horario</p>
+                        {shiftSettingsForm.modo === "programado" && <Badge>Activo</Badge>}
+                      </div>
+                    </button>
+                    <div className="absolute right-3 top-3">
+                      <SectionHelp title="Modo Por horario">
+                        <p>
+                          Obliga a seleccionar Matutino, Vespertino u otro turno. Sirve para comparar ingresos y diferencias por responsable u horario.
+                        </p>
+                      </SectionHelp>
                     </div>
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      Obliga a seleccionar Matutino, Vespertino u otro turno. Sirve para comparar ingresos y diferencias por responsable o horario.
-                    </p>
-                  </button>
+                  </div>
                   <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-                    <div className="flex items-center gap-2">
-                      <AlertTriangle className="h-4 w-4 text-amber-600" />
-                      <p className="font-semibold">Cierre a medianoche</p>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4 text-amber-600" />
+                        <p className="font-semibold">Cierre a medianoche</p>
+                      </div>
+                      <SectionHelp title="Cierre a medianoche">
+                        <p>
+                          Si una caja permanece abierta al cambiar de día, el sistema la cierra automáticamente como corte vencido, sin importar el turno seleccionado.
+                        </p>
+                      </SectionHelp>
                     </div>
-                    <p className="mt-2 text-sm text-muted-foreground">
-                      Independientemente del turno, si una caja queda abierta al cambiar de dia, el sistema la cierra automaticamente como corte vencido.
-                    </p>
                   </div>
                 </div>
 
@@ -2745,26 +2772,6 @@ const CajaPage: React.FC = () => {
         )}
 
       </Tabs>
-
-      <Card className="border-primary/30 bg-primary/5">
-        <CardContent className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-start gap-3">
-            <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-md bg-primary text-primary-foreground">
-              <ClipboardCheck className="h-5 w-5" />
-            </div>
-            <div>
-              <p className="font-semibold">Flujo separado</p>
-              <p className="text-sm text-muted-foreground">
-                Caja solo audita dinero real: cobros, abonos, anulaciones, aperturas y cierres.
-              </p>
-            </div>
-          </div>
-          <Button variant="secondary" onClick={() => setActiveTab("pendientes")}>
-            <WalletCards className="mr-2 h-4 w-4" />
-            Pendientes de cobro
-          </Button>
-        </CardContent>
-      </Card>
 
       <Dialog open={isCashCutDetailOpen} onOpenChange={setIsCashCutDetailOpen}>
         <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">

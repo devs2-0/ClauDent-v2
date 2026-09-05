@@ -11,6 +11,7 @@ import {
 import { toast } from "sonner";
 
 import { Can, permissionCatalog, useAuth, useCan } from "@/auth";
+import { SectionHelp } from "@/shared/components/SectionHelp";
 import {
   DEFAULT_ROLE_COLOR,
   DEFAULT_ROLE_EMOJI,
@@ -340,13 +341,16 @@ const RolesPage = () => {
     <main className="space-y-6">
       <section className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">
-            Roles y permisos
-          </h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Administra roles personalizados y define qué permisos tendrá cada
-            perfil dentro de ClauDent.
-          </p>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-semibold text-foreground">
+              Roles y permisos
+            </h1>
+            <SectionHelp title="Acerca de Roles y permisos">
+              <p>
+                Define los roles del equipo y los permisos que tendrá cada perfil dentro de ClauDent.
+              </p>
+            </SectionHelp>
+          </div>
         </div>
 
         <div className="flex gap-2">

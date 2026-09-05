@@ -13,6 +13,7 @@ import {
 import { toast } from "sonner";
 
 import { Can, useAuth, useCan } from "@/auth";
+import { SectionHelp } from "@/shared/components/SectionHelp";
 import {
   DEFAULT_ROLE_COLOR,
   DEFAULT_ROLE_EMOJI,
@@ -554,14 +555,16 @@ const UsersPage = () => {
     <main className="space-y-6">
       <section className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-foreground">
-            Usuarios e invitaciones
-          </h1>
-
-          <p className="mt-1 max-w-3xl text-sm text-muted-foreground">
-            Invita empleados, asigna roles iniciales y vincula cuentas con
-            doctores o asistentes de agenda.
-          </p>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-semibold text-foreground">
+              Usuarios e invitaciones
+            </h1>
+            <SectionHelp title="Acerca de Usuarios e invitaciones">
+              <p>
+                Invita empleados, asigna roles iniciales y vincula sus cuentas con doctores o asistentes de agenda.
+              </p>
+            </SectionHelp>
+          </div>
         </div>
 
         <div className="flex flex-wrap gap-2">

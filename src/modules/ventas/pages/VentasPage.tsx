@@ -24,6 +24,7 @@ import { useInventory } from "@/modules/inventario";
 import { usePatients } from "@/modules/patients";
 import { useDentalServices } from "@/modules/services";
 import { DataPagination } from "@/shared/components/DataPagination";
+import { SectionHelp } from "@/shared/components/SectionHelp";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/components/ui/card";
@@ -382,13 +383,18 @@ const VentasPage: React.FC = () => {
         <div>
           <div className="flex flex-wrap items-center gap-3">
             <h1 className="text-3xl font-bold text-foreground">Ventas</h1>
+            <SectionHelp title="Acerca de Ventas">
+              <p>
+                Registra el cobro de tratamientos realizados y productos vendidos al paciente.
+              </p>
+              <p>
+                Al confirmar una venta, el pago se refleja en Caja y los tratamientos o productos actualizan el historial e inventario cuando corresponda.
+              </p>
+            </SectionHelp>
             <Badge variant={hasOpenCashForSelectedDate ? "default" : "destructive"}>
               {hasOpenCashForSelectedDate ? "Caja abierta" : "Caja cerrada"}
             </Badge>
           </div>
-          <p className="text-muted-foreground">
-            Cobra tratamientos realizados y productos vendidos. El resumen alimenta caja, historial e inventario.
-          </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
           <Input type="date" value={dateFilter} onChange={(event) => setDateFilter(event.target.value)} />

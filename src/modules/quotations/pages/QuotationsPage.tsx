@@ -6,6 +6,7 @@ import { Quotation, QuotationItem, useQuotations } from '@/modules/quotations';
 import { Service, useDentalServices } from '@/modules/services';
 import { formatCurrency, formatDate } from '@/shared/utils/utils';
 import { Button } from '@/shared/components/ui/button';
+import { SectionHelp } from '@/shared/components/SectionHelp';
 import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card';
 import {
   Table,
@@ -321,8 +322,17 @@ const Cotizaciones: React.FC = () => {
     <div className="space-y-6 h-[calc(100vh-6rem)] flex flex-col">
       <div className="flex flex-col sm:flex-row items-center justify-between gap-4 shrink-0">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Cotizaciones</h1>
-          <p className="text-muted-foreground">Gestiona las cotizaciones de tratamientos</p>
+          <div className="flex items-center gap-2">
+            <h1 className="text-3xl font-bold text-foreground">Cotizaciones</h1>
+            <SectionHelp title="Acerca de Cotizaciones">
+              <p>
+                Crea, consulta y actualiza presupuestos de tratamientos para cada paciente.
+              </p>
+              <p>
+                Desde aquí puedes revisar sus conceptos, estado y generar el documento para compartirlo.
+              </p>
+            </SectionHelp>
+          </div>
         </div>
         <Button onClick={() => handleOpenDialog()} size="lg">
           <Plus className="h-5 w-5 mr-2" />

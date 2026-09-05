@@ -2,6 +2,7 @@
 import React from 'react';
 // ¡NUEVO! Importamos los componentes de Pestañas
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/components/ui/tabs";
+import { SectionHelp } from "@/shared/components/SectionHelp";
 // ¡NUEVO! Importamos los componentes que creamos
 import ServiciosIndividuales from '@/modules/services/components/ServiciosIndividuales';
 import { ServiciosPaquetes } from '@/modules/packages';
@@ -11,8 +12,17 @@ const Servicios: React.FC = () => {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Servicios y Paquetes</h1>
-          <p className="text-muted-foreground">Catálogo de servicios dentales y promociones</p>
+          <div className="flex items-center gap-2">
+            <h1 className="text-3xl font-bold text-foreground">Servicios y Paquetes</h1>
+            <SectionHelp title="Acerca de Servicios y Paquetes">
+              <p>
+                Mantén el catálogo de tratamientos, precios y promociones que ofrece el consultorio.
+              </p>
+              <p>
+                Los servicios y paquetes disponibles se usan al elaborar cotizaciones y registrar ventas.
+              </p>
+            </SectionHelp>
+          </div>
         </div>
         {/* El botón de "Nuevo" se mueve adentro de cada pestaña */}
       </div>
