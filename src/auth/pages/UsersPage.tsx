@@ -3,6 +3,7 @@ import {
   Ban,
   MailPlus,
   RefreshCw,
+  Search,
   ShieldCheck,
   Trash2,
   UserCheck,
@@ -47,6 +48,7 @@ import {
 } from "@/shared/components/ui/dialog";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
+import { useConfirmAction } from "@/shared/hooks/useConfirmAction";
 
 type InviteStaffType = "administrative" | "doctor" | "assistant";
 
@@ -96,6 +98,8 @@ const UsersPage = () => {
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState("");
+  const { confirm, confirmationDialog } = useConfirmAction();
 
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [inviteForm, setInviteForm] = useState<InviteFormState>({
@@ -253,6 +257,28 @@ const UsersPage = () => {
 
     return null;
   };
+
+  const filteredUsers = useMemo(() => {
+    const term = search.trim().toLocaleLowerCase("es-MX");
+    if (!term) return visibleUsers;
+
+    return visibleUsers.filter((user) => {
+      const roleNames = user.roleIds
+        .map((roleId) => rolesById.get(roleId)?.name ?? "")
+        .join(" ");
+      const staffLabel = user.doctorId
+        ? doctorsById.get(user.doctorId)?.nombre ?? "Doctor"
+        : user.assistantId
+          ? assistantsById.get(user.assistantId)?.nombre ?? "Asistente"
+          : "";
+
+      return [user.displayName, user.email, roleNames, staffLabel, statusLabels[user.status]]
+        .filter(Boolean)
+        .join(" ")
+        .toLocaleLowerCase("es-MX")
+        .includes(term);
+    });
+  }, [assistantsById, doctorsById, rolesById, search, visibleUsers]);
 
   const loadData = async () => {
     setLoading(true);
@@ -419,9 +445,12 @@ const UsersPage = () => {
       return;
     }
 
-    const confirmed = window.confirm(
-      `¿Seguro que deseas cancelar la invitación para ${invitation.email}?`,
-    );
+    const confirmed = await confirm({
+      title: "Cancelar invitación",
+      description: `Se cancelará la invitación enviada a ${invitation.email}.`,
+      confirmLabel: "Cancelar invitación",
+      destructive: true,
+    });
 
     if (!confirmed) return;
 
@@ -477,9 +506,12 @@ const UsersPage = () => {
       return;
     }
 
-    const confirmed = window.confirm(
-      `¿Seguro que deseas cambiar el estado de ${user.email} a "${statusLabels[status]}"?`,
-    );
+    const confirmed = await confirm({
+      title: "Cambiar estado del usuario",
+      description: `${user.displayName || user.email} cambiará a estado ${statusLabels[status].toLowerCase()}.`,
+      confirmLabel: "Cambiar estado",
+      destructive: status !== "active",
+    });
 
     if (!confirmed) return;
 
@@ -503,9 +535,12 @@ const UsersPage = () => {
       return;
     }
 
-    const confirmed = window.confirm(
-      `¿Seguro que deseas ocultar y bloquear a ${user.email}? La cuenta seguirá existiendo en Firebase Auth, pero no podrá usar ClauDent.`,
-    );
+    const confirmed = await confirm({
+      title: "Quitar acceso",
+      description: `${user.displayName || user.email} ya no podrá ingresar a ClauDent y dejará de aparecer en este listado.`,
+      confirmLabel: "Quitar acceso",
+      destructive: true,
+    });
 
     if (!confirmed) return;
 
@@ -552,7 +587,7 @@ const UsersPage = () => {
   };
 
   return (
-    <main className="space-y-6">
+    <main className="space-y-4">
       <section className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <div className="flex items-center gap-2">
@@ -680,12 +715,23 @@ const UsersPage = () => {
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Usuarios del sistema</CardTitle>
-          <CardDescription>
-            Los permisos visibles en menú y acciones se calculan a partir de los
-            roles asignados a cada usuario.
-          </CardDescription>
+        <CardHeader className="gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <CardTitle>Usuarios del sistema</CardTitle>
+              <CardDescription>Consulta y administra el acceso del equipo.</CardDescription>
+            </div>
+            <div className="relative w-full sm:max-w-sm">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                type="search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Buscar usuario, correo o rol..."
+                className="h-9 pl-9"
+              />
+            </div>
+          </div>
         </CardHeader>
 
         <CardContent>
@@ -693,13 +739,13 @@ const UsersPage = () => {
             <div className="py-8 text-center text-sm text-muted-foreground">
               Cargando usuarios...
             </div>
-          ) : visibleUsers.length === 0 ? (
+          ) : filteredUsers.length === 0 ? (
             <div className="py-8 text-center text-sm text-muted-foreground">
-              No hay usuarios registrados en Firestore.
+              {search ? "No hay usuarios que coincidan con la búsqueda." : "No hay usuarios registrados."}
             </div>
           ) : (
-            <div className="grid gap-4">
-              {visibleUsers.map((user) => {
+            <div className="grid gap-3">
+              {filteredUsers.map((user) => {
                 const assignedRoles = user.roleIds
                   .map((roleId) => rolesById.get(roleId))
                   .filter(Boolean) as Role[];
@@ -709,7 +755,7 @@ const UsersPage = () => {
                 return (
                   <div
                     key={user.uid}
-                    className="rounded-xl border bg-background p-4"
+                    className="rounded-lg border bg-muted/20 p-3"
                   >
                     <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
                       <div className="space-y-3">
@@ -747,9 +793,6 @@ const UsersPage = () => {
                             {user.email}
                           </p>
 
-                          <p className="text-xs text-muted-foreground">
-                            UID: {user.uid}
-                          </p>
                         </div>
 
                         <div className="space-y-2">
@@ -892,6 +935,8 @@ const UsersPage = () => {
           )}
         </CardContent>
       </Card>
+
+      {confirmationDialog}
 
       <Dialog
         open={inviteDialogOpen}

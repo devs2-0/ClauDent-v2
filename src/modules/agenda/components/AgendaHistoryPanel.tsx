@@ -22,6 +22,7 @@ interface AgendaHistoryPanelProps {
   doctors: Doctor[];
   selectedDoctorId?: string | null;
   canViewAllDoctors?: boolean;
+  refreshKey?: number;
 }
 
 const actionLabels: Record<AgendaHistoryAction, string> = {
@@ -44,6 +45,7 @@ const formatCreatedAt = (value: unknown) => {
     return value.toDate().toLocaleString("es-MX", {
       dateStyle: "medium",
       timeStyle: "short",
+      hour12: false,
     });
   }
 
@@ -63,6 +65,7 @@ const AgendaHistoryPanel = ({
   doctors,
   selectedDoctorId,
   canViewAllDoctors = false,
+  refreshKey = 0,
 }: AgendaHistoryPanelProps) => {
   const [history, setHistory] = useState<AgendaHistoryLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -89,7 +92,7 @@ const AgendaHistoryPanel = ({
     void loadHistory();
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedDoctorId, canViewAllDoctors]);
+  }, [selectedDoctorId, canViewAllDoctors, refreshKey]);
 
   const groupedHistory = useMemo(() => {
     return history.map((item) => ({
@@ -132,10 +135,7 @@ const AgendaHistoryPanel = ({
         ) : (
           <div className="space-y-3">
             {groupedHistory.map((item) => (
-              <div
-                key={item.id}
-                className="rounded-xl border bg-background p-4"
-              >
+              <div key={item.id} className="rounded-lg border bg-muted/20 p-3">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div className="space-y-1">
                     <p className="font-medium">{item.title}</p>

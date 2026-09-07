@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Clock,
   Plus,
-  RefreshCw,
   Stethoscope,
   UserCheck,
 } from "lucide-react";
@@ -22,6 +21,14 @@ import {
 } from "@/shared/components/ui/card";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/components/ui/select";
+import { useConfirmAction } from "@/shared/hooks/useConfirmAction";
 
 import AgendaBlockDialog, {
   type AgendaBlockFormState,
@@ -86,6 +93,7 @@ type AgendaLinkedUser = {
 interface AppointmentManagerProps {
   doctors: Doctor[];
   assistants: Assistant[];
+  refreshKey?: number;
 }
 
 const today = new Date().toISOString().slice(0, 10);
@@ -155,6 +163,7 @@ const isDateWithinRange = (date: string, startDate: string, endDate: string) => 
 const AppointmentManager = ({
   doctors,
   assistants,
+  refreshKey = 0,
 }: AppointmentManagerProps) => {
   const { currentUser } = useAuth();
   const { can } = useCan();
@@ -169,7 +178,7 @@ const AppointmentManager = ({
   const [services, setServices] = useState<ServiceLookup[]>([]);
 
   const [selectedDate, setSelectedDate] = useState(today);
-  const [viewMode, setViewMode] = useState<CalendarViewMode>("doctorDay");
+  const [viewMode, setViewMode] = useState<CalendarViewMode>("month");
   const [selectedDoctorId, setSelectedDoctorId] = useState("all");
   const [selectedAssistantId, setSelectedAssistantId] = useState("all");
   const [selectedStatus, setSelectedStatus] =
@@ -193,6 +202,7 @@ const AppointmentManager = ({
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const { confirm, confirmationDialog } = useConfirmAction();
 
   const canCreateAppointment = can("agenda.appointments.create");
   const canUpdateAppointment = can("agenda.appointments.update");
@@ -559,17 +569,12 @@ const AppointmentManager = ({
       (appointment) => appointment.status === "cancelled",
     ).length;
 
-    const pending = dayAppointments.filter((appointment) =>
-      ["scheduled", "confirmed"].includes(appointment.status),
-    ).length;
-
     return {
       total: dayAppointments.length,
       scheduledAppointments,
       walkIns,
       completed,
       cancelled,
-      pending,
     };
   }, [dayAppointments]);
 
@@ -620,8 +625,8 @@ const AppointmentManager = ({
   };
 
   useEffect(() => {
-    loadAppointments();
-  }, []);
+    void loadAppointments();
+  }, [refreshKey]);
 
   const updateSelectedDate = (date: string) => {
     setSelectedDate(date);
@@ -928,7 +933,7 @@ const AppointmentManager = ({
     if (!serviceName && !(form.appointmentType === "walk_in" && form.reason.trim())) {
       toast.error(
         form.appointmentType === "walk_in"
-          ? "Escribe el servicio o motivo del walk-in."
+          ? "Escribe el servicio o motivo de la atención sin cita."
           : "Selecciona o escribe el servicio a realizar.",
       );
       return false;
@@ -951,22 +956,22 @@ const AppointmentManager = ({
 
     if (form.appointmentType === "walk_in") {
       if (form.startDate !== today) {
-        toast.error("Los walk-ins solo se registran para el día actual.");
+        toast.error("Las atenciones sin cita solo se registran para el día actual.");
         return false;
       }
 
       if (!form.arrivalTime) {
-        toast.error("Selecciona la hora de llegada del walk-in.");
+        toast.error("Selecciona la hora de llegada del paciente.");
         return false;
       }
 
       if (!form.walkInAssistantId) {
-        toast.error("Selecciona el asistente responsable del walk-in.");
+        toast.error("Selecciona al responsable de la atención.");
         return false;
       }
 
       if (!visibleAssistantIds.has(form.walkInAssistantId)) {
-        toast.error("No tienes acceso al asistente seleccionado para el walk-in.");
+        toast.error("No tienes acceso al asistente seleccionado.");
         return false;
       }
     }
@@ -1101,7 +1106,7 @@ const AppointmentManager = ({
         type: "appointment_created",
         title:
           appointmentType === "walk_in"
-            ? "Walk-in registrado"
+            ? "Atención sin cita registrada"
             : "Nueva cita agendada",
         message: `${form.patientName.trim()} · ${
           form.serviceName.trim() || form.reason.trim() || "Cita"
@@ -1124,7 +1129,7 @@ const AppointmentManager = ({
         patientName: form.patientName.trim(),
         title:
           appointmentType === "walk_in"
-            ? "Walk-in registrado"
+            ? "Atención sin cita registrada"
             : "Cita creada",
         description: `${form.patientName.trim()} · ${
           form.serviceName.trim() || form.reason.trim() || "Cita"
@@ -1208,8 +1213,8 @@ const AppointmentManager = ({
     if ((previousAppointment.appointmentType ?? "scheduled") !== nextAppointmentType) {
       changes.push(
         nextAppointmentType === "walk_in"
-          ? "Tipo: cita programada → walk-in"
-          : "Tipo: walk-in → cita programada",
+          ? "Tipo: cita programada → sin cita"
+          : "Tipo: sin cita → cita programada",
       );
     }
 
@@ -1257,7 +1262,7 @@ const AppointmentManager = ({
     }
 
     if ((previousAppointment.walkInAssistantId ?? null) !== nextWalkInAssistantId) {
-      changes.push("Asistente de walk-in actualizado");
+      changes.push("Responsable de atención actualizado");
     }
 
     const updateMessage =
@@ -1519,9 +1524,12 @@ const AppointmentManager = ({
       return false;
     }
 
-    const confirmed = window.confirm(
-      `¿Seguro que deseas cambiar la cita a "${statusLabels[status]}"?`,
-    );
+    const confirmed = await confirm({
+      title: "Cambiar estado de la cita",
+      description: `${appointment.patientName} cambiará a estado ${statusLabels[status].toLowerCase()}.`,
+      confirmLabel: "Cambiar estado",
+      destructive: status === "cancelled",
+    });
 
     if (!confirmed) return false;
 
@@ -1609,16 +1617,11 @@ const AppointmentManager = ({
   };
 
   return (
-    <div className="space-y-5">
-      <Card className="overflow-hidden border bg-background/95 shadow-sm">
-        <CardContent className="p-4">
+    <div className="space-y-4">
+      <Card className="overflow-visible border bg-card shadow-sm">
+        <CardContent className="p-3 sm:p-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-            <div>
-              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                Agenda
-              </p>
-              <h2 className="text-xl font-semibold">Calendario clínico</h2>
-            </div>
+            <h2 className="text-base font-semibold">Filtros del calendario</h2>
 
             <div className="flex flex-wrap gap-2">
               {canCreateAppointment && (
@@ -1628,19 +1631,11 @@ const AppointmentManager = ({
                 </Button>
               )}
 
-              <Button
-                variant="outline"
-                onClick={loadAppointments}
-                disabled={loading}
-              >
-                <RefreshCw className="mr-2 h-4 w-4" />
-                Actualizar
-              </Button>
             </div>
           </div>
 
-          <div className="mt-4 grid gap-3 lg:grid-cols-4">
-            <div className="space-y-2">
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div className="min-w-0 space-y-2">
               <Label htmlFor="agenda-date">Día</Label>
               <Input
                 id="agenda-date"
@@ -1650,7 +1645,7 @@ const AppointmentManager = ({
               />
             </div>
 
-            <div className="space-y-2">
+            <div className="min-w-0 space-y-2">
               <Label htmlFor="agenda-doctor-filter">Doctor</Label>
               <SearchableSelect
                 id="agenda-doctor-filter"
@@ -1663,7 +1658,7 @@ const AppointmentManager = ({
               />
             </div>
 
-            <div className="space-y-2">
+            <div className="min-w-0 space-y-2">
               <Label htmlFor="agenda-assistant-filter">Asistente</Label>
               <SearchableSelect
                 id="agenda-assistant-filter"
@@ -1677,37 +1672,34 @@ const AppointmentManager = ({
               />
             </div>
 
-            <div className="space-y-2">
+            <div className="min-w-0 space-y-2">
               <Label htmlFor="agenda-status-filter">Estado</Label>
-              <select
-                id="agenda-status-filter"
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              <Select
                 value={selectedStatus}
-                onChange={(event) =>
-                  setSelectedStatus(
-                    event.target.value as AppointmentStatus | "all",
-                  )
-                }
+                onValueChange={(value) => setSelectedStatus(value as AppointmentStatus | "all")}
               >
-                <option value="all">Todos los estados</option>
-                <option value="scheduled">Programadas</option>
-                <option value="confirmed">Confirmadas</option>
-                <option value="completed">Atendidas</option>
-                <option value="cancelled">Canceladas</option>
-                <option value="no_show">No asistió</option>
-              </select>
+                <SelectTrigger id="agenda-status-filter"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los estados</SelectItem>
+                  <SelectItem value="scheduled">Programadas</SelectItem>
+                  <SelectItem value="confirmed">Confirmadas</SelectItem>
+                  <SelectItem value="completed">Atendidas</SelectItem>
+                  <SelectItem value="cancelled">Canceladas</SelectItem>
+                  <SelectItem value="no_show">No asistió</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </CardContent>
       </Card>
 
       <section className="space-y-3">
-        <div className="flex flex-col gap-3 rounded-2xl border bg-background p-4 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-col gap-3 rounded-xl border bg-card p-3 shadow-sm lg:flex-row lg:items-center lg:justify-between">
           <div>
             <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Vista actual
+              Calendario clínico
             </p>
-            <h2 className="text-2xl font-semibold capitalize leading-tight">
+            <h2 className="text-xl font-semibold capitalize leading-tight">
               {calendarTitle}
             </h2>
           </div>
@@ -1774,8 +1766,7 @@ const AppointmentManager = ({
                 No hay doctor vinculado
               </CardTitle>
               <CardDescription>
-                Revisa que usuarios/{currentUser?.uid} tenga doctorId o que un
-                doctor tenga userUid igual a tu UID.
+                Solicita la asignación de tu agenda para consultar el calendario.
               </CardDescription>
             </CardHeader>
           </Card>
@@ -1819,16 +1810,16 @@ const AppointmentManager = ({
         )}
       </section>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-        <Card className="transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
-          <CardContent className="p-4">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
+        <Card>
+          <CardContent className="p-3">
             <p className="text-xs text-muted-foreground">Total</p>
             <p className="mt-1 text-2xl font-semibold">{daySummary.total}</p>
           </CardContent>
         </Card>
 
-        <Card className="transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
-          <CardContent className="p-4">
+        <Card>
+          <CardContent className="p-3">
             <p className="text-xs text-muted-foreground">Programadas</p>
             <p className="mt-1 text-2xl font-semibold">
               {daySummary.scheduledAppointments}
@@ -1836,28 +1827,24 @@ const AppointmentManager = ({
           </CardContent>
         </Card>
 
-        <Card className="transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">Walk-ins</p>
+        <Card>
+          <CardContent className="p-3">
+            <p className="text-xs text-muted-foreground">Sin cita</p>
             <p className="mt-1 text-2xl font-semibold">{daySummary.walkIns}</p>
           </CardContent>
         </Card>
 
-        <Card className="transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">Pendientes</p>
-            <p className="mt-1 text-2xl font-semibold">{daySummary.pending}</p>
+        <Card>
+          <CardContent className="p-3">
+            <p className="text-xs text-muted-foreground">Atendidas</p>
+            <p className="mt-1 text-2xl font-semibold">{daySummary.completed}</p>
           </CardContent>
         </Card>
 
-        <Card className="transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md">
-          <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground">
-              Atendidas / canceladas
-            </p>
-            <p className="mt-1 text-2xl font-semibold">
-              {daySummary.completed} / {daySummary.cancelled}
-            </p>
+        <Card>
+          <CardContent className="p-3">
+            <p className="text-xs text-muted-foreground">Canceladas</p>
+            <p className="mt-1 text-2xl font-semibold">{daySummary.cancelled}</p>
           </CardContent>
         </Card>
       </div>
@@ -1888,7 +1875,7 @@ const AppointmentManager = ({
                 return (
                   <div
                     key={appointment.id}
-                    className="rounded-xl border bg-background p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+                    className="rounded-lg border bg-muted/20 p-3 transition-colors hover:bg-muted/30"
                     style={{
                       borderLeftWidth: 5,
                       borderLeftColor: doctorColor,
@@ -1911,7 +1898,7 @@ const AppointmentManager = ({
                           </Badge>
 
                           {appointment.appointmentType === "walk_in" && (
-                            <Badge variant="secondary">Walk-in</Badge>
+                            <Badge variant="secondary">Sin cita</Badge>
                           )}
 
                           <span className="inline-flex items-center gap-1 text-sm text-muted-foreground">
@@ -1974,6 +1961,8 @@ const AppointmentManager = ({
         </CardContent>
       </Card>
 
+      {confirmationDialog}
+
       <AppointmentDetailsDialog
         open={appointmentDetailsOpen}
         onOpenChange={handleAppointmentDetailsOpenChange}
@@ -2013,7 +2002,7 @@ const AppointmentManager = ({
           editingAppointment
             ? "Editar cita"
             : form.appointmentType === "walk_in"
-              ? "Registrar walk-in"
+              ? "Registrar sin cita"
               : "Nueva cita"
         }
         description={
@@ -2027,7 +2016,7 @@ const AppointmentManager = ({
           editingAppointment
             ? "Guardar cambios"
             : form.appointmentType === "walk_in"
-              ? "Registrar walk-in"
+              ? "Registrar sin cita"
               : "Crear cita"
         }
         onSubmit={handleSubmitAppointment}

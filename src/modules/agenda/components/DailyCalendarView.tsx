@@ -386,7 +386,7 @@ const DailyCalendarView = ({
                             {appointment.appointmentType === "walk_in" && (
                               <Badge variant="secondary" className="gap-1">
                                 <UserPlus className="h-3 w-3" />
-                                Walk-in
+                                Sin cita
                               </Badge>
                             )}
 

@@ -380,11 +380,11 @@ const Cotizaciones: React.FC = () => {
         </div>
       </div>
 
-      <Card className="flex-1 flex flex-col overflow-hidden">
+      <Card className="relative isolate z-0 flex-1 flex flex-col overflow-hidden">
         <CardContent className="p-0 flex-1 overflow-hidden">
-          <div className="h-full overflow-auto">
+          <div className="relative isolate z-0 h-full overflow-auto overscroll-contain">
             <Table>
-              <TableHeader className="sticky top-0 bg-background z-10 shadow-sm">
+              <TableHeader className="sticky top-0 z-[1] bg-card shadow-sm">
                 <TableRow>
                   <TableHead className="whitespace-nowrap">ID</TableHead>
                   <TableHead className="whitespace-nowrap">Paciente</TableHead>

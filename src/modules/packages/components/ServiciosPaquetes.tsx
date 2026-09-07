@@ -273,11 +273,11 @@ const ServiciosPaquetes: React.FC = () => {
         </Button>
       </div>
 
-      <Card>
+      <Card className="relative isolate z-0 overflow-hidden">
         <CardContent className="p-0">
-          <div className="overflow-x-auto max-h-[600px]">
+          <div className="relative isolate z-0 max-h-[600px] overflow-auto overscroll-contain">
             <Table>
-              <TableHeader className="sticky top-0 bg-background z-10 shadow-sm">
+              <TableHeader className="sticky top-0 z-[1] bg-card shadow-sm">
                 <TableRow>
                   <TableHead className="whitespace-nowrap">Nombre del Paquete</TableHead>
                   <TableHead className="whitespace-nowrap">Precio</TableHead>

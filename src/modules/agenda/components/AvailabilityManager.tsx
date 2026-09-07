@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { doc, getDoc } from "firebase/firestore";
-import { Ban, CalendarOff, Clock, Plus, RefreshCw } from "lucide-react";
+import { Ban, CalendarOff, ChevronDown, Clock, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 import { useAuth, useCan } from "@/auth";
@@ -14,9 +14,15 @@ import {
   CardTitle,
 } from "@/shared/components/ui/card";
 import { Checkbox } from "@/shared/components/ui/checkbox";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/shared/components/ui/collapsible";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import { Textarea } from "@/shared/components/ui/textarea";
+import { useConfirmAction } from "@/shared/hooks/useConfirmAction";
 
 import { agendaHistoryService } from "../services/agendaHistoryService";
 import type { CreateAgendaHistoryLogInput } from "../services/agendaHistoryService";
@@ -77,6 +83,7 @@ type SpecialScheduleFormState = {
 interface AvailabilityManagerProps {
   doctors: Doctor[];
   assistants: Assistant[];
+  refreshKey?: number;
 }
 
 const today = new Date().toISOString().slice(0, 10);
@@ -147,6 +154,7 @@ const emptySpecialScheduleForm: SpecialScheduleFormState = {
 const AvailabilityManager = ({
   doctors,
   assistants,
+  refreshKey = 0,
 }: AvailabilityManagerProps) => {
   const { currentUser } = useAuth();
   const { can } = useCan();
@@ -165,6 +173,10 @@ const AvailabilityManager = ({
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [scheduleView, setScheduleView] = useState<"weekly" | "special">("weekly");
+  const [scheduleListOpen, setScheduleListOpen] = useState(false);
+  const [blocksListOpen, setBlocksListOpen] = useState(false);
+  const { confirm, confirmationDialog } = useConfirmAction();
 
   const canViewAllAvailability =
     agendaUser?.isAdmin === true ||
@@ -353,15 +365,15 @@ const AvailabilityManager = ({
     return new Set(visibleAssistants.map((assistant) => assistant.id));
   }, [visibleAssistants]);
 
-  const getFirstStaffId = (staffType: AgendaStaffType) => {
+  const getFirstStaffId = useCallback((staffType: AgendaStaffType) => {
     if (staffType === "doctor") {
       return visibleDoctors[0]?.id ?? "";
     }
 
     return visibleAssistants[0]?.id ?? "";
-  };
+  }, [visibleAssistants, visibleDoctors]);
 
-  const isVisibleStaff = (staffType: AgendaStaffType, staffId: string) => {
+  const isVisibleStaff = useCallback((staffType: AgendaStaffType, staffId: string) => {
     if (!staffId) return false;
 
     if (staffType === "doctor") {
@@ -369,7 +381,7 @@ const AvailabilityManager = ({
     }
 
     return visibleAssistantIds.has(staffId);
-  };
+  }, [visibleAssistantIds, visibleDoctorIds]);
 
   useEffect(() => {
     if (agendaProfileLoading) return;
@@ -424,6 +436,8 @@ const AvailabilityManager = ({
     visibleAssistants,
     visibleDoctorIds,
     visibleAssistantIds,
+    getFirstStaffId,
+    isVisibleStaff,
   ]);
 
   const staffName = (staffType: AgendaStaffType, staffId: string) => {
@@ -497,7 +511,7 @@ const AvailabilityManager = ({
 
   useEffect(() => {
     void loadAvailability();
-  }, []);
+  }, [refreshKey]);
 
   const handleCreateSchedule = async () => {
     if (!canManageSchedules) {
@@ -713,9 +727,12 @@ const AvailabilityManager = ({
       return;
     }
 
-    const confirmed = window.confirm(
-      "¿Seguro que deseas desactivar este horario?",
-    );
+    const confirmed = await confirm({
+      title: "Desactivar horario",
+      description: "Este horario dejará de estar disponible para nuevas citas.",
+      confirmLabel: "Desactivar",
+      destructive: true,
+    });
 
     if (!confirmed) return;
 
@@ -854,9 +871,12 @@ const AvailabilityManager = ({
       return;
     }
 
-    const confirmed = window.confirm(
-      "¿Seguro que deseas cancelar este bloqueo?",
-    );
+    const confirmed = await confirm({
+      title: "Quitar bloqueo",
+      description: "El horario volverá a quedar disponible para citas.",
+      confirmLabel: "Quitar bloqueo",
+      destructive: true,
+    });
 
     if (!confirmed) return;
 
@@ -927,9 +947,7 @@ const AvailabilityManager = ({
             No hay disponibilidad visible
           </CardTitle>
           <CardDescription>
-            Tu usuario no tiene un doctor o asistente vinculado. Revisa que
-            usuarios/{currentUser?.uid} tenga doctorId o assistantId, o que el
-            documento de doctor/asistente tenga userUid igual a tu UID.
+            Solicita la asignación de tu agenda para gestionar esta disponibilidad.
           </CardDescription>
         </CardHeader>
       </Card>
@@ -937,29 +955,14 @@ const AvailabilityManager = ({
   }
 
   return (
-    <div className="grid gap-6 xl:grid-cols-2">
-      <Card>
-        <CardHeader className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="h-5 w-5" />
-              Horarios semanales
-            </CardTitle>
-
-            <CardDescription>
-              Define los horarios base en los que el personal estará disponible
-              para citas.
-            </CardDescription>
-          </div>
-
-          <Button
-            variant="outline"
-            onClick={() => void loadAvailability()}
-            disabled={loading}
-          >
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Actualizar
-          </Button>
+    <div className="grid gap-4 xl:grid-cols-2">
+      {scheduleView === "weekly" && (
+      <Card className="order-1 xl:col-span-2">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Clock className="h-5 w-5" />
+            Horario de atención
+          </CardTitle>
         </CardHeader>
 
         <CardContent className="space-y-5">
@@ -1005,6 +1008,19 @@ const AvailabilityManager = ({
                       }))
                     }
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="availability-schedule-view">Configurar disponibilidad</Label>
+                  <select
+                    id="availability-schedule-view"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={scheduleView}
+                    onChange={(event) => setScheduleView(event.target.value as "weekly" | "special")}
+                  >
+                    <option value="weekly">Horario semanal</option>
+                    {canManageAllAvailability && <option value="special">Fecha especial</option>}
+                  </select>
                 </div>
 
                 <div className="space-y-2">
@@ -1095,20 +1111,24 @@ const AvailabilityManager = ({
             </div>
           )}
 
+          <Collapsible open={scheduleListOpen} onOpenChange={setScheduleListOpen}>
+            <CollapsibleTrigger asChild>
+              <Button type="button" variant="outline" className="w-full justify-between">
+                <span>Horarios registrados ({scopedWeeklySchedules.length})</span>
+                <ChevronDown className={`h-4 w-4 transition-transform ${scheduleListOpen ? "rotate-180" : ""}`} />
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-2 max-h-72 overflow-y-auto rounded-lg border bg-muted/10 p-2">
           {loading ? (
-            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-              Cargando horarios...
-            </div>
+            <div className="p-4 text-center text-sm text-muted-foreground">Cargando horarios...</div>
           ) : scopedWeeklySchedules.length === 0 ? (
-            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-              No hay horarios registrados para el personal visible.
-            </div>
+            <div className="p-4 text-center text-sm text-muted-foreground">No hay horarios registrados.</div>
           ) : (
-            <div className="grid gap-3">
+            <div className="grid gap-2 md:grid-cols-2">
               {scopedWeeklySchedules.map((schedule) => (
                 <div
                   key={schedule.id}
-                  className="rounded-xl border bg-background p-4"
+                  className="rounded-lg border bg-card p-3"
                 >
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div>
@@ -1145,18 +1165,19 @@ const AvailabilityManager = ({
               ))}
             </div>
           )}
+            </CollapsibleContent>
+          </Collapsible>
         </CardContent>
       </Card>
+      )}
 
-      {canManageAllAvailability && (
-        <Card>
+      {canManageAllAvailability && scheduleView === "special" && (
+        <Card className="order-1 xl:col-span-2">
           <CardHeader>
-            <CardTitle>Horario especial</CardTitle>
-
-            <CardDescription>
-              Abre disponibilidad en una fecha específica, aunque no forme parte
-              del horario semanal normal.
-            </CardDescription>
+            <CardTitle className="flex items-center gap-2">
+              <Clock className="h-5 w-5" />
+              Horario de atención
+            </CardTitle>
           </CardHeader>
 
           <CardContent className="space-y-5">
@@ -1201,6 +1222,19 @@ const AvailabilityManager = ({
                       }))
                     }
                   />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="availability-schedule-view">Configurar disponibilidad</Label>
+                  <select
+                    id="availability-schedule-view"
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                    value={scheduleView}
+                    onChange={(event) => setScheduleView(event.target.value as "weekly" | "special")}
+                  >
+                    <option value="weekly">Horario semanal</option>
+                    <option value="special">Fecha especial</option>
+                  </select>
                 </div>
 
                 <div className="space-y-2">
@@ -1349,17 +1383,14 @@ const AvailabilityManager = ({
         </Card>
       )}
 
-      <Card>
+      <Card className="order-2 xl:col-span-2">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <CalendarOff className="h-5 w-5" />
             Bloqueos y días no disponibles
           </CardTitle>
 
-          <CardDescription>
-            Registra vacaciones, permisos, cursos, juntas o cualquier horario
-            que no debe aceptar citas.
-          </CardDescription>
+          <CardDescription>Vacaciones, permisos y otros periodos sin citas.</CardDescription>
         </CardHeader>
 
         <CardContent className="space-y-5">
@@ -1539,20 +1570,24 @@ const AvailabilityManager = ({
             </div>
           )}
 
+          <Collapsible open={blocksListOpen} onOpenChange={setBlocksListOpen}>
+            <CollapsibleTrigger asChild>
+              <Button type="button" variant="outline" className="w-full justify-between">
+                <span>Bloqueos activos ({scopedBlocks.length})</span>
+                <ChevronDown className={`h-4 w-4 transition-transform ${blocksListOpen ? "rotate-180" : ""}`} />
+              </Button>
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-2 max-h-72 overflow-y-auto rounded-lg border bg-muted/10 p-2">
           {loading ? (
-            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-              Cargando bloqueos...
-            </div>
+            <div className="p-4 text-center text-sm text-muted-foreground">Cargando bloqueos...</div>
           ) : scopedBlocks.length === 0 ? (
-            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-              No hay bloqueos activos para el personal visible.
-            </div>
+            <div className="p-4 text-center text-sm text-muted-foreground">No hay bloqueos activos.</div>
           ) : (
-            <div className="grid gap-3">
+            <div className="grid gap-2 md:grid-cols-2">
               {scopedBlocks.map((block) => (
                 <div
                   key={block.id}
-                  className="rounded-xl border bg-background p-4"
+                  className="rounded-lg border bg-card p-3"
                 >
                   <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                     <div>
@@ -1598,8 +1633,11 @@ const AvailabilityManager = ({
               ))}
             </div>
           )}
+            </CollapsibleContent>
+          </Collapsible>
         </CardContent>
       </Card>
+      {confirmationDialog}
     </div>
   );
 };
