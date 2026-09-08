@@ -22,6 +22,12 @@ import {
 } from "@/modules/ventas";
 import { generateSaleReceiptPDF, type SaleReceiptKind } from "@/modules/ventas/services/saleReceiptPdfService";
 import { Badge } from "@/shared/components/ui/badge";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/shared/components/ui/accordion";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import {
@@ -444,72 +450,81 @@ const PatientPayments: React.FC<PatientPaymentsProps> = ({ patientId, patientNam
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader className="border-b">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <CreditCard className="h-5 w-5 text-primary" />
-            Historial de pagos
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          {patientPayments.length === 0 ? (
-            <div className="p-8 text-center text-sm text-muted-foreground">
-              Este paciente aun no tiene pagos registrados.
-            </div>
-          ) : (
-            <div className="divide-y">
-              {patientPayments.map((payment) => (
-                <div key={payment.id} className="grid gap-3 p-4 md:grid-cols-[1fr_auto] md:items-center">
-                  <div className="min-w-0 space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-semibold">{payment.concepto || paymentSearchLabel(payment)}</p>
-                      <Badge variant={payment.estado === "activo" ? "default" : "secondary"}>
-                        {payment.estado === "activo" ? "Pagado" : "Cancelado"}
-                      </Badge>
-                      <Badge variant="outline">{paymentSearchLabel(payment)}</Badge>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                      <span>{formatDate(payment.fecha)}</span>
-                      <span>{methodLabel[payment.metodo]}</span>
-                      {payment.citaId && <span>Cita vinculada</span>}
-                      {payment.tratamientoId && <span>Tratamiento vinculado</span>}
-                      {payment.cotizacionId && <span>Cotizacion vinculada</span>}
-                      {!payment.pacienteId && <span>Coincidencia por nombre</span>}
-                    </div>
-
-                    {payment.notas && (
-                      <p className="flex items-start gap-2 text-sm text-muted-foreground">
-                        <FileText className="mt-0.5 h-4 w-4 shrink-0" />
-                        <span>{payment.notas}</span>
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="flex flex-col items-start gap-2 md:items-end">
-                    <p className={cn("text-lg font-semibold", payment.estado === "cancelado" && "text-muted-foreground line-through")}>
-                      {formatCurrency(payment.monto)}
-                    </p>
-                    <p className="text-xs text-muted-foreground">Folio {payment.id.slice(0, 8)}</p>
-                    {payment.estado === "activo" && (
-                      <Button variant="outline" size="sm" onClick={() => handleDownloadReceipt(payment)}>
-                        <Download className="mr-2 h-4 w-4" />
-                        Recibo
-                      </Button>
-                    )}
-                  </div>
+      <Accordion type="single" collapsible>
+        <AccordionItem value="payment-history" className="overflow-hidden rounded-lg border bg-card">
+          <AccordionTrigger className="px-4 py-4 hover:no-underline sm:px-6">
+            <span className="flex min-w-0 flex-1 items-center justify-between gap-3 pr-3 text-left">
+              <span className="flex min-w-0 items-center gap-2 text-base font-semibold sm:text-lg">
+                <CreditCard className="h-5 w-5 shrink-0 text-primary" />
+                <span className="truncate">Historial de pagos</span>
+              </span>
+              <Badge variant="secondary" className="shrink-0 tabular-nums">
+                {patientPayments.length}
+              </Badge>
+            </span>
+          </AccordionTrigger>
+          <AccordionContent className="p-0">
+            <div className="border-t">
+              {patientPayments.length === 0 ? (
+                <div className="p-8 text-center text-sm text-muted-foreground">
+                  Este paciente aun no tiene pagos registrados.
                 </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+              ) : (
+                <div className="divide-y">
+                  {patientPayments.map((payment) => (
+                    <div key={payment.id} className="grid gap-3 p-4 md:grid-cols-[1fr_auto] md:items-center">
+                      <div className="min-w-0 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold">{payment.concepto || paymentSearchLabel(payment)}</p>
+                          <Badge variant={payment.estado === "activo" ? "default" : "secondary"}>
+                            {payment.estado === "activo" ? "Pagado" : "Cancelado"}
+                          </Badge>
+                          <Badge variant="outline">{paymentSearchLabel(payment)}</Badge>
+                        </div>
 
-      {canceledPayments.length > 0 && (
-        <p className="text-xs text-muted-foreground">
-          Los pagos cancelados se conservan para trazabilidad y no suman al total pagado.
-        </p>
-      )}
+                        <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                          <span>{formatDate(payment.fecha)}</span>
+                          <span>{methodLabel[payment.metodo]}</span>
+                          {payment.citaId && <span>Cita vinculada</span>}
+                          {payment.tratamientoId && <span>Tratamiento vinculado</span>}
+                          {payment.cotizacionId && <span>Cotizacion vinculada</span>}
+                          {!payment.pacienteId && <span>Coincidencia por nombre</span>}
+                        </div>
+
+                        {payment.notas && (
+                          <p className="flex items-start gap-2 text-sm text-muted-foreground">
+                            <FileText className="mt-0.5 h-4 w-4 shrink-0" />
+                            <span>{payment.notas}</span>
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex flex-col items-start gap-2 md:items-end">
+                        <p className={cn("text-lg font-semibold", payment.estado === "cancelado" && "text-muted-foreground line-through")}>
+                          {formatCurrency(payment.monto)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">Folio {payment.id.slice(0, 8)}</p>
+                        {payment.estado === "activo" && (
+                          <Button variant="outline" size="sm" onClick={() => handleDownloadReceipt(payment)}>
+                            <Download className="mr-2 h-4 w-4" />
+                            Recibo
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {canceledPayments.length > 0 && (
+                <p className="border-t px-4 py-3 text-xs text-muted-foreground">
+                  Los pagos cancelados se conservan para trazabilidad y no suman al total pagado.
+                </p>
+              )}
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
 
       <Dialog open={isAccountDialogOpen} onOpenChange={(open) => (open ? setIsAccountDialogOpen(true) : resetAccountDialog())}>
         <DialogContent className="max-w-2xl">

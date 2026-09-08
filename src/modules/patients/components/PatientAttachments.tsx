@@ -59,7 +59,7 @@ const PatientAttachments: React.FC<PatientAttachmentsProps> = ({ patientId }) =>
         return {
           id: doc.id,
           ...data,
-          fecha: data.fecha?.toDate ? data.fecha.toDate().toISOString().split('T')[0] : 'N/A',
+          fecha: data.fecha?.toDate ? data.fecha.toDate().toISOString().split('T')[0] : 'Sin fecha',
         } as Attachment;
       });
       setAttachments(attachmentsData);

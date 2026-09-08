@@ -23,6 +23,8 @@ export function AppSidebar() {
   const { can, loading } = useCan();
   const { state, toggleSidebar, isMobile, setOpenMobile } = useSidebar();
   const visibleItems = navigationItems.filter((item) => can(item.permission));
+  const mainItems = visibleItems.filter((item) => item.url !== "/administracion");
+  const administrationItems = visibleItems.filter((item) => item.url === "/administracion");
 
   const handleItemClick = () => {
     if (isMobile) setOpenMobile(false);
@@ -82,7 +84,7 @@ export function AppSidebar() {
                   <div className="px-3 py-2 text-xs text-muted-foreground">Preparando menú...</div>
                 </SidebarMenuItem>
               )}
-              {!loading && visibleItems.map((item) => {
+              {!loading && mainItems.map((item) => {
                 const Icon = item.icon;
                 return (
                   <SidebarMenuItem key={item.url}>
@@ -100,7 +102,7 @@ export function AppSidebar() {
                   </SidebarMenuItem>
                 );
               })}
-              {!loading && visibleItems.length === 0 && (
+              {!loading && mainItems.length === 0 && administrationItems.length === 0 && (
                 <SidebarMenuItem>
                   <div className="px-3 py-2 text-xs text-muted-foreground">Sin módulos disponibles</div>
                 </SidebarMenuItem>
@@ -108,6 +110,36 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {!loading && administrationItems.length > 0 && (
+          <SidebarGroup className="mt-auto border-t border-sidebar-border/70 pt-2">
+            {(state === "expanded" || isMobile) && (
+              <SidebarGroupLabel>Sistema</SidebarGroupLabel>
+            )}
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {administrationItems.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <SidebarMenuItem key={item.url}>
+                      <SidebarMenuButton asChild tooltip={item.title}>
+                        <NavLink
+                          to={item.url}
+                          onClick={handleItemClick}
+                          className="flex items-center gap-3"
+                          activeClassName="bg-primary/10 text-primary"
+                        >
+                          <Icon className="h-5 w-5" />
+                          {(state === "expanded" || isMobile) && <span>{item.title}</span>}
+                        </NavLink>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  );
+                })}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
       </SidebarContent>
     </Sidebar>
   );

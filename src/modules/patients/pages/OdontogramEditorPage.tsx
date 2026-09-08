@@ -81,8 +81,8 @@ const ToothSVG: React.FC<ToothProps> = ({ number, data, onClick }) => {
   const activeConditions = AFECCIONES.filter(af => estados.includes(af.id));
   const dominantCondition = activeConditions.sort((a, b) => b.priority - a.priority)[0];
 
-  const mainColor = dominantCondition ? dominantCondition.fill : 'fill-white';
-  const strokeColor = dominantCondition ? dominantCondition.stroke : 'stroke-slate-300';
+  const mainColor = dominantCondition ? dominantCondition.fill : 'fill-card';
+  const strokeColor = dominantCondition ? dominantCondition.stroke : 'stroke-muted-foreground/50';
   
   const isPerdido = estados.some(e => e.includes('perdido'));
   const isSinErupcionar = estados.includes('sin_erupcionar');
@@ -91,7 +91,7 @@ const ToothSVG: React.FC<ToothProps> = ({ number, data, onClick }) => {
 
   return (
     <div className="flex flex-col items-center gap-1 cursor-pointer group relative shrink-0" onClick={onClick}>
-      <span className={cn("text-[10px] sm:text-xs font-bold", estados.length > 0 ? "text-primary" : "text-slate-400")}>
+      <span className={cn("text-[10px] sm:text-xs font-bold", estados.length > 0 ? "text-primary" : "text-muted-foreground")}>
         {number}
       </span>
       <div className="relative h-9 w-7 sm:h-12 sm:w-9 transition-transform group-hover:scale-110">
@@ -101,17 +101,17 @@ const ToothSVG: React.FC<ToothProps> = ({ number, data, onClick }) => {
             className={cn("stroke-[3px] transition-colors duration-200", mainColor, strokeColor)} 
           />
           {!isPerdido && !isSinErupcionar && (
-             <circle cx="50" cy="50" r="15" className="fill-transparent stroke-slate-300 stroke-1 opacity-50" />
+             <circle cx="50" cy="50" r="15" className="fill-transparent stroke-muted-foreground/50 stroke-1" />
           )}
           {isPerdido && <path d="M20,20 L80,80 M80,20 L20,80" className="stroke-white stroke-[4px] opacity-80" />}
-          {isEndo && !isPerdido && <path d="M50,50 L50,90" className="stroke-slate-700 stroke-[3px]" />}
+          {isEndo && !isPerdido && <path d="M50,50 L50,90" className="stroke-foreground stroke-[3px]" />}
         </svg>
         
         {estados.length > 1 && !isPerdido && (
-            <div className="absolute -top-1 -right-1 h-2 w-2 sm:h-3 sm:w-3 bg-orange-500 rounded-full border border-white z-10" title="Múltiples hallazgos" />
+            <div className="absolute -top-1 -right-1 h-2 w-2 sm:h-3 sm:w-3 bg-orange-500 rounded-full border border-card z-10" title="Múltiples hallazgos" />
         )}
         {isOtro && !isPerdido && (
-            <div className="absolute -bottom-1 -right-1 h-2 w-2 sm:h-3 sm:w-3 bg-cyan-500 rounded-full border border-white z-10" title={data?.textoLibre || "Nota personalizada"} />
+            <div className="absolute -bottom-1 -right-1 h-2 w-2 sm:h-3 sm:w-3 bg-cyan-500 rounded-full border border-card z-10" title={data?.textoLibre || "Nota personalizada"} />
         )}
         {isSinErupcionar && (
           <ArrowUp className="h-5 w-5 text-blue-600 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none drop-shadow-md" />
@@ -281,7 +281,7 @@ const OdontogramEditorPage: React.FC = () => {
     else { for (let i = start; i <= end; i++) teeth.push(i); }
 
     return (
-      <div className="flex gap-1 sm:gap-2 justify-center bg-white p-2 rounded-lg shadow-sm border border-slate-100 shrink-0">
+      <div className="flex gap-1 sm:gap-2 justify-center bg-card p-2 rounded-lg shadow-sm border border-border shrink-0">
         {teeth.map(t => (
           <ToothSVG key={t} number={t} data={odontogram?.dientes[t.toString()]} onClick={() => handleToothClick(t)} selectedTool={selectedTool} />
         ))}
@@ -321,7 +321,7 @@ const OdontogramEditorPage: React.FC = () => {
           <CardHeader className="p-3 pb-2 border-b">
             <CardTitle className="text-xs uppercase text-muted-foreground font-bold">Diagnósticos</CardTitle>
           </CardHeader>
-          <CardContent className="p-0 flex-1 overflow-y-auto bg-slate-50/50">
+          <CardContent className="p-0 flex-1 overflow-y-auto bg-muted/20">
             <div className="p-2 space-y-1">
               {AFECCIONES.map((tool) => (
                 <button
@@ -330,8 +330,8 @@ const OdontogramEditorPage: React.FC = () => {
                   className={cn(
                     "flex items-center gap-2 px-3 py-2 rounded-md text-xs transition-all border w-full text-left",
                     selectedTool === tool.id 
-                      ? "bg-white border-primary ring-1 ring-primary shadow-sm font-medium text-slate-900" 
-                      : "hover:bg-slate-100 border-transparent text-slate-600"
+                      ? "bg-background border-primary ring-1 ring-primary shadow-sm font-medium text-foreground"
+                      : "hover:bg-muted border-transparent text-muted-foreground"
                   )}
                 >
                   <div className={cn("h-3 w-3 rounded-full flex items-center justify-center shrink-0", tool.color)}></div>
@@ -343,19 +343,19 @@ const OdontogramEditorPage: React.FC = () => {
         </Card>
 
         {/* CANVAS CON SCROLL HORIZONTAL MEJORADO */}
-        <div className="flex-1 bg-white rounded-xl border p-0 lg:p-4 overflow-hidden flex flex-col min-h-[300px] relative">
+        <div className="flex-1 bg-card rounded-xl border p-0 lg:p-4 overflow-hidden flex flex-col min-h-[300px] relative">
             <div className="absolute top-2 right-2 sm:hidden z-10 pointer-events-none opacity-50">
-                <Badge variant="outline" className="bg-white/80 backdrop-blur text-[10px]"><MoveHorizontal className="h-3 w-3 mr-1" /> Desliza</Badge>
+                <Badge variant="outline" className="bg-background/80 backdrop-blur text-[10px]"><MoveHorizontal className="h-3 w-3 mr-1" /> Desliza</Badge>
             </div>
             
             {/* Contenedor Scrollable */}
-            <div className="flex-1 overflow-x-auto overflow-y-auto flex items-center bg-slate-50/30">
+            <div className="flex-1 overflow-x-auto overflow-y-auto flex items-center bg-muted/20">
                 <div className="min-w-[650px] mx-auto p-4 sm:p-8 space-y-8">
                     
                     {odontogram.tipo === 'mixto' && (
                     <div className="space-y-6">
                         <div className="flex justify-center">
-                            <Badge variant="outline" className="bg-slate-50">
+                            <Badge variant="outline" className="bg-muted/40">
                             Externo: Adulto | Interno: Niño
                             </Badge>
                         </div>
@@ -421,12 +421,12 @@ const OdontogramEditorPage: React.FC = () => {
                ) : (
                  <div className="divide-y">
                    {findingsList.map((item) => (
-                     <div key={item.number} className="p-3 hover:bg-slate-50 flex gap-3 text-sm">
+                     <div key={item.number} className="p-3 hover:bg-muted/40 flex gap-3 text-sm">
                        <div className="font-bold text-primary bg-primary/10 h-6 w-8 rounded flex items-center justify-center shrink-0 border border-primary/20">
                          {item.number}
                        </div>
                        <div>
-                         <p className="font-medium text-slate-800 text-xs sm:text-sm leading-tight whitespace-pre-wrap">{item.text}</p>
+                         <p className="font-medium text-foreground text-xs sm:text-sm leading-tight whitespace-pre-wrap">{item.text}</p>
                        </div>
                      </div>
                    ))}

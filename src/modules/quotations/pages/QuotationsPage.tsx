@@ -1,13 +1,14 @@
 // RF09: Quotations (EDITABLE Y SIN ERRORES)
-import React, { useState, useMemo } from 'react';
-import { Plus, Download, Eye, FileText, Book, ClipboardPlus, Search, Printer, Check, ChevronsUpDown, X, Trash2 } from 'lucide-react';
-import { usePatients } from '@/modules/patients';
+import React, { useEffect, useState, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { Plus, Eye, Book, ClipboardPlus, Search, Printer, Check, ChevronsUpDown, X, Trash2 } from 'lucide-react';
+import { type Patient, usePatients } from '@/modules/patients';
 import { Quotation, QuotationItem, useQuotations } from '@/modules/quotations';
 import { Service, useDentalServices } from '@/modules/services';
 import { formatCurrency, formatDate } from '@/shared/utils/utils';
 import { Button } from '@/shared/components/ui/button';
 import { SectionHelp } from '@/shared/components/SectionHelp';
-import { Card, CardContent, CardHeader, CardTitle } from '@/shared/components/ui/card';
+import { Card, CardContent } from '@/shared/components/ui/card';
 import {
   Table,
   TableBody,
@@ -47,6 +48,7 @@ import {
   PopoverTrigger,
 } from "@/shared/components/ui/popover"
 import { cn } from "@/shared/utils/utils"
+import { useCan } from '@/auth';
 
 interface FormQuotationItem {
   servicioId: string | null;
@@ -55,7 +57,11 @@ interface FormQuotationItem {
   precioUnitario: number | string; 
 }
 
+type QuotationStatusFilter = 'all' | 'borrador' | 'activo' | 'inactivo';
+type QuotationSortOrder = 'date_desc' | 'patient_asc';
 const Cotizaciones: React.FC = () => {
+  const { can, loading: permissionsLoading } = useCan();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { patients } = usePatients();
   const { services } = useDentalServices();
   const { quotations, quotationsLoading, addQuotation, updateQuotation, deleteQuotation } = useQuotations();
@@ -68,12 +74,15 @@ const Cotizaciones: React.FC = () => {
   const [openServiceIndex, setOpenServiceIndex] = useState<number | null>(null);
   const [serviceSearch, setServiceSearch] = useState('');
   const [recentServices, setRecentServices] = useState<Service[]>([]);
-  const [recentPatients, setRecentPatients] = useState<any[]>([]); 
+  const [recentPatients, setRecentPatients] = useState<Patient[]>([]);
   const [patientSearch, setPatientSearch] = useState('');
 
   const [mainSearch, setMainSearch] = useState('');
   const [dateFilterStart, setDateFilterStart] = useState('');
   const [dateFilterEnd, setDateFilterEnd] = useState('');
+  const [statusFilter, setStatusFilter] = useState<QuotationStatusFilter>('all');
+  const [sortOrder, setSortOrder] = useState<QuotationSortOrder>('date_desc');
+  const canCreateQuotation = can('quotations.create');
 
   const [formData, setFormData] = useState({
     pacienteId: '',
@@ -85,15 +94,24 @@ const Cotizaciones: React.FC = () => {
   });
 
   // --- LÓGICA DE FILTRADO ---
+  const suggestedPatients = useMemo(() => {
+    const selectedIds = new Set(recentPatients.map((patient) => patient.id));
+    const newestPatients = [...patients]
+      .sort((first, second) => second.fechaRegistro.localeCompare(first.fechaRegistro))
+      .filter((patient) => !selectedIds.has(patient.id));
+
+    return [...recentPatients, ...newestPatients].slice(0, 5);
+  }, [patients, recentPatients]);
+
   const filteredPatientOptions = useMemo(() => {
-    if (!patientSearch.trim()) return recentPatients;
+    if (!patientSearch.trim()) return suggestedPatients;
     const searchLower = patientSearch.toLowerCase();
-    return patients.filter(p => 
-        p.nombres.toLowerCase().includes(searchLower) || 
+    return patients.filter(p =>
+        p.nombres.toLowerCase().includes(searchLower) ||
         p.apellidos.toLowerCase().includes(searchLower) ||
         (p.curp && p.curp.toLowerCase().includes(searchLower))
     ).slice(0, 20);
-  }, [patients, patientSearch, recentPatients]);
+  }, [patients, patientSearch, suggestedPatients]);
 
   const filteredServiceOptions = useMemo(() => {
     if (!serviceSearch.trim()) return recentServices;
@@ -106,7 +124,7 @@ const Cotizaciones: React.FC = () => {
         .slice(0, 20);
   }, [services, serviceSearch, recentServices]);
 
-  const handleSelectPatient = (patient: any) => {
+  const handleSelectPatient = (patient: Patient) => {
       setFormData({ ...formData, pacienteId: patient.id });
       setRecentPatients(prev => {
           const filtered = prev.filter(p => p.id !== patient.id);
@@ -145,11 +163,21 @@ const Cotizaciones: React.FC = () => {
         const qDate = q.fecha;
         const matchesStart = dateFilterStart ? qDate >= dateFilterStart : true;
         const matchesEnd = dateFilterEnd ? qDate <= dateFilterEnd : true;
-        
-        return matchesText && matchesStart && matchesEnd;
-    });
-  }, [quotations, patients, mainSearch, dateFilterStart, dateFilterEnd]);
+        const matchesStatus = statusFilter === 'all' || q.estado === statusFilter;
 
+        return matchesText && matchesStart && matchesEnd && matchesStatus;
+    }).sort((first, second) => {
+        if (sortOrder === 'patient_asc') {
+          const firstPatient = patients.find(patient => patient.id === first.pacienteId);
+          const secondPatient = patients.find(patient => patient.id === second.pacienteId);
+          const firstName = firstPatient ? `${firstPatient.nombres} ${firstPatient.apellidos}` : '';
+          const secondName = secondPatient ? `${secondPatient.nombres} ${secondPatient.apellidos}` : '';
+          return firstName.localeCompare(secondName, 'es', { sensitivity: 'base' });
+        }
+
+        return second.fecha.localeCompare(first.fecha);
+    });
+  }, [quotations, patients, mainSearch, dateFilterStart, dateFilterEnd, statusFilter, sortOrder]);
   const handleOpenDialog = (quotation?: Quotation) => {
     if (quotation) {
         setEditingQuotationId(quotation.id);
@@ -174,6 +202,28 @@ const Cotizaciones: React.FC = () => {
     }
     setIsDialogOpen(true);
   };
+
+  useEffect(() => {
+    if (searchParams.get('action') !== 'newQuotation') return;
+    if (permissionsLoading) return;
+
+    const nextSearchParams = new URLSearchParams(searchParams);
+    nextSearchParams.delete('action');
+    setSearchParams(nextSearchParams, { replace: true });
+
+    if (!canCreateQuotation) return;
+
+    setEditingQuotationId(null);
+    setFormData({
+      pacienteId: '',
+      fecha: new Date().toISOString().split('T')[0],
+      items: [],
+      descuento: '',
+      estado: 'borrador',
+      notas: '',
+    });
+    setIsDialogOpen(true);
+  }, [canCreateQuotation, permissionsLoading, searchParams, setSearchParams]);
 
   const handleAddCatalogoItem = () => {
     setFormData({
@@ -221,8 +271,8 @@ const Cotizaciones: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.pacienteId || formData.items.length === 0) {
-      toast.error('Debe seleccionar un paciente y agregar al menos un servicio');
+    if (!formData.pacienteId || !formData.fecha || formData.items.length === 0) {
+      toast.error('Selecciona paciente, fecha y al menos un servicio');
       return;
     }
     
@@ -302,7 +352,6 @@ const Cotizaciones: React.FC = () => {
   const TableLoadingSkeleton = () => (
     Array(3).fill(0).map((_, index) => (
       <TableRow key={index}>
-        <TableCell><Skeleton className="h-4 w-12" /></TableCell>
         <TableCell><Skeleton className="h-4 w-32" /></TableCell>
         <TableCell><Skeleton className="h-4 w-24" /></TableCell>
         <TableCell><Skeleton className="h-4 w-16" /></TableCell>
@@ -319,11 +368,11 @@ const Cotizaciones: React.FC = () => {
   );
 
   return (
-    <div className="space-y-6 h-[calc(100vh-6rem)] flex flex-col">
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 shrink-0">
+    <div className="flex h-[calc(100vh-6rem)] flex-col space-y-4">
+      <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-3xl font-bold text-foreground">Cotizaciones</h1>
+            <h1 className="text-2xl font-semibold text-foreground">Cotizaciones</h1>
             <SectionHelp title="Acerca de Cotizaciones">
               <p>
                 Crea, consulta y actualiza presupuestos de tratamientos para cada paciente.
@@ -334,50 +383,95 @@ const Cotizaciones: React.FC = () => {
             </SectionHelp>
           </div>
         </div>
-        <Button onClick={() => handleOpenDialog()} size="lg">
-          <Plus className="h-5 w-5 mr-2" />
-          Nueva Cotización
-        </Button>
+        {canCreateQuotation && (
+          <Button onClick={() => handleOpenDialog()}>
+            <Plus className="mr-2 h-4 w-4" />
+            Nueva Cotización
+          </Button>
+        )}
       </div>
 
-      {/* Buscador y Filtros */}
-      <div className="flex flex-col md:flex-row gap-4 items-end shrink-0">
-        <div className="relative w-full md:max-w-xs">
+      <div className="grid shrink-0 gap-3 rounded-xl border bg-card p-3 sm:grid-cols-2 xl:grid-cols-6 xl:items-end">
+        <div className="space-y-1.5 sm:col-span-2 xl:col-span-1">
+            <Label htmlFor="quotation-search" className="text-xs">Paciente</Label>
+            <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Buscar por paciente, fecha o estado..."
+              id="quotation-search"
+              placeholder="Buscar paciente..."
               value={mainSearch}
               onChange={(e) => setMainSearch(e.target.value)}
-              className="pl-10"
+              className="h-9 pl-9"
             />
-        </div>
-        <div className="flex gap-2 items-center">
-            <div className="grid gap-1.5">
-                <Label htmlFor="dateStart" className="text-xs">Desde</Label>
-                <Input 
-                    id="dateStart"
-                    type="date" 
-                    value={dateFilterStart} 
-                    onChange={(e) => setDateFilterStart(e.target.value)}
-                    className="w-36" 
-                />
             </div>
-            <div className="grid gap-1.5">
-                <Label htmlFor="dateEnd" className="text-xs">Hasta</Label>
-                <Input 
-                    id="dateEnd"
-                    type="date" 
-                    value={dateFilterEnd} 
-                    onChange={(e) => setDateFilterEnd(e.target.value)}
-                    className="w-36" 
-                />
-            </div>
-            {(dateFilterStart || dateFilterEnd) && (
-                <Button variant="ghost" size="sm" onClick={() => { setDateFilterStart(''); setDateFilterEnd(''); }} className="mb-0.5">
-                    <X className="h-4 w-4" />
-                </Button>
-            )}
         </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="quotation-status" className="text-xs">Estado</Label>
+          <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as QuotationStatusFilter)}>
+            <SelectTrigger id="quotation-status" className="h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todos</SelectItem>
+              <SelectItem value="borrador">Borrador</SelectItem>
+              <SelectItem value="activo">Activo</SelectItem>
+              <SelectItem value="inactivo">Inactivo</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="quotation-sort" className="text-xs">Orden</Label>
+          <Select value={sortOrder} onValueChange={(value) => setSortOrder(value as QuotationSortOrder)}>
+            <SelectTrigger id="quotation-sort" className="h-9">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="date_desc">Fecha: más reciente</SelectItem>
+              <SelectItem value="patient_asc">Paciente: A–Z</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="dateStart" className="text-xs">Desde</Label>
+          <Input
+            id="dateStart"
+            type="date"
+            value={dateFilterStart}
+            onChange={(e) => setDateFilterStart(e.target.value)}
+            className="h-9"
+          />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="dateEnd" className="text-xs">Hasta</Label>
+          <Input
+            id="dateEnd"
+            type="date"
+            value={dateFilterEnd}
+            onChange={(e) => setDateFilterEnd(e.target.value)}
+            className="h-9"
+          />
+        </div>
+
+        <Button
+          type="button"
+          variant="ghost"
+          className="h-9 justify-start xl:justify-center"
+          disabled={!mainSearch && !dateFilterStart && !dateFilterEnd && statusFilter === 'all' && sortOrder === 'date_desc'}
+          onClick={() => {
+            setMainSearch('');
+            setDateFilterStart('');
+            setDateFilterEnd('');
+            setStatusFilter('all');
+            setSortOrder('date_desc');
+          }}
+        >
+          <X className="mr-2 h-4 w-4" />
+          Limpiar
+        </Button>
       </div>
 
       <Card className="relative isolate z-0 flex-1 flex flex-col overflow-hidden">
@@ -386,7 +480,6 @@ const Cotizaciones: React.FC = () => {
             <Table>
               <TableHeader className="sticky top-0 z-[1] bg-card shadow-sm">
                 <TableRow>
-                  <TableHead className="whitespace-nowrap">ID</TableHead>
                   <TableHead className="whitespace-nowrap">Paciente</TableHead>
                   <TableHead className="whitespace-nowrap">Fecha</TableHead>
                   <TableHead className="whitespace-nowrap">Servicios</TableHead>
@@ -400,7 +493,7 @@ const Cotizaciones: React.FC = () => {
                   <TableLoadingSkeleton />
                 ) : filteredQuotations.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center py-12 text-muted-foreground">
+                    <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
                       No hay cotizaciones encontradas.
                     </TableCell>
                   </TableRow>
@@ -409,7 +502,6 @@ const Cotizaciones: React.FC = () => {
                     const patient = patients.find((p) => p.id === quotation.pacienteId);
                     return (
                       <TableRow key={quotation.id}>
-                        <TableCell className="font-mono text-sm whitespace-nowrap">#{quotation.id.substring(0, 6)}...</TableCell>
                         <TableCell className="whitespace-nowrap">
                           {patient ? `${patient.nombres} ${patient.apellidos}` : 'Paciente eliminado'}
                         </TableCell>
@@ -469,20 +561,21 @@ const Cotizaciones: React.FC = () => {
             </DialogDescription>
           </DialogHeader>
           
-          <div className="flex-1 overflow-y-auto -mx-6 px-6">
-            <form id="quotation-form" onSubmit={handleSubmit} className="space-y-4 py-4 pb-8">
+          <div className="-mx-6 flex-1 overflow-y-auto px-6">
+            <form id="quotation-form" onSubmit={handleSubmit} className="space-y-4 py-3 pb-8">
                 <fieldset disabled={isFormLoading} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    
-                    <div className="flex flex-col space-y-2">
-                      <Label>Paciente *</Label>
+                <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
+
+                    <div className="grid gap-2">
+                      <Label htmlFor="quotation-patient" className="h-5 leading-5">Paciente *</Label>
                       <Popover open={openPatientCombobox} onOpenChange={setOpenPatientCombobox}>
                         <PopoverTrigger asChild>
                           <Button
+                            id="quotation-patient"
                             variant="outline"
                             role="combobox"
                             aria-expanded={openPatientCombobox}
-                            className="w-full justify-between"
+                            className="h-10 w-full justify-between px-3 font-normal"
                           >
                             {formData.pacienteId
                               ? (() => {
@@ -493,7 +586,7 @@ const Cotizaciones: React.FC = () => {
                             <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                           </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-[400px] p-0">
+                        <PopoverContent className="w-[min(24rem,calc(100vw-2rem))] p-0" align="start">
                           <Command>
                             <CommandInput 
                                 placeholder="Buscar paciente..." 
@@ -504,7 +597,7 @@ const Cotizaciones: React.FC = () => {
                                 {filteredPatientOptions.length === 0 ? (
                                     <CommandEmpty>No se encontró paciente.</CommandEmpty>
                                 ) : (
-                                    <CommandGroup heading={patientSearch ? "Resultados" : "Recientes"}>
+                                    <CommandGroup heading={patientSearch ? "Resultados" : "Pacientes recientes"}>
                                         <ScrollArea className="h-64">
                                         {filteredPatientOptions.map((patient) => (
                                             <CommandItem
@@ -533,30 +626,56 @@ const Cotizaciones: React.FC = () => {
                       </Popover>
                     </div>
 
-                    <div className="space-y-2">
-                    <Label htmlFor="fecha">Fecha</Label>
-                    <Input
+                    <div className="grid gap-2">
+                      <Label htmlFor="fecha" className="h-5 leading-5">Fecha *</Label>
+                      <Input
                         id="fecha"
                         type="date"
+                        required
                         value={formData.fecha}
                         onChange={(e) => setFormData({ ...formData, fecha: e.target.value })}
-                    />
+                        className="h-10"
+                      />
                     </div>
                 </div>
 
-                <div className="space-y-3">
-                    <div className="flex justify-between items-center">
-                    <Label>Servicios</Label>
-                    <div className="flex gap-2">
-                        <Button type="button" variant="outline" size="sm" onClick={handleAddCatalogoItem}>
-                        <Book className="h-4 w-4 mr-1" />
-                        Catálogo
-                        </Button>
-                        <Button type="button" variant="outline" size="sm" onClick={handleAddPersonalizadoItem}>
-                        <ClipboardPlus className="h-4 w-4 mr-1" />
-                        Personalizado
-                        </Button>
-                    </div>
+                {!formData.pacienteId && suggestedPatients.length > 0 && (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-xs text-muted-foreground">Pacientes recientes:</span>
+                    {suggestedPatients.slice(0, 3).map((patient) => (
+                      <Button
+                        key={patient.id}
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 max-w-40 truncate px-2 text-xs"
+                        onClick={() => handleSelectPatient(patient)}
+                      >
+                        <span className="truncate">{patient.nombres} {patient.apellidos}</span>
+                      </Button>
+                    ))}
+                  </div>
+                )}
+                {!formData.pacienteId && suggestedPatients.length === 0 && (
+                  <p className="text-xs text-muted-foreground">No hay pacientes registrados.</p>
+                )}
+
+                <div className="space-y-3 rounded-xl border bg-muted/20 p-3 sm:p-4" aria-required="true">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <Label>Servicios *</Label>
+                        <p className="text-xs text-muted-foreground">Agrega conceptos del catálogo o personalizados.</p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                          <Button type="button" variant="outline" size="sm" onClick={handleAddCatalogoItem}>
+                          <Book className="h-4 w-4 mr-1" />
+                          Catálogo
+                          </Button>
+                          <Button type="button" variant="outline" size="sm" onClick={handleAddPersonalizadoItem}>
+                          <ClipboardPlus className="h-4 w-4 mr-1" />
+                          Personalizado
+                          </Button>
+                      </div>
                     </div>
                     
                     {formData.items.map((item, index) => (
@@ -658,7 +777,11 @@ const Cotizaciones: React.FC = () => {
                     </div>
                     ))}
                     
-                    {formData.items.length === 0 && <p className="text-sm text-muted-foreground text-center">Agrega servicios a la cotización.</p>}
+                    {formData.items.length === 0 && (
+                      <p className="rounded-lg border border-dashed bg-background/60 py-6 text-center text-sm text-muted-foreground">
+                        Aún no hay servicios agregados.
+                      </p>
+                    )}
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -704,7 +827,7 @@ const Cotizaciones: React.FC = () => {
             </form>
           </div>
 
-          <div className="p-4 bg-muted rounded-t-xl border-t">
+          <div className="rounded-t-xl border-t bg-muted p-4">
                 <div className="flex justify-between text-sm">
                 <span>Subtotal:</span>
                 <span>{formatCurrency(calculateSubtotal())}</span>

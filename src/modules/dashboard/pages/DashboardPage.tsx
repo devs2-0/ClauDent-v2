@@ -1,258 +1,633 @@
-// RF11: Dashboard (RESPONSIVE TABLET)
-import React, { useState, useMemo } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Users, Stethoscope, FileText, TrendingUp, Search, Package } from 'lucide-react';
-import { motion } from 'framer-motion';
-import { usePackages } from '@/modules/packages';
-import { usePatients } from '@/modules/patients';
-import { useQuotations } from '@/modules/quotations';
-import { useDentalServices } from '@/modules/services';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/components/ui/card';
-import { Button } from '@/shared/components/ui/button';
-import { Input } from '@/shared/components/ui/input';
-import { Skeleton } from '@/shared/components/ui/skeleton';
-import { formatCurrency, formatDate } from '@/shared/utils/utils';
-import { Badge } from '@/shared/components/ui/badge';
+import React, { useEffect, useMemo, useState } from "react";
+import { Link } from "react-router-dom";
+import {
+  CalendarCheck,
+  CalendarDays,
+  CalendarPlus,
+  CalendarX,
+  CircleCheck,
+  CircleDollarSign,
+  Clock3,
+  FilePlus2,
+  Package,
+  ShoppingCart,
+  UserPlus,
+  UserRoundPlus,
+} from "lucide-react";
 
-const Dashboard: React.FC = () => {
-  const { patients, patientsLoading } = usePatients();
-  const { services } = useDentalServices();
-  const { quotations } = useQuotations();
-  const { paquetes, paquetesLoading } = usePackages();
-  const navigate = useNavigate();
-  
-  const [searchQuery, setSearchQuery] = useState('');
+import { type PermissionKey, useCan } from "@/auth";
+import { appointmentService, type Appointment } from "@/modules/agenda";
+import { usePackages } from "@/modules/packages";
+import { useCashRegister } from "@/modules/ventas";
+import { Badge } from "@/shared/components/ui/badge";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/shared/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/shared/components/ui/dialog";
+import { Skeleton } from "@/shared/components/ui/skeleton";
+import { cn, formatCurrency, formatDate } from "@/shared/utils/utils";
 
-  const stats = [
-    {
-      title: 'Total Pacientes',
-      value: patients.length,
-      icon: Users,
-      description: `${patients.filter(p => p.estado === 'activo').length} activos`,
-      color: 'text-primary',
-      link: '/pacientes',
-    },
-    {
-      title: 'Servicios',
-      value: services.length,
-      icon: Stethoscope,
-      description: `${services.filter(s => s.estado === 'activo').length} disponibles`,
-      color: 'text-secondary',
-      link: '/servicios',
-    },
-    {
-      title: 'Cotizaciones',
-      value: quotations.length,
-      icon: FileText,
-      description: 'Total generadas',
-      color: 'text-accent',
-      link: '/cotizaciones',
-    },
-  ];
+interface QuickAction {
+  label: string;
+  description: string;
+  path: string;
+  icon: React.ElementType;
+  permissions: PermissionKey[];
+}
 
-  const recentPatients = patients.slice(0, 10); 
+const quickActions: QuickAction[] = [
+  {
+    label: "Nueva cita",
+    description: "Agendar atención",
+    path: "/agenda?action=newAppointment",
+    icon: CalendarPlus,
+    permissions: ["agenda.view", "agenda.appointments.create"],
+  },
+  {
+    label: "Nuevo paciente",
+    description: "Registrar expediente",
+    path: "/pacientes?action=newPatient",
+    icon: UserPlus,
+    permissions: ["patients.view", "patients.create"],
+  },
+  {
+    label: "Nueva cotización",
+    description: "Crear presupuesto",
+    path: "/cotizaciones?action=newQuotation",
+    icon: FilePlus2,
+    permissions: ["quotations.view", "quotations.create"],
+  },
+  {
+    label: "Nueva venta",
+    description: "Registrar cobro",
+    path: "/ventas?action=newSale",
+    icon: ShoppingCart,
+    permissions: ["sales.view", "sales.create"],
+  },
+];
 
-  const today = new Date().toISOString().split('T')[0];
-  const activePaquetes = useMemo(() => {
-    return paquetes.filter(p =>
-      p.estado === 'activo' &&
-      p.fechaInicio <= today &&
-      p.fechaFin >= today &&
-      p.nombre.toLowerCase().includes(searchQuery.toLowerCase())
+const getLocalDateValue = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, "0");
+  const day = String(now.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+};
+
+const timeToMinutes = (value: string) => {
+  const [hours, minutes] = value.split(":").map(Number);
+  return (
+    (Number.isFinite(hours) ? hours : 0) * 60 +
+    (Number.isFinite(minutes) ? minutes : 0)
+  );
+};
+
+const ActiveShiftIncomeCard: React.FC = () => {
+  const {
+    cashClosures,
+    cashClosuresLoading,
+    cashMovements,
+    cashMovementsLoading,
+  } = useCashRegister();
+
+  const openCashClosure = useMemo(
+    () => cashClosures.find((closure) => closure.estado === "abierto") ?? null,
+    [cashClosures],
+  );
+
+  const incomeMovements = useMemo(() => {
+    if (!openCashClosure) return [];
+
+    return cashMovements.filter(
+      (movement) =>
+        movement.corteId === openCashClosure.id &&
+        movement.estado === "activo" &&
+        movement.tipo === "ingreso" &&
+        movement.referenciaTipo !== "apertura" &&
+        !movement.concepto.toLowerCase().includes("apertura"),
     );
-  }, [paquetes, searchQuery, today]);
+  }, [cashMovements, openCashClosure]);
+
+  const activeShiftIncome = useMemo(
+    () =>
+      incomeMovements.reduce(
+        (total, movement) => total + (Number(movement.monto) || 0),
+        0,
+      ),
+    [incomeMovements],
+  );
+
+  const loading = cashClosuresLoading || cashMovementsLoading;
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-foreground mb-2">
-          Bienvenido
-        </h1>
-        <p className="text-muted-foreground">
-          Aquí está el resumen de tu consultorio
-        </p>
-      </div>
+    <Card className="w-full min-w-0 overflow-hidden border-muted/70 shadow-sm sm:max-w-sm">
+      <CardContent className="flex items-center justify-between gap-4 p-3 sm:p-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10">
+            <CircleDollarSign className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+          </span>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-        {stats.map((stat, index) => {
-          const Icon = stat.icon;
-          return (
-            <motion.div
-              key={stat.title}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.1 }}
-            >
-              <Link to={stat.link}>
-                <Card className="hover:shadow-lg transition-shadow cursor-pointer border-2 hover:border-primary">
-                  <CardHeader className="flex flex-row items-center justify-between pb-2">
-                    <CardTitle className="text-sm font-medium text-muted-foreground">
-                      {stat.title}
-                    </CardTitle>
-                    <Icon className={`h-5 w-5 ${stat.color}`} />
-                  </CardHeader>
-                  <CardContent>
-                    <div className="text-3xl font-bold text-foreground mb-1">
-                      {stat.value}
+          <div className="min-w-0">
+            <p className="truncate text-xs font-medium text-muted-foreground">
+              Ingresos del turno
+            </p>
+            {loading ? (
+              <Skeleton className="mt-1 h-6 w-28" />
+            ) : (
+              <p className="truncate text-xl font-semibold tracking-tight text-foreground">
+                {formatCurrency(activeShiftIncome)}
+              </p>
+            )}
+            <p className="truncate text-[11px] text-muted-foreground">
+              {openCashClosure
+                ? openCashClosure.turnoNombre || "Turno activo"
+                : "Sin turno activo"}
+            </p>
+          </div>
+        </div>
+
+        {!loading && (
+          <Badge
+            variant={openCashClosure ? "default" : "secondary"}
+            className="shrink-0"
+          >
+            {openCashClosure ? "Abierta" : "Cerrada"}
+          </Badge>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+
+interface DailyAgendaCardProps {
+  appointments: Appointment[];
+  loading: boolean;
+  unavailable: boolean;
+  today: string;
+}
+
+const DailyAgendaCard: React.FC<DailyAgendaCardProps> = ({
+  appointments,
+  loading,
+  unavailable,
+  today,
+}) => {
+  const todayAppointments = useMemo(
+    () => appointments.filter((appointment) => appointment.startDate === today),
+    [appointments, today],
+  );
+
+  const agendaMetrics = useMemo(
+    () => [
+      {
+        label: "Citas del día",
+        value: todayAppointments.length,
+        icon: CalendarDays,
+        iconClassName: "text-primary",
+      },
+      {
+        label: "Confirmadas",
+        value: todayAppointments.filter(
+          (appointment) => appointment.status === "confirmed",
+        ).length,
+        icon: CalendarCheck,
+        iconClassName: "text-sky-600 dark:text-sky-400",
+      },
+      {
+        label: "Atendidas",
+        value: todayAppointments.filter(
+          (appointment) => appointment.status === "completed",
+        ).length,
+        icon: CircleCheck,
+        iconClassName: "text-emerald-600 dark:text-emerald-400",
+      },
+      {
+        label: "Canceladas",
+        value: todayAppointments.filter(
+          (appointment) => appointment.status === "cancelled",
+        ).length,
+        icon: CalendarX,
+        iconClassName: "text-destructive",
+      },
+      {
+        label: "Sin cita",
+        value: todayAppointments.filter(
+          (appointment) => appointment.appointmentType === "walk_in",
+        ).length,
+        icon: UserRoundPlus,
+        iconClassName: "text-amber-600 dark:text-amber-400",
+      },
+      {
+        label: "Por confirmar",
+        value: todayAppointments.filter(
+          (appointment) =>
+            appointment.appointmentType !== "walk_in" &&
+            appointment.status === "scheduled",
+        ).length,
+        icon: Clock3,
+        iconClassName: "text-amber-600 dark:text-amber-400",
+      },
+    ],
+    [todayAppointments],
+  );
+
+  const upcomingAppointments = useMemo(() => {
+    const now = new Date();
+    const currentMinutes = now.getHours() * 60 + now.getMinutes();
+
+    return [...todayAppointments]
+      .filter(
+        (appointment) =>
+          appointment.appointmentType !== "walk_in" &&
+          (appointment.status === "scheduled" ||
+            appointment.status === "confirmed") &&
+          timeToMinutes(appointment.startTime) >= currentMinutes,
+      )
+      .sort(
+        (first, second) =>
+          timeToMinutes(first.startTime) - timeToMinutes(second.startTime),
+      );
+  }, [todayAppointments]);
+
+  return (
+    <Card
+      className="flex min-h-[420px] min-w-0 flex-col overflow-hidden border-muted/70 shadow-sm lg:h-full lg:min-h-0"
+    >
+      <CardHeader className="flex shrink-0 flex-row items-start justify-between gap-3 p-4 pb-3 sm:p-5 sm:pb-3">
+        <div className="min-w-0">
+          <CardTitle className="text-base">Resumen de agenda</CardTitle>
+          <p className="mt-1 text-lg font-semibold leading-none text-primary sm:text-xl">
+            {formatDate(today)}
+          </p>
+        </div>
+        <Clock3 className="mt-1 h-5 w-5 shrink-0 text-muted-foreground" />
+      </CardHeader>
+
+      <CardContent className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4 pt-0 sm:p-5 sm:pt-0">
+        {loading ? (
+          <>
+            <div className="grid shrink-0 grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+              {Array.from({ length: 6 }, (_, index) => (
+                <Skeleton key={index} className="h-20 rounded-lg" />
+              ))}
+            </div>
+            <Skeleton className="h-40 rounded-lg" />
+          </>
+        ) : unavailable ? (
+          <p className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
+            Agenda no disponible.
+          </p>
+        ) : (
+          <>
+            <div className="grid shrink-0 grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-6">
+              {agendaMetrics.map((metric) => {
+                const Icon = metric.icon;
+                return (
+                  <div
+                    key={metric.label}
+                    className="min-w-0 rounded-lg border bg-muted/20 p-3"
+                  >
+                    <div className="flex items-center justify-between gap-1">
+                      <span className="truncate text-[11px] text-muted-foreground">
+                        {metric.label}
+                      </span>
+                      <Icon
+                        className={`h-3.5 w-3.5 shrink-0 ${metric.iconClassName}`}
+                      />
                     </div>
-                    <p className="text-sm text-muted-foreground">
-                      {stat.description}
+                    <p className="mt-2 text-xl font-semibold tabular-nums">
+                      {metric.value}
                     </p>
-                  </CardContent>
-                </Card>
-              </Link>
-            </motion.div>
-          );
-        })}
-      </div>
+                  </div>
+                );
+              })}
+            </div>
 
-      {/* Quick Actions */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Accesos Rápidos</CardTitle>
-          <CardDescription>Acciones frecuentes</CardDescription>
-        </CardHeader>
-        <CardContent className="grid grid-cols-2 md:grid-cols-3 gap-4">
-          <Link to="/pacientes">
-            <Button variant="outline" className="w-full h-24 flex flex-col gap-2">
-              <Users className="h-6 w-6" />
-              <span className="text-sm">Nuevo Paciente</span>
-            </Button>
-          </Link>
-          <Link to="/cotizaciones">
-            <Button variant="outline" className="w-full h-24 flex flex-col gap-2">
-              <FileText className="h-6 w-6" />
-              <span className="text-sm">Nueva Cotización</span>
-            </Button>
-          </Link>
-          <Link to="/servicios">
-            <Button variant="outline" className="w-full h-24 flex flex-col gap-2">
-              <Stethoscope className="h-6 w-6" />
-              <span className="text-sm">Ver Servicios</span>
-            </Button>
-          </Link>
-        </CardContent>
+            <div className="rounded-lg border bg-muted/10">
+              <div className="shrink-0 border-b px-3 py-3">
+                <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  Próximas citas
+                </p>
+              </div>
+
+              {upcomingAppointments.length > 0 ? (
+                <div className="px-3 py-2">
+                  <div className="space-y-2">
+                    {upcomingAppointments.map((appointment) => (
+                      <div
+                        key={appointment.id}
+                        className="flex min-w-0 items-center gap-3 rounded-lg border bg-background/40 px-3 py-2"
+                      >
+                        <span className="w-12 shrink-0 font-semibold tabular-nums text-primary">
+                          {appointment.startTime}
+                        </span>
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium">
+                            {appointment.patientName || "Paciente por confirmar"}
+                          </p>
+                          <p className="truncate text-xs text-muted-foreground">
+                            {appointment.serviceName ||
+                              appointment.reason ||
+                              "Consulta"}
+                          </p>
+                        </div>
+                        <Badge
+                          variant={
+                            appointment.status === "confirmed"
+                              ? "default"
+                              : "secondary"
+                          }
+                          className="shrink-0"
+                        >
+                          {appointment.status === "confirmed"
+                            ? "Confirmada"
+                            : "Programada"}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <p className="px-3 py-8 text-center text-sm text-muted-foreground">
+                  Sin citas próximas.
+                </p>
+              )}
+            </div>
+          </>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+
+interface ActivePackagesCardProps {
+  activePackages: ReturnType<typeof usePackages>["paquetes"];
+  loading: boolean;
+}
+
+type DashboardPackage = ActivePackagesCardProps["activePackages"][number];
+
+const ActivePackagesCard: React.FC<ActivePackagesCardProps> = ({
+  activePackages,
+  loading,
+}) => {
+  const [selectedPackage, setSelectedPackage] = useState<DashboardPackage | null>(null);
+
+  return (
+    <>
+      <Card
+        className="flex min-h-[420px] min-w-0 flex-col overflow-hidden border-muted/70 shadow-sm lg:h-full lg:min-h-0"
+      >
+      <CardHeader className="flex shrink-0 flex-row items-start justify-between gap-3 p-4 pb-3 sm:p-5 sm:pb-3">
+        <div className="min-w-0">
+          <CardTitle className="text-base">Paquetes activos</CardTitle>
+          <p className="mt-1 text-lg font-semibold leading-none text-primary sm:text-xl">
+            {loading ? "Cargando" : `${activePackages.length} vigentes`}
+          </p>
+        </div>
+        <Package className="mt-1 h-5 w-5 shrink-0 text-muted-foreground" />
+      </CardHeader>
+
+      <CardContent className="min-h-0 flex-1 overflow-y-auto p-4 pt-0 sm:p-5 sm:pt-0">
+        {loading ? (
+          <div className="space-y-2 pr-1">
+            {Array.from({ length: 5 }, (_, index) => (
+              <Skeleton key={index} className="h-20 rounded-lg" />
+            ))}
+          </div>
+        ) : activePackages.length === 0 ? (
+          <p className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
+            No hay paquetes activos vigentes.
+          </p>
+        ) : (
+          <div className="space-y-2 pr-1">
+            {activePackages.map((paquete) => (
+              <button
+                  type="button"
+                  key={paquete.id}
+                  onClick={() => setSelectedPackage(paquete)}
+                  className="flex w-full min-w-0 items-center justify-between gap-3 overflow-hidden rounded-lg border bg-muted/10 p-3 text-left transition-colors hover:bg-muted/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-medium text-foreground">
+                      {paquete.nombre}
+                    </p>
+                    <p className="mt-1 truncate text-xs text-muted-foreground">
+                      Vigente hasta {formatDate(paquete.fechaFin)}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="text-sm font-semibold tabular-nums text-foreground">
+                      {formatCurrency(paquete.precioTotal)}
+                    </p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {paquete.serviciosIncluidos.length} servicios
+                    </p>
+                  </div>
+                </button>
+            ))}
+          </div>
+        )}
+      </CardContent>
       </Card>
 
-      <div className="flex flex-col gap-6">
-        
-        {/* 1. Paquetes Activos */}
-        <Card className="h-[400px] flex flex-col overflow-hidden">
-          <CardHeader>
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <div>
-                <CardTitle>Paquetes Activos</CardTitle>
-                <CardDescription>Promociones vigentes</CardDescription>
-              </div>
-            </div>
-            <div className="relative w-full mt-2">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                type="search"
-                placeholder="Buscar paquetes..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
-            </div>
-          </CardHeader>
-          <CardContent className="flex-1 overflow-hidden p-0">
-            <div className="h-full overflow-auto">
-              {/* Contenedor interno ancho para evitar aplastamiento en tablet */}
-              <div className="min-w-[600px] p-6 pt-0 space-y-4">
-                {paquetesLoading ? (
-                  Array(2).fill(0).map((_, i) => (
-                    <div key={i} className="flex items-center justify-between p-4 rounded-2xl border">
-                      <Skeleton className="h-10 w-10 rounded-full" />
-                      <div className="space-y-1 flex-1 ml-4">
-                        <Skeleton className="h-4 w-32" />
-                        <Skeleton className="h-3 w-20" />
-                      </div>
-                    </div>
-                  ))
-                ) : activePaquetes.length === 0 ? (
-                  <p className="text-muted-foreground text-center py-10">
-                    {searchQuery ? "No se encontraron paquetes" : "No hay paquetes activos vigentes."}
-                  </p>
-                ) : (
-                  activePaquetes.map((paquete) => (
+      <Dialog open={Boolean(selectedPackage)} onOpenChange={(open) => !open && setSelectedPackage(null)}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>{selectedPackage?.nombre}</DialogTitle>
+            <DialogDescription>
+              {selectedPackage
+                ? `${selectedPackage.serviciosIncluidos.length} servicio${selectedPackage.serviciosIncluidos.length === 1 ? "" : "s"} incluido${selectedPackage.serviciosIncluidos.length === 1 ? "" : "s"}`
+                : "Servicios incluidos"}
+            </DialogDescription>
+          </DialogHeader>
+          {selectedPackage && (
+            <div className="space-y-3">
+              {selectedPackage.serviciosIncluidos.length === 0 ? (
+                <p className="rounded-lg border border-dashed bg-muted/20 px-3 py-6 text-center text-sm text-muted-foreground">
+                  Sin servicios registrados.
+                </p>
+              ) : (
+                <div className="max-h-72 space-y-2 overflow-y-auto pr-1">
+                  {selectedPackage.serviciosIncluidos.map((service, index) => (
                     <div
-                      key={paquete.id}
-                      onClick={() => navigate('/servicios')}
-                      className="flex items-center justify-between p-4 rounded-2xl border hover:bg-muted transition-colors cursor-pointer"
+                      key={`${service.servicioId || service.nombre}-${index}`}
+                      className="flex min-w-0 items-center justify-between gap-3 rounded-lg border bg-muted/20 px-3 py-2.5"
                     >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="h-10 w-10 rounded-full bg-secondary/10 flex items-center justify-center flex-shrink-0">
-                          <Package className="h-5 w-5 text-secondary" />
-                        </div>
-                        <div className="min-w-0">
-                          <p className="font-medium text-foreground truncate">
-                            {paquete.nombre}
-                          </p>
-                          <p className="text-sm text-muted-foreground">
-                            Hasta: {formatDate(paquete.fechaFin)}
-                          </p>
-                        </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">{service.nombre}</p>
+                        <p className="text-xs text-muted-foreground">
+                          Cantidad: {Number(service.cantidad) || 1}
+                        </p>
                       </div>
-                      <div className="text-right shrink-0 ml-4">
-                        <p className="text-lg font-bold text-foreground">{formatCurrency(paquete.precioTotal)}</p>
-                        <Badge variant="secondary" className="ml-auto w-fit block">{paquete.serviciosIncluidos.length} servicios</Badge>
-                      </div>
+                      <span className="shrink-0 text-sm font-medium tabular-nums">
+                        {formatCurrency((Number(service.precioOriginal) || 0) * (Number(service.cantidad) || 1))}
+                      </span>
                     </div>
-                  ))
-                )}
+                  ))}
+                </div>
+              )}
+              <div className="flex flex-wrap gap-2 border-t pt-3 text-xs text-muted-foreground">
+                <Badge variant="secondary">{formatCurrency(selectedPackage.precioTotal)}</Badge>
+                <Badge variant="outline">Vigente hasta {formatDate(selectedPackage.fechaFin)}</Badge>
               </div>
             </div>
-          </CardContent>
-        </Card>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+};
 
-        {/* 2. Pacientes Recientes */}
-        <Card className="h-[400px] flex flex-col overflow-hidden">
-          <CardHeader>
-            <CardTitle>Pacientes Recientes</CardTitle>
-            <CardDescription>Últimos registros</CardDescription>
-          </CardHeader>
-          <CardContent className="flex-1 overflow-hidden p-0">
-            <div className="h-full overflow-auto">
-              {/* Contenedor interno ancho */}
-              <div className="min-w-[600px] p-6 pt-0 space-y-4">
-                {patientsLoading ? (
-                  <p className="text-muted-foreground p-4">Cargando pacientes...</p>
-                ) : recentPatients.length === 0 ? (
-                  <p className="text-muted-foreground text-center py-10">No hay pacientes recientes.</p>
-                ) : (
-                  recentPatients.map((patient) => (
-                    <Link
-                      key={patient.id}
-                      to={`/pacientes/${patient.id}`}
-                      className="flex items-center justify-between p-4 rounded-2xl border hover:bg-muted transition-colors"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
-                          <span className="text-primary font-semibold">
-                            {patient.nombres && patient.nombres[0]}
-                            {patient.apellidos && patient.apellidos[0]}
-                          </span>
-                        </div>
-                        <div className="min-w-0">
-                          <p className="font-medium text-foreground truncate">
-                            {patient.nombres} {patient.apellidos}
-                          </p>
-                          <p className="text-sm text-muted-foreground truncate">
-                            {patient.curp || 'N/A'}
-                          </p>
-                        </div>
-                      </div>
-                      <TrendingUp className="h-5 w-5 text-muted-foreground shrink-0 ml-4" />
-                    </Link>
-                  ))
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+const Dashboard: React.FC = () => {
+  const { can } = useCan();
+  const { paquetes, paquetesLoading } = usePackages();
+  const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [appointmentsLoading, setAppointmentsLoading] = useState(false);
+  const [agendaUnavailable, setAgendaUnavailable] = useState(false);
+
+  const today = getLocalDateValue();
+  const canViewAgenda = can("agenda.view");
+  const canViewPackages = can("packages.view");
+  const canViewActiveShiftIncome =
+    can("sales.view") ||
+    can("sales.reports.view") ||
+    can("reports.view") ||
+    can("sales.cashShift.open") ||
+    can("sales.cashShift.close") ||
+    can("sales.cashCuts.history.view");
+
+  const visibleQuickActions = quickActions.filter((action) =>
+    action.permissions.every((permission) => can(permission)),
+  );
+
+  const activePackages = useMemo(
+    () =>
+      paquetes
+        .filter(
+          (paquete) =>
+            paquete.estado === "activo" &&
+            paquete.fechaInicio <= today &&
+            paquete.fechaFin >= today,
+        )
+        .sort((first, second) => first.fechaFin.localeCompare(second.fechaFin)),
+    [paquetes, today],
+  );
+
+  useEffect(() => {
+    let mounted = true;
+
+    if (!canViewAgenda) {
+      setAppointments([]);
+      setAppointmentsLoading(false);
+      setAgendaUnavailable(false);
+      return () => {
+        mounted = false;
+      };
+    }
+
+    setAppointmentsLoading(true);
+    setAgendaUnavailable(false);
+
+    void appointmentService
+      .listAppointments()
+      .then((nextAppointments) => {
+        if (mounted) setAppointments(nextAppointments);
+      })
+      .catch(() => {
+        if (mounted) setAgendaUnavailable(true);
+      })
+      .finally(() => {
+        if (mounted) setAppointmentsLoading(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [canViewAgenda]);
+
+  return (
+    <div className="mx-auto flex min-h-[calc(100dvh-7rem)] w-full max-w-[1600px] flex-col gap-4 overflow-x-hidden pb-4">
+      <header className="flex shrink-0 flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
+          <p className="text-base font-semibold text-primary sm:text-lg">Bienvenido</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-foreground">
+            Panel de ClauDent
+          </h1>
+        </div>
+
+        {canViewActiveShiftIncome && <ActiveShiftIncomeCard />}
+      </header>
+
+      {visibleQuickActions.length > 0 && (
+        <section
+          className="shrink-0 rounded-xl border bg-card p-4 shadow-sm sm:p-5"
+          aria-labelledby="quick-access-title"
+        >
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 id="quick-access-title" className="text-base font-semibold sm:text-lg">
+              Acceso rápido
+            </h2>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4 xl:gap-5">
+            {visibleQuickActions.map((action) => {
+              const Icon = action.icon;
+              return (
+                <Link
+                  key={`${action.path}-${action.label}`}
+                  to={action.path}
+                  className="group flex min-h-16 min-w-0 items-center gap-3 overflow-hidden rounded-xl border bg-muted/15 p-3 transition-colors hover:border-primary/40 hover:bg-muted/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:p-4"
+                >
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 transition-colors group-hover:bg-primary/15">
+                    <Icon className="h-5 w-5 text-primary" />
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-semibold leading-tight text-foreground">
+                      {action.label}
+                    </span>
+                    <span className="mt-1 block truncate text-xs leading-tight text-muted-foreground">
+                      {action.description}
+                    </span>
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
+      )}
+
+      {(canViewAgenda || canViewPackages) && (
+      <section className={cn(
+        "grid gap-4 lg:h-[calc(100dvh-22rem)] lg:min-h-[460px] lg:overflow-hidden",
+        canViewAgenda && canViewPackages && "lg:grid-cols-2",
+      )}>
+        {canViewAgenda && (
+          <DailyAgendaCard
+            appointments={appointments}
+            loading={appointmentsLoading}
+            unavailable={agendaUnavailable}
+            today={today}
+          />
+        )}
+
+        {canViewPackages && (
+          <ActivePackagesCard
+            activePackages={activePackages}
+            loading={paquetesLoading}
+          />
+        )}
+      </section>
+      )}
     </div>
   );
 };

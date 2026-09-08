@@ -6,6 +6,7 @@ import {
   UserCheck,
 } from "lucide-react";
 import { toast } from "sonner";
+import { useSearchParams } from "react-router-dom";
 
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
@@ -166,7 +167,8 @@ const AppointmentManager = ({
   refreshKey = 0,
 }: AppointmentManagerProps) => {
   const { currentUser } = useAuth();
-  const { can } = useCan();
+  const { can, loading: permissionsLoading } = useCan();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const [agendaUser, setAgendaUser] = useState<AgendaLinkedUser | null>(null);
   const [agendaProfileLoading, setAgendaProfileLoading] = useState(true);
@@ -743,6 +745,19 @@ const AppointmentManager = ({
 
     setAppointmentDialogOpen(true);
   };
+
+  useEffect(() => {
+    if (searchParams.get("action") !== "newAppointment") return;
+    if (permissionsLoading) return;
+
+    const nextSearchParams = new URLSearchParams(searchParams);
+    nextSearchParams.delete("action");
+    setSearchParams(nextSearchParams, { replace: true });
+
+    if (canCreateAppointment) openManualAppointmentDialog();
+    // La acción se consume una sola vez; el formulario conserva sus valores predeterminados actuales.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [canCreateAppointment, permissionsLoading, searchParams, setSearchParams]);
 
   const handleSelectCalendarSlot = (slot: CalendarSlotSelection) => {
     updateSelectedDate(slot.startDate);

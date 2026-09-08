@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { Outlet, useNavigate } from "react-router-dom";
 import { LogOut, Search, User } from "lucide-react";
 
+import { GlobalNotificationsButton } from "@/app/components/GlobalNotificationsButton";
 import { useAuth } from "@/auth";
 import { usePatients } from "@/modules/patients";
 import { ThemeSwitch } from "@/shared/components/ThemeSwitch";
@@ -60,13 +61,16 @@ const AppHeader = () => {
 
   return (
     <header className="sticky top-0 z-40 flex h-16 items-center gap-2 border-b bg-background/95 px-3 backdrop-blur supports-[backdrop-filter]:bg-background/80 lg:px-5">
-      <SidebarTrigger className="md:hidden" aria-label="Abrir menú" />
-      <div className="hidden items-center gap-2 sm:flex">
-        <img src="/logo.png" alt="ClauDent" className="h-9 w-9 rounded-md object-contain" />
-        <h1 className="hidden text-base font-bold text-foreground md:block">ClauDent</h1>
+      <div className="flex shrink-0 items-center gap-1 border-r pr-3 sm:gap-2 sm:pr-4">
+        <SidebarTrigger className="md:hidden" aria-label="Abrir menú" />
+        <div className="hidden items-center gap-2 sm:flex">
+          <img src="/logo.png" alt="ClauDent" className="h-9 w-9 rounded-md object-contain" />
+          <h1 className="hidden text-base font-bold text-foreground md:block">ClauDent</h1>
+        </div>
+        <ThemeSwitch />
       </div>
 
-      <div ref={searchRef} className="relative mx-auto max-w-lg flex-1">
+      <div ref={searchRef} className="relative mx-auto min-w-0 max-w-lg flex-1">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           type="search"
@@ -110,8 +114,8 @@ const AppHeader = () => {
         )}
       </div>
 
-      <div className="flex items-center gap-1 sm:gap-2">
-        <ThemeSwitch />
+      <div className="flex shrink-0 items-center gap-1 border-l pl-3 sm:gap-2 sm:pl-4">
+        <GlobalNotificationsButton />
         <p className="hidden max-w-44 truncate text-sm text-muted-foreground xl:block">
           {currentUser?.displayName || currentUser?.email}
         </p>
@@ -153,7 +157,7 @@ export const ProtectedLayout: React.FC = () => (
     <AppSidebar />
     <SidebarInset className="flex min-h-screen w-full flex-col overflow-x-hidden bg-background transition-all">
       <AppHeader />
-      <main className="flex-1 overflow-y-auto p-3 pb-20 sm:p-4 lg:p-5 lg:pb-5">
+      <main className="app-module-content flex-1 overflow-y-auto p-3 pb-20 sm:p-4 lg:p-5 lg:pb-5">
         <Outlet />
       </main>
       <div className="block lg:hidden">

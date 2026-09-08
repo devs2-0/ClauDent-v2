@@ -7,28 +7,36 @@ import {
   DollarSign,
   FileText,
   Heart,
-  Paperclip,
+  Trash2,
   User,
 } from "lucide-react";
 import { motion } from "framer-motion";
+import { toast } from "sonner";
 
+import { useCan } from "@/auth";
 import { usePatients } from "@/modules/patients";
 import PatientAntecedentes from "@/modules/patients/components/PatientAntecedentes";
-import PatientAttachments from "@/modules/patients/components/PatientAttachments";
 import PatientData from "@/modules/patients/components/PatientData";
 import PatientHistory from "@/modules/patients/components/PatientHistory";
 import PatientOdontogram from "@/modules/patients/components/PatientOdontogram";
 import PatientPayments from "@/modules/patients/components/PatientPayments";
 import PatientQuotations from "@/modules/patients/components/PatientQuotations";
+import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent } from "@/shared/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/components/ui/tabs";
-import { calculateAge } from "@/shared/utils/utils";
+import { useConfirmAction } from "@/shared/hooks/useConfirmAction";
+import {
+  calculatePatientAge,
+  getPatientSexLabel,
+} from "@/modules/patients/utils/patientUi";
 
 const PatientRecordPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { patients } = usePatients();
+  const { patients, updatePatient } = usePatients();
+  const { can } = useCan();
+  const { confirm, confirmationDialog } = useConfirmAction();
   const [activeTab, setActiveTab] = useState("datos");
 
   const patient = patients.find((item) => item.id === id);
@@ -47,26 +55,78 @@ const PatientRecordPage: React.FC = () => {
     { value: "datos", label: "Datos", icon: User },
     { value: "antecedentes", label: "Antecedentes", icon: ClipboardPaste },
     { value: "historial", label: "Historial", icon: FileText },
-    { value: "pagos", label: "Pagos", icon: CreditCard },
-    { value: "adjuntos", label: "Adjuntos", icon: Paperclip },
     { value: "odontograma", label: "Odontograma", icon: Heart },
     { value: "cotizaciones", label: "Cotizaciones", icon: DollarSign },
+    { value: "pagos", label: "Pagos", icon: CreditCard },
   ];
+  const patientAge = calculatePatientAge(patient.fechaNacimiento);
+  const patientDetails = [
+    getPatientSexLabel(patient.sexo),
+    patient.estado.charAt(0).toUpperCase() + patient.estado.slice(1),
+    patientAge === null ? "Sin fecha de nacimiento" : `${patientAge} años`,
+  ];
+  const registrationParts = /^(\d{4})-(\d{2})-(\d{2})/.exec(patient.fechaRegistro || "");
+  const registrationLabel = registrationParts
+    ? new Date(
+        Number(registrationParts[1]),
+        Number(registrationParts[2]) - 1,
+        Number(registrationParts[3]),
+      ).toLocaleDateString("es-MX", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      })
+    : null;
+
+  const handleRemovePatient = async () => {
+    const confirmed = await confirm({
+      title: "Eliminar paciente",
+      description: `${patientName} dejará de aparecer entre los pacientes activos. Sus datos e historial se conservarán.`,
+      confirmLabel: "Eliminar",
+      destructive: true,
+    });
+    if (!confirmed) return;
+
+    try {
+      await updatePatient(patient.id, { estado: "inactivo" });
+      toast.success("Paciente eliminado del listado activo");
+      navigate("/pacientes");
+    } catch {
+      toast.error("No fue posible eliminar al paciente.");
+    }
+  };
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
-      <div className="flex items-center gap-4">
+      <div className="flex min-w-0 items-center gap-3 sm:gap-4">
         <Button variant="ghost" size="icon" onClick={() => navigate("/pacientes")}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
-        <div className="flex-1">
-          <h1 className="text-3xl font-bold text-foreground">
+        <div className="min-w-0 flex-1">
+          <h1 className="break-words text-2xl font-bold text-foreground sm:text-3xl">
             {patient.nombres} {patient.apellidos}
           </h1>
-          <p className="text-muted-foreground">
-            {patient.curp || "N/A"} - {calculateAge(patient.fechaNacimiento)} anos - {patient.estado}
+          <p className="mt-1 text-sm text-muted-foreground">
+            {patientDetails.join(" · ")}
           </p>
+          {registrationLabel && (
+            <Badge variant="outline" className="mt-2 font-normal text-muted-foreground">
+              Registrado: {registrationLabel}
+            </Badge>
+          )}
         </div>
+        {can("patients.delete") && patient.estado === "activo" && (
+          <Button
+            type="button"
+            variant="destructive"
+            size="sm"
+            className="shrink-0"
+            onClick={() => void handleRemovePatient()}
+          >
+            <Trash2 className="mr-2 h-4 w-4" />
+            Eliminar
+          </Button>
+        )}
       </div>
 
       <Card>
@@ -79,7 +139,7 @@ const PatientRecordPage: React.FC = () => {
                   <TabsTrigger
                     key={tab.value}
                     value={tab.value}
-                    className="rounded-none border-b-2 border-transparent px-6 py-4 data-[state=active]:border-primary data-[state=active]:bg-transparent"
+                    className="rounded-none border-b-2 border-transparent px-4 py-3 data-[state=active]:border-primary data-[state=active]:bg-transparent sm:px-5"
                   >
                     <Icon className="mr-2 h-4 w-4" />
                     {tab.label}
@@ -88,7 +148,7 @@ const PatientRecordPage: React.FC = () => {
               })}
             </TabsList>
 
-            <div className="p-6">
+            <div className="p-4 sm:p-6">
               <TabsContent value="datos" className="mt-0">
                 <PatientData patient={patient} />
               </TabsContent>
@@ -101,14 +161,6 @@ const PatientRecordPage: React.FC = () => {
                 <PatientHistory patientId={patient.id} />
               </TabsContent>
 
-              <TabsContent value="pagos" className="mt-0">
-                <PatientPayments patientId={patient.id} patientName={patientName} />
-              </TabsContent>
-
-              <TabsContent value="adjuntos" className="mt-0">
-                <PatientAttachments patientId={patient.id} />
-              </TabsContent>
-
               <TabsContent value="odontograma" className="mt-0">
                 <PatientOdontogram patientId={patient.id} />
               </TabsContent>
@@ -116,10 +168,15 @@ const PatientRecordPage: React.FC = () => {
               <TabsContent value="cotizaciones" className="mt-0">
                 <PatientQuotations patientId={patient.id} />
               </TabsContent>
+
+              <TabsContent value="pagos" className="mt-0">
+                <PatientPayments patientId={patient.id} patientName={patientName} />
+              </TabsContent>
             </div>
           </Tabs>
         </CardContent>
       </Card>
+      {confirmationDialog}
     </motion.div>
   );
 };

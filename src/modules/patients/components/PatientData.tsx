@@ -7,6 +7,10 @@ import { Label } from '@/shared/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/components/ui/select';
 import { toast } from 'sonner';
 import { Separator } from '@/shared/components/ui/separator';
+import {
+  hasKnownMaritalStatus,
+  MARITAL_STATUS_OPTIONS,
+} from '@/modules/patients/utils/patientUi';
 
 interface PatientDataProps {
   patient: Patient;
@@ -120,7 +124,20 @@ const PatientData: React.FC<PatientDataProps> = ({ patient }) => {
             </div>
             <div className="space-y-2">
               <Label htmlFor="estadoCivil">Estado Civil</Label>
-              <Input id="estadoCivil" value={formData.estadoCivil} onChange={handleFormChange} />
+              <Select
+                value={formData.estadoCivil || undefined}
+                onValueChange={(value) => handleSelectChange('estadoCivil', value)}
+              >
+                <SelectTrigger id="estadoCivil"><SelectValue placeholder="Seleccionar" /></SelectTrigger>
+                <SelectContent>
+                  {formData.estadoCivil && !hasKnownMaritalStatus(formData.estadoCivil) && (
+                    <SelectItem value={formData.estadoCivil}>{formData.estadoCivil}</SelectItem>
+                  )}
+                  {MARITAL_STATUS_OPTIONS.map((status) => (
+                    <SelectItem key={status} value={status}>{status}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </div>

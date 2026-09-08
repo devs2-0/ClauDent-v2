@@ -37,7 +37,7 @@ const DataViewer: React.FC<{ data: Record<string, any>, title: string }> = ({ da
       return value ? 'Sí' : 'No';
     }
     if (value === '') {
-      return 'N/A'; // Mostramos N/A para campos de texto vacíos
+      return 'Sin información';
     }
     return value.toString();
   };
@@ -159,7 +159,7 @@ const PatientAntecedentes: React.FC = () => {
         <h3 className="text-lg font-semibold">Antecedentes y Ficha Clínica</h3>
         <Button onClick={() => setIsModalOpen(true)}>
           <Edit className="h-4 w-4 mr-2" />
-          Editar Antecedentes
+          Editar
         </Button>
       </div>
 

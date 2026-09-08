@@ -1,9 +1,10 @@
 import { useMemo, useState } from "react";
-import { ShieldCheck, UserCog, UsersRound } from "lucide-react";
+import { Settings2, ShieldCheck, UserCog, UsersRound } from "lucide-react";
 
 import { useCan } from "@/auth";
 import RolesPage from "./RolesPage";
 import UsersPage from "./UsersPage";
+import PatientInactivitySettings from "@/modules/patients/components/PatientInactivitySettings";
 import { SecurityPage } from "@/modules/security";
 import { SinPermisosPage } from "@/shared";
 import { SectionHelp } from "@/shared/components/SectionHelp";
@@ -40,6 +41,13 @@ const AdminPanelPage = () => {
         icon: ShieldCheck,
         permission: "security.sessions.view" as const,
         content: <SecurityPage />,
+      },
+      {
+        value: "configuracion",
+        label: "Configuración",
+        icon: Settings2,
+        permission: "settings.view" as const,
+        content: <PatientInactivitySettings />,
       },
     ].filter((tab) => can(tab.permission));
   }, [can]);

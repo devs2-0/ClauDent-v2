@@ -107,6 +107,12 @@ All colors MUST be HSL.
   }
 }
 
+@layer components {
+  .app-module-content h1 {
+    @apply text-2xl font-semibold tracking-tight text-foreground;
+  }
+}
+
 @layer base {
   html {
     /* Evita el cambio de tamaño automático en iOS horizontal */
