@@ -320,6 +320,14 @@ const InventarioPage: React.FC = () => {
     () => activeProducts.filter((product) => product.categoria === "clinico"),
     [activeProducts],
   );
+  const sellableSummaryPagination = usePagination(sellableProducts, {
+    initialPageSize: 10,
+    resetKeys: [sellableProducts.length],
+  });
+  const clinicalSummaryPagination = usePagination(clinicalProducts, {
+    initialPageSize: 10,
+    resetKeys: [clinicalProducts.length],
+  });
 
   const inventoryValue = useMemo(
     () => products.reduce((total, product) => total + product.stock * product.costoUnitario, 0),
@@ -1513,7 +1521,7 @@ const InventarioPage: React.FC = () => {
                 {sellableProducts.length === 0 ? (
                   <p className="py-6 text-center text-sm text-muted-foreground">No hay productos vendibles.</p>
                 ) : (
-                  sellableProducts.map((product) => (
+                  sellableSummaryPagination.paginatedItems.map((product) => (
                     <div key={product.id} className="flex items-center justify-between rounded-lg border p-3">
                       <div>
                         <p className="font-medium">{product.nombre}</p>
@@ -1524,6 +1532,21 @@ const InventarioPage: React.FC = () => {
                   ))
                 )}
               </CardContent>
+              {sellableProducts.length > 0 && (
+                <DataPagination
+                  itemLabel="productos vendibles"
+                  page={sellableSummaryPagination.page}
+                  pageSize={sellableSummaryPagination.pageSize}
+                  totalItems={sellableSummaryPagination.totalItems}
+                  startIndex={sellableSummaryPagination.startIndex}
+                  endIndex={sellableSummaryPagination.endIndex}
+                  canPreviousPage={sellableSummaryPagination.canPreviousPage}
+                  canNextPage={sellableSummaryPagination.canNextPage}
+                  onPageSizeChange={sellableSummaryPagination.setPageSize}
+                  onPreviousPage={sellableSummaryPagination.previousPage}
+                  onNextPage={sellableSummaryPagination.nextPage}
+                />
+              )}
             </Card>
             <Card>
               <CardHeader>
@@ -1536,7 +1559,7 @@ const InventarioPage: React.FC = () => {
                 {clinicalProducts.length === 0 ? (
                   <p className="py-6 text-center text-sm text-muted-foreground">No hay material clinico registrado.</p>
                 ) : (
-                  clinicalProducts.map((product) => (
+                  clinicalSummaryPagination.paginatedItems.map((product) => (
                     <div key={product.id} className="flex items-center justify-between rounded-lg border p-3">
                       <div>
                         <p className="font-medium">{product.nombre}</p>
@@ -1547,6 +1570,21 @@ const InventarioPage: React.FC = () => {
                   ))
                 )}
               </CardContent>
+              {clinicalProducts.length > 0 && (
+                <DataPagination
+                  itemLabel="material clinico"
+                  page={clinicalSummaryPagination.page}
+                  pageSize={clinicalSummaryPagination.pageSize}
+                  totalItems={clinicalSummaryPagination.totalItems}
+                  startIndex={clinicalSummaryPagination.startIndex}
+                  endIndex={clinicalSummaryPagination.endIndex}
+                  canPreviousPage={clinicalSummaryPagination.canPreviousPage}
+                  canNextPage={clinicalSummaryPagination.canNextPage}
+                  onPageSizeChange={clinicalSummaryPagination.setPageSize}
+                  onPreviousPage={clinicalSummaryPagination.previousPage}
+                  onNextPage={clinicalSummaryPagination.nextPage}
+                />
+              )}
             </Card>
           </div>
         </TabsContent>

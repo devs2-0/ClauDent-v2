@@ -7,7 +7,8 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { User, onAuthStateChanged, signOut } from "firebase/auth";
+import { onAuthStateChanged, signOut } from "firebase/auth";
+import type { User } from "firebase/auth";
 import {
   collection,
   deleteDoc,
@@ -18,6 +19,7 @@ import {
   updateDoc,
   writeBatch,
 } from "firebase/firestore";
+import type { DocumentSnapshot, FirestoreError } from "firebase/firestore";
 import { toast } from "sonner";
 
 import { auth, db } from "@/lib/firebase";
@@ -26,12 +28,17 @@ import {
   getDeviceInfo,
   getPersistentSessionId,
   registerOrUpdateSession,
+  rotatePersistentSessionId,
 } from "../services/sessionService";
 import type { UserSession } from "../types/auth.types";
+import type { AppUser } from "../types/user.types";
 
 interface AuthContextValue {
   currentUser: User | null;
+  currentUserProfile: AppUser | null;
   authLoading: boolean;
+  profileLoading: boolean;
+  profileError: Error | null;
   sessions: UserSession[];
   logout: () => Promise<void>;
   revokeSession: (sid: string) => Promise<void>;
@@ -40,11 +47,47 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
+const buildCurrentUserProfile = (
+  firebaseUser: User,
+  snapshot: DocumentSnapshot,
+): AppUser | null => {
+  if (!snapshot.exists()) return null;
+
+  const data = snapshot.data();
+
+  return {
+    uid: firebaseUser.uid,
+    email: data.email ?? firebaseUser.email ?? "",
+    displayName: data.displayName ?? firebaseUser.displayName ?? undefined,
+    photoURL: data.photoURL ?? firebaseUser.photoURL ?? null,
+    phone: data.phone ?? null,
+    status: data.status ?? "inactive",
+    roleIds: Array.isArray(data.roleIds) ? data.roleIds : [],
+    primaryRoleId: data.primaryRoleId ?? null,
+    permissions: Array.isArray(data.permissions) ? data.permissions : [],
+    isAdmin: data.isAdmin === true,
+    doctorId: data.doctorId ?? null,
+    assistantId: data.assistantId ?? null,
+    preferencias: {
+      apariencia: data.preferencias?.apariencia === "dark" ? "dark" : "light",
+    },
+    createdAt: data.createdAt ?? null,
+    updatedAt: data.updatedAt ?? null,
+    createdBy: data.createdBy ?? null,
+    updatedBy: data.updatedBy ?? null,
+    lastLoginAt: data.lastLoginAt ?? null,
+  } as AppUser;
+};
+
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({
   children,
 }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
+  const [currentUserProfile, setCurrentUserProfile] =
+    useState<AppUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileError, setProfileError] = useState<Error | null>(null);
   const [sessions, setSessions] = useState<UserSession[]>([]);
 
   const sessionIdRef = useRef<string | null>(null);
@@ -52,8 +95,27 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
   const logoutInProgressRef = useRef(false);
   const deviceLogInProgressRef = useRef(false);
   const sessionUnsubRef = useRef<null | (() => void)>(null);
+  const profileUnsubRef = useRef<null | (() => void)>(null);
   const heartbeatCleanupRef = useRef<null | (() => void)>(null);
-  const sessionMissingNotifiedRef = useRef(false);
+  const remoteLogoutInProgressRef = useRef(false);
+  const authRunIdRef = useRef(0);
+
+  const stopRealtimeListeners = useCallback(() => {
+    if (sessionUnsubRef.current) {
+      sessionUnsubRef.current();
+      sessionUnsubRef.current = null;
+    }
+
+    if (profileUnsubRef.current) {
+      profileUnsubRef.current();
+      profileUnsubRef.current = null;
+    }
+
+    if (heartbeatCleanupRef.current) {
+      heartbeatCleanupRef.current();
+      heartbeatCleanupRef.current = null;
+    }
+  }, []);
 
   const buildRevokedSessionPayload = (reason: string) => ({
     status: "revoked",
@@ -87,16 +149,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
         try {
           await deleteDoc(doc(db, `usuarios/${user.uid}/sesiones`, sid));
         } catch (error) {
-          console.warn("No se pudo eliminar la sesión actual.", error);
+          console.warn("No se pudo eliminar la sesion actual.", error);
         }
 
         try {
           await addAuditLog("LOGOUT", "sistema", "Sesion terminada");
         } catch (error) {
-          console.warn("No se pudo registrar auditoría de logout.", error);
+          console.warn("No se pudo registrar auditoria de logout.", error);
         }
       }
 
+      rotatePersistentSessionId();
       await signOut(auth);
     } finally {
       logoutInProgressRef.current = false;
@@ -104,51 +167,25 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
   }, []);
 
   useEffect(() => {
-    const unsubAuth = onAuthStateChanged(auth, async (user) => {
-      if (sessionUnsubRef.current) {
-        sessionUnsubRef.current();
-        sessionUnsubRef.current = null;
-      }
+    const isStaleRun = (runId: number, user: User) => {
+      return authRunIdRef.current !== runId || auth.currentUser?.uid !== user.uid;
+    };
 
-      if (heartbeatCleanupRef.current) {
-        heartbeatCleanupRef.current();
-        heartbeatCleanupRef.current = null;
-      }
-
-      if (!user) {
-        sessionIdRef.current = null;
-        setSessions([]);
-        setCurrentUser(null);
-        currentUserRef.current = null;
-        setAuthLoading(false);
+    const forceRemoteLogout = () => {
+      if (logoutInProgressRef.current || remoteLogoutInProgressRef.current) {
         return;
       }
 
-      setCurrentUser(user);
-      currentUserRef.current = user;
-      setAuthLoading(false);
+      remoteLogoutInProgressRef.current = true;
+      toast.error("Tu sesion ha sido finalizada remotamente.");
+      rotatePersistentSessionId();
 
-      let currentSid = getPersistentSessionId();
-      let createdNewSession = false;
+      signOut(auth).finally(() => {
+        remoteLogoutInProgressRef.current = false;
+      });
+    };
 
-      try {
-        const sessionRegistration = await registerOrUpdateSession(
-          user.uid,
-          user,
-        );
-
-        currentSid = sessionRegistration.sessionId;
-        createdNewSession = sessionRegistration.createdNewSession;
-      } catch (error) {
-        console.warn(
-          "No se pudo registrar o actualizar la sesión. La app continuará sin bloquearse.",
-          error,
-        );
-      }
-
-      sessionIdRef.current = currentSid;
-      sessionMissingNotifiedRef.current = false;
-
+    const startHeartbeat = (user: User) => {
       const updateCurrentSession = () => {
         registerOrUpdateSession(user.uid, user).catch(() => {
           // La app puede continuar aunque no se pueda actualizar el heartbeat.
@@ -167,87 +204,120 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
         window.removeEventListener("online", updateCurrentSession);
         document.removeEventListener("visibilitychange", updateCurrentSession);
       };
+    };
 
-      if (!deviceLogInProgressRef.current) {
-        deviceLogInProgressRef.current = true;
+    const registerDeviceAndAudit = async (
+      user: User,
+      currentSid: string,
+      createdNewSession: boolean,
+    ) => {
+      if (deviceLogInProgressRef.current) return;
 
-        try {
-          const deviceRef = doc(
-            db,
-            `usuarios/${user.uid}/dispositivos`,
-            currentSid,
-          );
+      deviceLogInProgressRef.current = true;
 
-          const shouldLog = await runTransaction(db, async (tx) => {
-            const snap = await tx.get(deviceRef);
+      try {
+        const deviceRef = doc(db, `usuarios/${user.uid}/dispositivos`, currentSid);
 
-            if (snap.exists()) return false;
+        const shouldLog = await runTransaction(db, async (tx) => {
+          const snap = await tx.get(deviceRef);
 
-            const {
-              deviceType,
-              deviceLabel,
-              browser,
-              browserVersion,
-              os,
-              platform,
-              language,
-              timezone,
-              screen,
-            } = getDeviceInfo();
+          if (snap.exists()) return false;
 
-            tx.set(deviceRef, {
-              deviceType,
-              deviceLabel,
-              browser,
-              browserVersion,
-              os,
-              platform,
-              language,
-              timezone,
-              screen,
-              firstSeen: serverTimestamp(),
-            });
+          const {
+            deviceType,
+            deviceLabel,
+            browser,
+            browserVersion,
+            os,
+            platform,
+            language,
+            timezone,
+            screen,
+          } = getDeviceInfo();
 
-            return true;
+          tx.set(deviceRef, {
+            deviceType,
+            deviceLabel,
+            browser,
+            browserVersion,
+            os,
+            platform,
+            language,
+            timezone,
+            screen,
+            firstSeen: serverTimestamp(),
           });
 
-          if (createdNewSession) {
-            try {
-              await addAuditLog(
-                "LOGIN",
-                "sistema",
-                shouldLog
-                  ? "Inicio de sesion desde un dispositivo nuevo"
-                  : "Inicio de sesion registrado",
-              );
-            } catch (error) {
-              console.warn("No se pudo registrar auditoría de login.", error);
-            }
-          }
-        } catch (error) {
-          console.warn(
-            "No se pudo registrar el dispositivo. La app continuará sin bloquearse.",
-            error,
+          return true;
+        });
+
+        if (createdNewSession) {
+          await addAuditLog(
+            "LOGIN",
+            "sistema",
+            shouldLog
+              ? "Inicio de sesion desde un dispositivo nuevo"
+              : "Inicio de sesion registrado",
           );
-        } finally {
-          deviceLogInProgressRef.current = false;
         }
+      } catch (error) {
+        console.warn(
+          "No se pudo registrar el dispositivo. La app continuara sin bloquearse.",
+          error,
+        );
+      } finally {
+        deviceLogInProgressRef.current = false;
       }
+    };
+
+    const startProfileListener = (user: User, runId: number) => {
+      profileUnsubRef.current = onSnapshot(
+        doc(db, "usuarios", user.uid),
+        (snapshot) => {
+          if (isStaleRun(runId, user)) return;
+
+          setCurrentUserProfile(buildCurrentUserProfile(user, snapshot));
+          setProfileError(null);
+          setProfileLoading(false);
+          setAuthLoading(false);
+        },
+        (error: FirestoreError) => {
+          if (isStaleRun(runId, user)) return;
+
+          console.warn("No se pudo cargar el perfil del usuario.", error);
+          setCurrentUserProfile(null);
+          setProfileError(error);
+          setProfileLoading(false);
+          setAuthLoading(false);
+        },
+      );
+    };
+
+    const startSessionListener = (
+      user: User,
+      initialSessionId: string,
+      runId: number,
+    ) => {
+      let observedSessionId = initialSessionId;
+      let currentSessionSeen = false;
+      let recreateAttempted = false;
 
       sessionUnsubRef.current = onSnapshot(
         collection(db, `usuarios/${user.uid}/sesiones`),
         (snap) => {
+          if (isStaleRun(runId, user)) return;
+
           const allSessions = snap.docs.map(
-            (d) =>
+            (sessionDoc) =>
               ({
-                id: d.id,
-                ...d.data(),
-                isCurrent: d.id === currentSid,
+                id: sessionDoc.id,
+                ...sessionDoc.data(),
+                isCurrent: sessionDoc.id === observedSessionId,
               }) as UserSession,
           );
 
           const currentSession = allSessions.find(
-            (session) => session.id === currentSid,
+            (session) => session.id === observedSessionId,
           );
 
           const activeSessions = allSessions.filter(
@@ -256,46 +326,105 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
 
           setSessions(activeSessions);
 
-          if (
-            (!currentSession ||
-              currentSession.status === "revoked" ||
-              currentSession.revokedAt) &&
-            !snap.metadata.fromCache &&
-            !sessionMissingNotifiedRef.current
-          ) {
-            sessionMissingNotifiedRef.current = true;
-            toast.error("Tu sesion ha sido finalizada remotamente.");
+          const currentSessionRevoked =
+            currentSession?.status === "revoked" || Boolean(currentSession?.revokedAt);
 
-            signOut(auth).finally(() => {
-              sessionMissingNotifiedRef.current = false;
-            });
+          if (currentSession && !currentSessionRevoked) {
+            currentSessionSeen = true;
+            return;
+          }
+
+          if (snap.metadata.fromCache || logoutInProgressRef.current) {
+            return;
+          }
+
+          if (currentSessionRevoked || (currentSessionSeen && !currentSession)) {
+            forceRemoteLogout();
+            return;
+          }
+
+          if (!currentSession && !recreateAttempted) {
+            recreateAttempted = true;
+
+            registerOrUpdateSession(user.uid, user)
+              .then((sessionRegistration) => {
+                if (isStaleRun(runId, user)) return;
+
+                observedSessionId = sessionRegistration.sessionId;
+                sessionIdRef.current = sessionRegistration.sessionId;
+              })
+              .catch((error) => {
+                console.warn(
+                  "No se pudo confirmar la sesion actual. La app continuara sin cerrar la sesion local.",
+                  error,
+                );
+              });
           }
         },
         (error) => {
+          if (isStaleRun(runId, user)) return;
+
           console.warn(
-            "No se pudo escuchar la colección de sesiones. La app continuará sin monitoreo de sesiones.",
+            "No se pudo escuchar la coleccion de sesiones. La app continuara sin monitoreo de sesiones.",
             error,
           );
 
           setSessions([]);
         },
       );
+    };
+
+    const unsubAuth = onAuthStateChanged(auth, async (user) => {
+      const runId = authRunIdRef.current + 1;
+      authRunIdRef.current = runId;
+      stopRealtimeListeners();
+      setAuthLoading(true);
+      setProfileLoading(true);
+      setProfileError(null);
+
+      if (!user) {
+        sessionIdRef.current = null;
+        currentUserRef.current = null;
+        setCurrentUser(null);
+        setCurrentUserProfile(null);
+        setSessions([]);
+        setProfileLoading(false);
+        setAuthLoading(false);
+        return;
+      }
+
+      setCurrentUser(user);
+      currentUserRef.current = user;
+
+      let currentSid = getPersistentSessionId();
+      let createdNewSession = false;
+
+      try {
+        const sessionRegistration = await registerOrUpdateSession(user.uid, user);
+        currentSid = sessionRegistration.sessionId;
+        createdNewSession = sessionRegistration.createdNewSession;
+      } catch (error) {
+        console.warn(
+          "No se pudo registrar o actualizar la sesion. La app continuara sin bloquearse.",
+          error,
+        );
+      }
+
+      if (isStaleRun(runId, user)) return;
+
+      sessionIdRef.current = currentSid;
+      startHeartbeat(user);
+      startProfileListener(user, runId);
+      startSessionListener(user, currentSid, runId);
+      void registerDeviceAndAudit(user, currentSid, createdNewSession);
     });
 
     return () => {
-      if (sessionUnsubRef.current) {
-        sessionUnsubRef.current();
-        sessionUnsubRef.current = null;
-      }
-
-      if (heartbeatCleanupRef.current) {
-        heartbeatCleanupRef.current();
-        heartbeatCleanupRef.current = null;
-      }
-
+      authRunIdRef.current += 1;
+      stopRealtimeListeners();
       unsubAuth();
     };
-  }, []);
+  }, [stopRealtimeListeners]);
 
   const revokeSession = async (sid: string) => {
     const user = currentUserRef.current;
@@ -315,11 +444,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
           "Sesion propia cerrada desde seguridad",
         );
       } catch (error) {
-        console.warn("No se pudo registrar auditoría de revocación.", error);
+        console.warn("No se pudo registrar auditoria de revocacion.", error);
       }
     } catch (error) {
       console.error(error);
-      toast.error("No se pudo revocar la sesión.");
+      toast.error("No se pudo revocar la sesion.");
     }
   };
 
@@ -352,18 +481,22 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({
           "Cierre masivo de sesiones propias remotas",
         );
       } catch (error) {
-        console.warn("No se pudo registrar auditoría de sesiones.", error);
+        console.warn("No se pudo registrar auditoria de sesiones.", error);
       }
     } catch (error) {
       console.error(error);
       toast.error("No se pudieron cerrar las otras sesiones.");
     }
   };
+
   return (
     <AuthContext.Provider
       value={{
         currentUser,
+        currentUserProfile,
         authLoading,
+        profileLoading,
+        profileError,
         sessions,
         logout,
         revokeSession,

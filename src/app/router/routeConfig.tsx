@@ -23,11 +23,16 @@ export interface AppRouteConfig {
   path: string;
   element: React.ReactElement;
   permission?: PermissionKey;
+  redirectAuthenticated?: boolean;
 }
 
 export const publicRoutes: AppRouteConfig[] = [
-  { path: "/login", element: <LoginPage /> },
-  { path: "/reset-password", element: <ResetPasswordPage /> },
+  { path: "/login", element: <LoginPage />, redirectAuthenticated: true },
+  {
+    path: "/reset-password",
+    element: <ResetPasswordPage />,
+    redirectAuthenticated: true,
+  },
   {
   path: "/primer-acceso",
   element: <FirstAccessPage />,

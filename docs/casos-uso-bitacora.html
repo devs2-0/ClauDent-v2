@@ -1,0 +1,651 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ClauDent - Casos de uso: Bitacora</title>
+  <style>
+    :root {
+      --bg: #f5f9fc;
+      --panel: #ffffff;
+      --ink: #0f172a;
+      --muted: #526179;
+      --line: #dbe7f0;
+      --brand: #28bdf2;
+      --brand-dark: #087ea4;
+      --good: #0f9f6e;
+      --warn: #d97706;
+      --danger: #dc2626;
+      --chip: #eef8fc;
+      --shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: linear-gradient(180deg, #eef9fd 0%, var(--bg) 280px);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+    }
+
+    .page {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 32px 20px 56px;
+    }
+
+    .hero, .section, .final-summary, .metric {
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.92);
+      box-shadow: var(--shadow);
+    }
+
+    .hero {
+      display: grid;
+      gap: 16px;
+      padding: 28px;
+      border-radius: 16px;
+    }
+
+    .eyebrow {
+      width: fit-content;
+      border-radius: 999px;
+      padding: 6px 12px;
+      background: var(--chip);
+      color: var(--brand-dark);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(28px, 4vw, 44px);
+      line-height: 1.05;
+      letter-spacing: 0;
+    }
+
+    .hero p, .section-header p, .footer {
+      margin: 0;
+      color: var(--muted);
+    }
+
+    .meta, .toolbar, .summary {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .pill {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 8px 12px;
+      background: #fff;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .toolbar {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      margin: 18px 0;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: rgba(245, 249, 252, 0.94);
+      backdrop-filter: blur(10px);
+    }
+
+    button {
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px 12px;
+      background: #fff;
+      color: var(--ink);
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    button:hover { border-color: var(--brand); color: var(--brand-dark); }
+
+    .summary {
+      margin: 18px 0 24px;
+      display: grid;
+      grid-template-columns: repeat(4, minmax(150px, 1fr));
+    }
+
+    .metric {
+      border-radius: 14px;
+      padding: 16px;
+    }
+
+    .metric b {
+      display: block;
+      font-size: 28px;
+      line-height: 1;
+    }
+
+    .metric span {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .section {
+      margin-top: 18px;
+      border-radius: 16px;
+      padding: 22px;
+    }
+
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      gap: 16px;
+      align-items: end;
+      margin-bottom: 16px;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 14px;
+    }
+
+    .section-header h2 {
+      margin: 0;
+      font-size: 22px;
+    }
+
+    .cases {
+      display: grid;
+      gap: 14px;
+    }
+
+    .case {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 16px;
+      background: #fff;
+    }
+
+    .case[data-status="passed"] { border-color: rgba(15, 159, 110, 0.45); background: #f5fffb; }
+    .case[data-status="failed"] { border-color: rgba(220, 38, 38, 0.45); background: #fff7f7; }
+    .case[data-status="blocked"] { border-color: rgba(217, 119, 6, 0.45); background: #fffbeb; }
+
+    .case-top {
+      display: flex;
+      gap: 12px;
+      justify-content: space-between;
+      align-items: start;
+      margin-bottom: 12px;
+    }
+
+    .case-title {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .code {
+      flex: 0 0 auto;
+      border-radius: 999px;
+      padding: 5px 9px;
+      background: var(--chip);
+      color: var(--brand-dark);
+      font-size: 12px;
+      font-weight: 900;
+    }
+
+    h3 {
+      margin: 0;
+      font-size: 17px;
+    }
+
+    .result-select {
+      min-width: 160px;
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 6px 10px;
+      background: #fff;
+      color: var(--ink);
+      font-weight: 700;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    h4 {
+      margin: 0 0 8px;
+      color: var(--muted);
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    ol, ul {
+      margin: 0;
+      padding-left: 20px;
+    }
+
+    li { margin: 4px 0; }
+
+    textarea {
+      width: 100%;
+      min-height: 72px;
+      margin-top: 12px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 10px 12px;
+      color: var(--ink);
+      font: inherit;
+      resize: vertical;
+    }
+
+    .final-summary {
+      margin-top: 18px;
+      border-radius: 16px;
+      padding: 22px;
+    }
+
+    .final-summary h2 { margin-top: 0; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border-radius: 12px;
+    }
+
+    th, td {
+      border-bottom: 1px solid var(--line);
+      padding: 12px;
+      text-align: left;
+    }
+
+    th {
+      background: #eef8fc;
+      color: var(--brand-dark);
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    .count {
+      width: 160px;
+      font-size: 22px;
+      font-weight: 900;
+    }
+
+    .footer {
+      margin-top: 18px;
+      text-align: center;
+      font-size: 13px;
+    }
+
+    @media (max-width: 760px) {
+      .summary, .grid { grid-template-columns: 1fr; }
+      .case-top, .section-header { align-items: stretch; flex-direction: column; }
+      .result-select { width: 100%; }
+    }
+
+    @media print {
+      body { background: #fff; }
+      .toolbar, textarea, .result-select { display: none; }
+      .page { max-width: none; padding: 0; }
+      .hero, .section, .final-summary, .metric { box-shadow: none; break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <span class="eyebrow">QA funcional</span>
+      <h1>Casos de uso - M&oacute;dulo Bit&aacute;cora</h1>
+      <p>Checklist para validar que la bit&aacute;cora registre movimientos importantes del sistema, muestre informaci&oacute;n clara y permita investigar qui&eacute;n hizo qu&eacute;, cu&aacute;ndo y en qu&eacute; m&oacute;dulo.</p>
+      <div class="meta">
+        <span class="pill">Sistema: ClauDent</span>
+        <span class="pill">M&oacute;dulo: Bit&aacute;cora</span>
+        <span class="pill">Versi&oacute;n QA: 2026-08-15</span>
+        <span class="pill">Permiso: audit.view</span>
+      </div>
+    </section>
+
+    <div class="toolbar" aria-label="Acciones de checklist">
+      <button type="button" data-bulk="pending">Marcar pendientes</button>
+      <button type="button" data-bulk="passed">Marcar pasaron</button>
+      <button type="button" data-bulk="failed">Marcar fallaron</button>
+      <button type="button" data-bulk="blocked">Marcar bloqueadas</button>
+      <button type="button" onclick="window.print()">Imprimir / guardar PDF</button>
+    </div>
+
+    <section class="summary" aria-label="Resumen rapido">
+      <div class="metric"><b>28</b><span>Casos de uso</span></div>
+      <div class="metric"><b>5</b><span>Secciones</span></div>
+      <div class="metric"><b>300</b><span>Eventos visibles max.</span></div>
+      <div class="metric"><b>Local</b><span>Notas guardadas en navegador</span></div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <h2>Acceso y Vista General</h2>
+          <p>Valida permisos, carga inicial y lectura general del historial.</p>
+        </div>
+      </div>
+      <div class="cases">
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-BIT-01</span><h3>Entrar al m&oacute;dulo Bit&aacute;cora</h3></div><select class="result-select"><option value="pending">&#11036; Pendiente</option><option value="passed">&#9989; Pas&oacute;</option><option value="failed">&#10060; Fall&oacute;</option><option value="blocked">&#9888; Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Iniciar sesi&oacute;n con un usuario que tenga permiso para ver bit&aacute;cora.</li><li>Abrir Bit&aacute;cora desde el men&uacute;.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>La pantalla carga sin errores.</li><li>Muestra buscador, filtros, listado y paginaci&oacute;n.</li><li>Los registros aparecen ordenados del m&aacute;s reciente al m&aacute;s antiguo.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-BIT-02</span><h3>Bloqueo por permiso</h3></div><select class="result-select"><option value="pending">&#11036; Pendiente</option><option value="passed">&#9989; Pas&oacute;</option><option value="failed">&#10060; Fall&oacute;</option><option value="blocked">&#9888; Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Entrar con un usuario sin permiso <strong>audit.view</strong>.</li><li>Intentar abrir la ruta de Bit&aacute;cora.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>No aparece en el men&uacute;.</li><li>Si entra por URL, el sistema bloquea o redirige.</li><li>No se muestran eventos sensibles.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-BIT-03</span><h3>Estado sin registros</h3></div><select class="result-select"><option value="pending">&#11036; Pendiente</option><option value="passed">&#9989; Pas&oacute;</option><option value="failed">&#10060; Fall&oacute;</option><option value="blocked">&#9888; Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Probar en una base limpia o aplicar filtros sin coincidencias.</li><li>Revisar tabla y vista m&oacute;vil.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Muestra mensaje claro de que no hay registros.</li><li>No se rompe la tabla.</li><li>La paginaci&oacute;n queda en cero de cero o estado equivalente.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-BIT-04</span><h3>L&iacute;mite de eventos visibles</h3></div><select class="result-select"><option value="pending">&#11036; Pendiente</option><option value="passed">&#9989; Pas&oacute;</option><option value="failed">&#10060; Fall&oacute;</option><option value="blocked">&#9888; Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Tener m&aacute;s de 300 eventos en bit&aacute;cora.</li><li>Abrir el m&oacute;dulo.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Informa que muestra los &uacute;ltimos 300 eventos.</li><li>No intenta cargar todo el historial de golpe.</li><li>La pantalla sigue fluida.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <h2>Filtros y B&uacute;squeda</h2>
+          <p>Comprueba que el usuario pueda encontrar movimientos sin perder contexto.</p>
+        </div>
+      </div>
+      <div class="cases">
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-BIT-05</span><h3>Buscar por usuario</h3></div><select class="result-select"><option value="pending">&#11036; Pendiente</option><option value="passed">&#9989; Pas&oacute;</option><option value="failed">&#10060; Fall&oacute;</option><option value="blocked">&#9888; Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Escribir nombre o correo de un usuario en el buscador.</li><li>Comparar resultados con registros conocidos.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Solo aparecen eventos relacionados con ese usuario.</li><li>La b&uacute;squeda no distingue may&uacute;sculas/min&uacute;sculas.</li><li>El conteo/paginaci&oacute;n se actualiza.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-BIT-06</span><h3>Buscar por detalle, folio o paciente</h3></div><select class="result-select"><option value="pending">&#11036; Pendiente</option><option value="passed">&#9989; Pas&oacute;</option><option value="failed">&#10060; Fall&oacute;</option><option value="blocked">&#9888; Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Buscar un texto del detalle, folio, paciente o concepto.</li><li>Probar texto parcial.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Encuentra coincidencias del detalle visible.</li><li>Sirve para rastrear ventas, abonos, pacientes o inventario.</li><li>No muestra resultados ajenos al t&eacute;rmino.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-BIT-07</span><h3>Filtro por m&oacute;dulo</h3></div><select class="result-select"><option value="pending">&#11036; Pendiente</option><option value="passed">&#9989; Pas&oacute;</option><option value="failed">&#10060; Fall&oacute;</option><option value="blocked">&#9888; Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Abrir selector de m&oacute;dulo.</li><li>Elegir Caja, Ventas, Inventario, Pacientes u otro disponible.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Las opciones salen de registros reales.</li><li>El nombre se muestra legible, no como clave t&eacute;cnica.</li><li>El listado queda limitado al m&oacute;dulo seleccionado.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-BIT-08</span><h3>Filtro por acci&oacute;n</h3></div><select class="result-select"><option value="pending">&#11036; Pendiente</option><option value="passed">&#9989; Pas&oacute;</option><option value="failed">&#10060; Fall&oacute;</option><option value="blocked">&#9888; Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Filtrar por Creaci&oacute;n, Actualizaci&oacute;n, Eliminaci&oacute;n, Inicio de sesi&oacute;n u otra acci&oacute;n.</li><li>Combinar con b&uacute;squeda de texto.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Solo muestra la acci&oacute;n seleccionada.</li><li>Las etiquetas son entendibles para el cliente.</li><li>La combinaci&oacute;n de filtros funciona correctamente.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-BIT-09</span><h3>Filtro por rango de fechas</h3></div><select class="result-select"><option value="pending">&#11036; Pendiente</option><option value="passed">&#9989; Pas&oacute;</option><option value="failed">&#10060; Fall&oacute;</option><option value="blocked">&#9888; Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Elegir fecha inicial y final.</li><li>Probar solo fecha inicial.</li><li>Probar solo fecha final.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Incluye eventos dentro del rango completo.</li><li>Respeta inicio 00:00 y final 23:59 del d&iacute;a.</li><li>No muestra registros fuera del rango.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-BIT-10</span><h3>Limpiar filtros</h3></div><select class="result-select"><option value="pending">&#11036; Pendiente</option><option value="passed">&#9989; Pas&oacute;</option><option value="failed">&#10060; Fall&oacute;</option><option value="blocked">&#9888; Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Aplicar texto, m&oacute;dulo, acci&oacute;n y fechas.</li><li>Dar clic en Limpiar.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Todos los filtros regresan a su estado inicial.</li><li>El listado vuelve a mostrar los eventos recientes.</li><li>La p&aacute;gina regresa al inicio.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <h2>Detalle del Movimiento</h2>
+          <p>Valida que el modal de detalle sea &uacute;til para auditor&iacute;a real.</p>
+        </div>
+      </div>
+      <div class="cases">
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-BIT-11</span><h3>Abrir detalle desde tabla</h3></div><select class="result-select"><option value="pending">&#11036; Pendiente</option><option value="passed">&#9989; Pas&oacute;</option><option value="failed">&#10060; Fall&oacute;</option><option value="blocked">&#9888; Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>En escritorio, dar clic en el icono Ver detalle de un registro.</li><li>Cerrar el modal.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Abre modal sin perder filtros.</li><li>Muestra ID del movimiento.</li><li>Al cerrar regresa al mismo listado.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-BIT-12</span><h3>Detalle desde vista m&oacute;vil</h3></div><select class="result-select"><option value="pending">&#11036; Pendiente</option><option value="passed">&#9989; Pas&oacute;</option><option value="failed">&#10060; Fall&oacute;</option><option value="blocked">&#9888; Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Reducir pantalla a m&oacute;vil.</li><li>Abrir Ver detalle desde una tarjeta.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>El modal se adapta al ancho.</li><li>Texto largo no se encima ni se corta mal.</li><li>El bot&oacute;n Cerrar queda accesible.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-BIT-13</span><h3>Datos obligatorios del detalle</h3></div><select class="result-select"><option value="pending">&#11036; Pendiente</option><option value="passed">&#9989; Pas&oacute;</option><option value="failed">&#10060; Fall&oacute;</option><option value="blocked">&#9888; Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Abrir varios detalles de diferentes m&oacute;dulos.</li><li>Revisar campos del modal.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Muestra movimiento, detalle, registrado por, fecha/hora, m&oacute;dulo y acci&oacute;n.</li><li>Si falta nombre de usuario, usa correo o Sistema.</li><li>Nunca muestra campos rotos como undefined/null.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-BIT-14</span><h3>Monto detectado en el detalle</h3></div><select class="result-select"><option value="pending">&#11036; Pendiente</option><option value="passed">&#9989; Pas&oacute;</option><option value="failed">&#10060; Fall&oacute;</option><option value="blocked">&#9888; Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Abrir detalle de venta, abono, caja o inventario con monto.</li><li>Comparar monto con el m&oacute;dulo origen.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>El monto se muestra en formato moneda cuando existe.</li><li>Coincide con la operaci&oacute;n original.</li><li>Si no hay monto, muestra la acci&oacute;n en lugar de inventar dinero.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <h2>Registro por M&oacute;dulo</h2>
+          <p>Pruebas para confirmar que las acciones importantes generan bit&aacute;cora.</p>
+        </div>
+      </div>
+      <div class="cases">
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-BIT-15</span><h3>Pacientes e historial cl&iacute;nico</h3></div><select class="result-select"><option value="pending">&#11036; Pendiente</option><option value="passed">&#9989; Pas&oacute;</option><option value="failed">&#10060; Fall&oacute;</option><option value="blocked">&#9888; Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Crear, editar y eliminar visualmente un paciente si aplica.</li><li>Crear/editar una entrada de historial cl&iacute;nico.</li><li>Buscar esos movimientos en Bit&aacute;cora.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Aparecen eventos de Pacientes.</li><li>Aparecen eventos de Historial cl&iacute;nico/Historia cl&iacute;nica.</li><li>El detalle permite identificar al paciente o entrada afectada.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-BIT-16</span><h3>Cotizaciones</h3></div><select class="result-select"><option value="pending">&#11036; Pendiente</option><option value="passed">&#9989; Pas&oacute;</option><option value="failed">&#10060; Fall&oacute;</option><option value="blocked">&#9888; Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Crear una cotizaci&oacute;n.</li><li>Editarla o cambiar su estado.</li><li>Eliminarla si el flujo lo permite.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Se registran creaci&oacute;n, actualizaci&oacute;n y eliminaci&oacute;n cuando apliquen.</li><li>El detalle incluye paciente o ID y total cuando exista.</li><li>La fecha coincide con el momento de la acci&oacute;n.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-BIT-17</span><h3>Ventas, abonos y caja</h3></div><select class="result-select"><option value="pending">&#11036; Pendiente</option><option value="passed">&#9989; Pas&oacute;</option><option value="failed">&#10060; Fall&oacute;</option><option value="blocked">&#9888; Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Abrir caja.</li><li>Registrar venta completa.</li><li>Registrar venta con saldo pendiente.</li><li>Registrar un abono.</li><li>Cerrar caja.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Aparecen eventos de Caja, Ventas y Cuentas por cobrar.</li><li>Los detalles mencionan concepto/paciente/saldo cuando aplique.</li><li>La bit&aacute;cora ayuda a reconstruir el movimiento de dinero.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-BIT-18</span><h3>Cancelaci&oacute;n de pago o venta</h3></div><select class="result-select"><option value="pending">&#11036; Pendiente</option><option value="passed">&#9989; Pas&oacute;</option><option value="failed">&#10060; Fall&oacute;</option><option value="blocked">&#9888; Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Cancelar un pago permitido desde Caja.</li><li>Buscar el folio o ID del pago en Bit&aacute;cora.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Queda evento de actualizaci&oacute;n en Caja.</li><li>El motivo aparece si fue capturado.</li><li>Si hubo producto, aparece reversa de inventario.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-BIT-19</span><h3>Inventario</h3></div><select class="result-select"><option value="pending">&#11036; Pendiente</option><option value="passed">&#9989; Pas&oacute;</option><option value="failed">&#10060; Fall&oacute;</option><option value="blocked">&#9888; Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Crear/editar categor&iacute;a.</li><li>Crear/editar producto.</li><li>Registrar reabastecimiento o salida cl&iacute;nica.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Se generan eventos de Inventario.</li><li>El detalle indica producto, lote o movimiento cuando aplique.</li><li>Los cambios de stock quedan rastreables.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-BIT-20</span><h3>Seguridad, usuarios y roles</h3></div><select class="result-select"><option value="pending">&#11036; Pendiente</option><option value="passed">&#9989; Pas&oacute;</option><option value="failed">&#10060; Fall&oacute;</option><option value="blocked">&#9888; Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Iniciar y cerrar sesi&oacute;n.</li><li>Revocar sesi&oacute;n desde Seguridad.</li><li>Crear invitaci&oacute;n, asignar roles o recalcular permisos si se tiene permiso.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Se registran LOGIN, LOGOUT y revocaciones.</li><li>Se registran cambios de usuarios/roles.</li><li>Los IDs internos de sesi&oacute;n se limpian o no se muestran de forma confusa.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <div>
+          <h2>Robustez y Presentaci&oacute;n</h2>
+          <p>Pruebas de estabilidad, paginaci&oacute;n y calidad visual.</p>
+        </div>
+      </div>
+      <div class="cases">
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-BIT-21</span><h3>Paginaci&oacute;n</h3></div><select class="result-select"><option value="pending">&#11036; Pendiente</option><option value="passed">&#9989; Pas&oacute;</option><option value="failed">&#10060; Fall&oacute;</option><option value="blocked">&#9888; Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Tener m&aacute;s de 10 registros.</li><li>Usar anterior y siguiente.</li><li>Aplicar un filtro estando en otra p&aacute;gina.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Muestra 10 registros por p&aacute;gina.</li><li>Los botones se deshabilitan cuando corresponde.</li><li>Al filtrar vuelve a la p&aacute;gina 1.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-BIT-22</span><h3>Fechas recientes y serverTimestamp</h3></div><select class="result-select"><option value="pending">&#11036; Pendiente</option><option value="passed">&#9989; Pas&oacute;</option><option value="failed">&#10060; Fall&oacute;</option><option value="blocked">&#9888; Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Ejecutar una acci&oacute;n que genere bit&aacute;cora.</li><li>Revisar inmediatamente el nuevo registro.</li><li>Esperar unos segundos o recargar.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Si la fecha a&uacute;n no llega, muestra Reciente sin romperse.</li><li>Al sincronizar, muestra fecha y hora real.</li><li>El orden se mantiene correcto.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-BIT-23</span><h3>Registros con datos incompletos</h3></div><select class="result-select"><option value="pending">&#11036; Pendiente</option><option value="passed">&#9989; Pas&oacute;</option><option value="failed">&#10060; Fall&oacute;</option><option value="blocked">&#9888; Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Revisar registros antiguos o generados antes de cambios recientes.</li><li>Abrir su detalle.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>No falla si falta nombre, correo, m&oacute;dulo o fecha.</li><li>Usa guiones o etiquetas seguras.</li><li>No muestra errores en consola.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-BIT-24</span><h3>No modificar ni borrar eventos desde la vista</h3></div><select class="result-select"><option value="pending">&#11036; Pendiente</option><option value="passed">&#9989; Pas&oacute;</option><option value="failed">&#10060; Fall&oacute;</option><option value="blocked">&#9888; Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Revisar acciones disponibles en cada registro.</li><li>Abrir detalle.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>La bit&aacute;cora es de consulta.</li><li>No hay botones para editar o eliminar registros.</li><li>La vista no altera datos al inspeccionar.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-BIT-25</span><h3>Persistencia al recargar</h3></div><select class="result-select"><option value="pending">&#11036; Pendiente</option><option value="passed">&#9989; Pas&oacute;</option><option value="failed">&#10060; Fall&oacute;</option><option value="blocked">&#9888; Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Generar un movimiento nuevo.</li><li>Recargar la p&aacute;gina.</li><li>Buscar el movimiento.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>El evento sigue existiendo.</li><li>No se duplica por recargar.</li><li>El filtro lo encuentra de nuevo.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-BIT-26</span><h3>Legibilidad de etiquetas</h3></div><select class="result-select"><option value="pending">&#11036; Pendiente</option><option value="passed">&#9989; Pas&oacute;</option><option value="failed">&#10060; Fall&oacute;</option><option value="blocked">&#9888; Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Revisar acciones y m&oacute;dulos variados.</li><li>Comparar lista y detalle.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Las acciones aparecen como Creaci&oacute;n, Actualizaci&oacute;n, Eliminaci&oacute;n, etc.</li><li>Los m&oacute;dulos aparecen como nombres entendibles.</li><li>La informaci&oacute;n sirve para usuario no t&eacute;cnico.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-BIT-27</span><h3>Responsive completo</h3></div><select class="result-select"><option value="pending">&#11036; Pendiente</option><option value="passed">&#9989; Pas&oacute;</option><option value="failed">&#10060; Fall&oacute;</option><option value="blocked">&#9888; Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Probar escritorio, tablet y celular.</li><li>Aplicar filtros y abrir detalle en cada tama&ntilde;o.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>En escritorio usa tabla.</li><li>En m&oacute;vil usa tarjetas legibles.</li><li>Buscador, filtros, paginaci&oacute;n y modal siguen accesibles.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-BIT-28</span><h3>Error de red o permisos de Firebase</h3></div><select class="result-select"><option value="pending">&#11036; Pendiente</option><option value="passed">&#9989; Pas&oacute;</option><option value="failed">&#10060; Fall&oacute;</option><option value="blocked">&#9888; Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Probar con conexi&oacute;n lenta o sin internet.</li><li>Probar usuario con reglas insuficientes.</li><li>Revisar consola y pantalla.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>No queda pantalla rota.</li><li>No expone informaci&oacute;n sensible.</li><li>El error se maneja de forma entendible o silenciosa sin romper la app.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+      </div>
+    </section>
+
+    <section class="final-summary">
+      <h2>&#128202; Resumen de pruebas</h2>
+      <table>
+        <thead>
+          <tr><th>Estado</th><th>Cantidad</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>&#11036; Pendientes</td><td class="count" id="pending-count">28</td></tr>
+          <tr><td>&#9989; Pasaron</td><td class="count" id="passed-count">0</td></tr>
+          <tr><td>&#10060; Fallaron</td><td class="count" id="failed-count">0</td></tr>
+          <tr><td>&#9888; Bloqueadas</td><td class="count" id="blocked-count">0</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <p class="footer">ClauDent - QA funcional del m&oacute;dulo Bit&aacute;cora. Los cambios se guardan en este navegador.</p>
+  </main>
+
+  <script>
+    const storageKey = "claudent-qa-bitacora-v1";
+    const statusIds = ["pending", "passed", "failed", "blocked"];
+
+    function readState() {
+      try {
+        return JSON.parse(localStorage.getItem(storageKey) || "{}");
+      } catch {
+        return {};
+      }
+    }
+
+    function writeState(state) {
+      localStorage.setItem(storageKey, JSON.stringify(state));
+    }
+
+    function getCaseCode(card) {
+      return card.querySelector(".code")?.textContent?.trim() || "";
+    }
+
+    function updateCounts() {
+      const counts = { pending: 0, passed: 0, failed: 0, blocked: 0 };
+      document.querySelectorAll(".case").forEach((card) => {
+        const status = card.dataset.status || "pending";
+        counts[status] += 1;
+      });
+      statusIds.forEach((status) => {
+        document.getElementById(status + "-count").textContent = counts[status];
+      });
+    }
+
+    const savedState = readState();
+
+    document.querySelectorAll(".result-select").forEach((select) => {
+      const card = select.closest(".case");
+      const code = getCaseCode(card);
+      if (savedState[code]?.status) {
+        card.dataset.status = savedState[code].status;
+      }
+      select.value = card.dataset.status || "pending";
+      select.addEventListener("change", () => {
+        card.dataset.status = select.value;
+        const current = readState();
+        current[code] = { ...(current[code] || {}), status: select.value };
+        writeState(current);
+        updateCounts();
+      });
+    });
+
+    document.querySelectorAll(".case textarea").forEach((textarea) => {
+      const card = textarea.closest(".case");
+      const code = getCaseCode(card);
+      if (savedState[code]?.notes) {
+        textarea.value = savedState[code].notes;
+      }
+      textarea.addEventListener("input", () => {
+        const current = readState();
+        current[code] = { ...(current[code] || {}), notes: textarea.value };
+        writeState(current);
+      });
+    });
+
+    document.querySelectorAll("[data-bulk]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const status = button.dataset.bulk;
+        const current = readState();
+        document.querySelectorAll(".case").forEach((card) => {
+          const code = getCaseCode(card);
+          card.dataset.status = status;
+          const select = card.querySelector(".result-select");
+          if (select) select.value = status;
+          current[code] = { ...(current[code] || {}), status };
+        });
+        writeState(current);
+        updateCounts();
+      });
+    });
+
+    updateCounts();
+  </script>
+</body>
+</html>
