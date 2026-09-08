@@ -1,21 +1,15 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import {
-  createUserWithEmailAndPassword,
-  deleteUser,
-  signOut,
-  updateProfile,
-} from "firebase/auth";
-import {
-  doc,
-  getDoc,
-  serverTimestamp,
-  writeBatch,
-} from "firebase/firestore";
+import type { User } from "firebase/auth";
+import { doc, getDoc, serverTimestamp, writeBatch } from "firebase/firestore";
 import { Eye, EyeOff, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { auth, db } from "@/lib/firebase";
+import { authService } from "@/auth/services/authService";
+import { normalizeInvitationEmail } from "@/auth/services/userInvitationService";
+import type { PermissionKey } from "@/auth/types/permission.types";
+import type { AppUserStatus } from "@/auth/types/user.types";
+import { db } from "@/lib/firebase";
 import { Button } from "@/shared/components/ui/button";
 import {
   Card,
@@ -26,9 +20,6 @@ import {
 } from "@/shared/components/ui/card";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
-import { normalizeInvitationEmail } from "@/auth/services/userInvitationService";
-import type { AppUserStatus } from "@/auth";
-import type { PermissionKey } from "@/auth/types/permission.types";
 
 interface InvitationData {
   email: string;
@@ -45,7 +36,6 @@ interface InvitationData {
   consumed: boolean;
   cancelled?: boolean;
   createdBy?: string | null;
-  
 }
 
 const FirstAccessPage = () => {
@@ -60,6 +50,8 @@ const FirstAccessPage = () => {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
+    if (loading) return;
+
     const normalizedEmail = normalizeInvitationEmail(email);
     const cleanPassword = password.trim();
     const cleanConfirmPassword = confirmPassword.trim();
@@ -70,22 +62,21 @@ const FirstAccessPage = () => {
     }
 
     if (cleanPassword.length < 6) {
-      toast.error("La contraseña debe tener al menos 6 caracteres.");
+      toast.error("La contrasena debe tener al menos 6 caracteres.");
       return;
     }
 
     if (cleanPassword !== cleanConfirmPassword) {
-      toast.error("Las contraseñas no coinciden.");
+      toast.error("Las contrasenas no coinciden.");
       return;
     }
 
     setLoading(true);
 
-    let createdUser = null as Awaited<ReturnType<typeof createUserWithEmailAndPassword>>["user"] | null;
+    let createdUser: User | null = null;
 
     try {
-      const credential = await createUserWithEmailAndPassword(
-        auth,
+      const credential = await authService.createUser(
         normalizedEmail,
         cleanPassword,
       );
@@ -97,21 +88,21 @@ const FirstAccessPage = () => {
 
       if (!invitationSnap.exists()) {
         throw new Error(
-          "No existe una invitación pendiente para este correo. Verifica el correo o solicita acceso al administrador.",
+          "No existe una invitacion pendiente para este correo. Verifica el correo o solicita acceso al administrador.",
         );
       }
 
       const invitation = invitationSnap.data() as InvitationData;
 
       if (invitation.consumed || invitation.cancelled) {
-        throw new Error("Esta invitación ya fue usada o cancelada.");
+        throw new Error("Esta invitacion ya fue usada o cancelada.");
       }
 
       if (invitation.email !== normalizedEmail) {
-        throw new Error("La invitación no coincide con el correo ingresado.");
+        throw new Error("La invitacion no coincide con el correo ingresado.");
       }
 
-      await updateProfile(createdUser, {
+      await authService.updateProfile(createdUser, {
         displayName: invitation.displayName,
       });
 
@@ -147,7 +138,7 @@ const FirstAccessPage = () => {
         updatedAt: serverTimestamp(),
       });
 
-       if (invitation.staffType === "doctor" && invitation.doctorId) {
+      if (invitation.staffType === "doctor" && invitation.doctorId) {
         const doctorRef = doc(db, "doctores", invitation.doctorId);
 
         batch.update(doctorRef, {
@@ -176,10 +167,10 @@ const FirstAccessPage = () => {
 
       if (createdUser) {
         try {
-          await deleteUser(createdUser);
+          await authService.deleteUser(createdUser);
         } catch (deleteError) {
           console.error(deleteError);
-          await signOut(auth).catch(() => undefined);
+          await authService.signOut().catch(() => undefined);
         }
       }
 
@@ -190,7 +181,7 @@ const FirstAccessPage = () => {
 
       if (code === "auth/email-already-in-use") {
         toast.error(
-          "Ese correo ya tiene una cuenta. Inicia sesión o usa 'Olvidé mi contraseña'.",
+          "Ese correo ya tiene una cuenta. Inicia sesion o usa recuperar contrasena.",
         );
       } else {
         toast.error(
@@ -210,7 +201,7 @@ const FirstAccessPage = () => {
         <CardHeader>
           <CardTitle>Primer acceso</CardTitle>
           <CardDescription>
-            Usa el correo que el administrador invitó y crea tu contraseña para
+            Usa el correo que el administrador invito y crea tu contrasena para
             entrar a ClauDent.
           </CardDescription>
         </CardHeader>
@@ -226,20 +217,22 @@ const FirstAccessPage = () => {
                 onChange={(event) => setEmail(event.target.value)}
                 placeholder="empleado@claudent.com"
                 autoComplete="email"
+                disabled={loading}
               />
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="first-access-password">Contraseña</Label>
+              <Label htmlFor="first-access-password">Contrasena</Label>
               <div className="relative">
                 <Input
                   id="first-access-password"
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
-                  placeholder="Mínimo 6 caracteres"
+                  placeholder="Minimo 6 caracteres"
                   autoComplete="new-password"
                   className="pr-10"
+                  disabled={loading}
                 />
 
                 <Button
@@ -248,8 +241,9 @@ const FirstAccessPage = () => {
                   size="icon"
                   className="absolute right-1 top-1/2 h-8 w-8 -translate-y-1/2 text-muted-foreground"
                   onClick={() => setShowPassword((current) => !current)}
+                  disabled={loading}
                   aria-label={
-                    showPassword ? "Ocultar contraseña" : "Mostrar contraseña"
+                    showPassword ? "Ocultar contrasena" : "Mostrar contrasena"
                   }
                 >
                   {showPassword ? (
@@ -263,15 +257,16 @@ const FirstAccessPage = () => {
 
             <div className="space-y-2">
               <Label htmlFor="first-access-confirm-password">
-                Confirmar contraseña
+                Confirmar contrasena
               </Label>
               <Input
                 id="first-access-confirm-password"
                 type={showPassword ? "text" : "password"}
                 value={confirmPassword}
                 onChange={(event) => setConfirmPassword(event.target.value)}
-                placeholder="Repite tu contraseña"
+                placeholder="Repite tu contrasena"
                 autoComplete="new-password"
+                disabled={loading}
               />
             </div>
 
@@ -282,10 +277,19 @@ const FirstAccessPage = () => {
           </form>
 
           <div className="mt-6 text-center text-sm text-muted-foreground">
-            ¿Ya tienes cuenta?{" "}
-            <Link to="/login" className="font-medium text-primary underline-offset-4 hover:underline">
-              Inicia sesión
-            </Link>
+            Ya tienes cuenta?{" "}
+            {loading ? (
+              <span aria-disabled="true" className="font-medium">
+                Inicia sesion
+              </span>
+            ) : (
+              <Link
+                to="/login"
+                className="font-medium text-primary underline-offset-4 hover:underline"
+              >
+                Inicia sesion
+              </Link>
+            )}
           </div>
         </CardContent>
       </Card>

@@ -1,0 +1,673 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ClauDent - Casos de uso: Inventario</title>
+  <style>
+    :root {
+      --bg: #f5f9fc;
+      --panel: #ffffff;
+      --ink: #0f172a;
+      --muted: #526179;
+      --line: #dbe7f0;
+      --brand: #28bdf2;
+      --brand-dark: #087ea4;
+      --good: #0f9f6e;
+      --warn: #d97706;
+      --danger: #dc2626;
+      --chip: #eef8fc;
+      --shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: linear-gradient(180deg, #eef9fd 0%, var(--bg) 280px);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+    }
+
+    .page {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 32px 20px 56px;
+    }
+
+    .hero {
+      display: grid;
+      gap: 16px;
+      padding: 28px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.9);
+      box-shadow: var(--shadow);
+    }
+
+    .eyebrow {
+      width: fit-content;
+      border-radius: 999px;
+      padding: 6px 12px;
+      background: var(--chip);
+      color: var(--brand-dark);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(28px, 4vw, 44px);
+      line-height: 1.05;
+      letter-spacing: 0;
+    }
+
+    .hero p {
+      max-width: 820px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 16px;
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    .pill {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 8px 12px;
+      background: #fff;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin: 20px 0;
+    }
+
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel);
+      padding: 16px;
+      box-shadow: 0 6px 18px rgba(15, 23, 42, 0.05);
+    }
+
+    .metric strong {
+      display: block;
+      font-size: 26px;
+    }
+
+    .metric span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 20px 0;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fff;
+    }
+
+    .toolbar button {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 9px 12px;
+      background: #fff;
+      color: var(--ink);
+      cursor: pointer;
+      font-weight: 700;
+    }
+
+    .toolbar button:hover {
+      border-color: var(--brand);
+      color: var(--brand-dark);
+    }
+
+    .section {
+      margin-top: 24px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .section-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfdff;
+    }
+
+    .section-header h2 {
+      margin: 0;
+      font-size: 20px;
+    }
+
+    .section-header p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .cases {
+      display: grid;
+      gap: 14px;
+      padding: 20px;
+    }
+
+    .case {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px;
+      background: #fff;
+    }
+
+    .case[data-status="passed"] { border-color: rgba(15, 159, 110, 0.45); background: #f5fffb; }
+    .case[data-status="failed"] { border-color: rgba(220, 38, 38, 0.45); background: #fff7f7; }
+    .case[data-status="blocked"] { border-color: rgba(217, 119, 6, 0.45); background: #fffbeb; }
+
+    .case-top {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+
+    .case-title {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .code {
+      border-radius: 8px;
+      padding: 4px 8px;
+      background: #0f172a;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .case h3 {
+      margin: 0;
+      font-size: 17px;
+    }
+
+    .result-select {
+      min-width: 150px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px 10px;
+      background: #fff;
+      color: var(--ink);
+      font-weight: 700;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1.2fr;
+      gap: 16px;
+    }
+
+    h4 {
+      margin: 0 0 6px;
+      color: var(--brand-dark);
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    ol, ul {
+      margin: 0;
+      padding-left: 20px;
+      color: var(--muted);
+    }
+
+    li + li { margin-top: 4px; }
+
+    .note {
+      margin-top: 12px;
+      border-left: 4px solid var(--warn);
+      border-radius: 8px;
+      padding: 10px 12px;
+      background: #fff7ed;
+      color: #7c2d12;
+      font-size: 13px;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 66px;
+      margin-top: 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px 12px;
+      color: var(--ink);
+      font: inherit;
+      resize: vertical;
+    }
+
+    .final-summary {
+      margin-top: 24px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #fff;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .final-summary h2 {
+      margin: 0;
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfdff;
+      font-size: 20px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .count {
+      font-size: 20px;
+      font-weight: 900;
+    }
+
+    .footer {
+      margin-top: 24px;
+      color: var(--muted);
+      text-align: center;
+      font-size: 13px;
+    }
+
+    @media print {
+      .toolbar, textarea, .result-select { display: none; }
+      body { background: #fff; }
+      .hero, .section, .final-summary, .metric { box-shadow: none; }
+      .case { break-inside: avoid; }
+    }
+
+    @media (max-width: 860px) {
+      .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .grid { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 560px) {
+      .page { padding: 18px 12px 40px; }
+      .hero { padding: 20px; }
+      .summary { grid-template-columns: 1fr; }
+      .result-select { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <span class="eyebrow">Checklist interactivo de QA</span>
+      <h1>ClauDent - Casos de uso del modulo Inventario</h1>
+      <p>
+        Checklist para testers. El objetivo es validar productos, categorias, reabastecimientos
+        por lote, movimientos de stock, alertas y resumen, cuidando que el inventario no se
+        duplique, no pierda stock y mantenga trazabilidad.
+      </p>
+      <div class="meta">
+        <span class="pill">Modulo: Inventario</span>
+        <span class="pill">Ruta: /inventario</span>
+        <span class="pill">Fecha: 15/08/2026</span>
+        <span class="pill">Estado inicial: pendiente</span>
+      </div>
+    </section>
+
+    <section class="summary" aria-label="Resumen rapido">
+      <div class="metric"><strong>26</strong><span>Casos de uso</span></div>
+      <div class="metric"><strong>5</strong><span>Pestanas principales</span></div>
+      <div class="metric"><strong>10/25/50</strong><span>Paginacion esperada</span></div>
+      <div class="metric"><strong>Stock</strong><span>Dato critico</span></div>
+    </section>
+
+    <div class="toolbar">
+      <button type="button" data-bulk="pending">Marcar todo pendiente</button>
+      <button type="button" data-bulk="passed">Marcar todo paso</button>
+      <button type="button" data-bulk="failed">Marcar todo fallo</button>
+      <button type="button" data-bulk="blocked">Marcar todo bloqueado</button>
+      <button type="button" onclick="window.print()">Imprimir / guardar PDF</button>
+    </div>
+
+    <section class="section">
+      <div class="section-header">
+        <h2>Vista General y Alertas</h2>
+        <p>Carga inicial, tarjetas KPI, fecha visible y alertas de stock.</p>
+      </div>
+      <div class="cases">
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-INV-01</span><h3>Entrar al modulo Inventario</h3></div><select class="result-select"><option value="pending">⬜ Pendiente</option><option value="passed">✅ Paso</option><option value="failed">❌ Fallo</option><option value="blocked">⚠️ Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Entrar a <strong>/inventario</strong>.</li><li>Esperar la carga inicial.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Muestra titulo, descripcion, fecha, botones de Alertas, Reabastecer, Categoria y Producto.</li><li>No muestra errores de consola.</li><li>Las tarjetas KPI cargan con datos coherentes.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-INV-02</span><h3>Validar tarjetas de resumen</h3></div><select class="result-select"><option value="pending">⬜ Pendiente</option><option value="passed">✅ Paso</option><option value="failed">❌ Fallo</option><option value="blocked">⚠️ Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Revisar Productos activos, Bajo minimo, Categorias, Clasificados y Valor stock.</li><li>Comparar con tablas de productos.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Productos activos cuenta solo estado activo.</li><li>Bajo minimo coincide con stock menor o igual al minimo.</li><li>Valor stock = stock x costo unitario.</li><li>Clasificados cuenta productos no normales.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-INV-03</span><h3>Panel de alertas</h3></div><select class="result-select"><option value="pending">⬜ Pendiente</option><option value="passed">✅ Paso</option><option value="failed">❌ Fallo</option><option value="blocked">⚠️ Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Clic en Alertas.</li><li>Revisar stock bajo, retiros clasificados recientes y productos clasificados.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Muestra conteo de alertas.</li><li>Lista productos bajos o agotados.</li><li>Lista productos clasificados y retiros recientes si existen.</li><li>Si no hay alertas, lo indica sin romper UI.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <h2>Productos</h2>
+        <p>Alta, edicion, filtros, paginacion y estados de stock.</p>
+      </div>
+      <div class="cases">
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-INV-04</span><h3>Ver tabla de productos</h3></div><select class="result-select"><option value="pending">⬜ Pendiente</option><option value="passed">✅ Paso</option><option value="failed">❌ Fallo</option><option value="blocked">⚠️ Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Abrir pestana Productos.</li><li>Esperar carga de tabla.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Muestra producto, categoria, unidad, stock, minimo, costo, venta, proveedor y estado.</li><li>Productos sin datos muestran guion donde aplique.</li><li>Estados bajo stock/inactivo se ven claramente.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-INV-05</span><h3>Crear producto nuevo</h3></div><select class="result-select"><option value="pending">⬜ Pendiente</option><option value="passed">✅ Paso</option><option value="failed">❌ Fallo</option><option value="blocked">⚠️ Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Clic en Producto.</li><li>Capturar nombre, categoria, unidad, stock, minimo, costo, precio de venta opcional, clasificacion y proveedor.</li><li>Guardar.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Crea producto en inventario.</li><li>Aparece en tabla.</li><li>Si precio de venta queda vacio, no aparece como vendible.</li><li>Registra bitacora si el servicio lo contempla.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-INV-06</span><h3>Validaciones al crear producto</h3></div><select class="result-select"><option value="pending">⬜ Pendiente</option><option value="passed">✅ Paso</option><option value="failed">❌ Fallo</option><option value="blocked">⚠️ Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Intentar guardar sin nombre.</li><li>Intentar con stock, minimo o costo negativo.</li><li>Intentar datos incompletos.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>No guarda productos invalidos.</li><li>Muestra mensaje claro.</li><li>No crea documentos vacios ni stock incorrecto.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-INV-07</span><h3>Editar producto existente</h3></div><select class="result-select"><option value="pending">⬜ Pendiente</option><option value="passed">✅ Paso</option><option value="failed">❌ Fallo</option><option value="blocked">⚠️ Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Editar un producto.</li><li>Cambiar proveedor, minimo, costo, precio venta, clasificacion o estado.</li><li>Guardar y recargar.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Actualiza el mismo producto.</li><li>No crea duplicado.</li><li>Los filtros y resumen reflejan los cambios.</li><li>Persiste al recargar.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-INV-08</span><h3>Filtrar productos</h3></div><select class="result-select"><option value="pending">⬜ Pendiente</option><option value="passed">✅ Paso</option><option value="failed">❌ Fallo</option><option value="blocked">⚠️ Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Buscar por nombre o marca.</li><li>Filtrar por categoria.</li><li>Filtrar por proveedor.</li><li>Filtrar por estado: activos, bajo minimo, inactivos, vendibles y no vendibles.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Los filtros se combinan correctamente.</li><li>El paginador vuelve a pagina 1 al cambiar filtros.</li><li>Sin coincidencias muestra mensaje vacio.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-INV-09</span><h3>Paginacion de productos</h3></div><select class="result-select"><option value="pending">⬜ Pendiente</option><option value="passed">✅ Paso</option><option value="failed">❌ Fallo</option><option value="blocked">⚠️ Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Tener mas registros que el tamano de pagina.</li><li>Cambiar Mostrar 10/25/50.</li><li>Usar anterior/siguiente.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>No carga todos de golpe.</li><li>Respeta tamano seleccionado.</li><li>Los botones se desactivan correctamente en inicio/fin.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <h2>Reabastecer por Lote</h2>
+        <p>Entradas de stock con proveedor, documento, lotes y vencimiento.</p>
+      </div>
+      <div class="cases">
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-INV-10</span><h3>Ver productos a reabastecer</h3></div><select class="result-select"><option value="pending">⬜ Pendiente</option><option value="passed">✅ Paso</option><option value="failed">❌ Fallo</option><option value="blocked">⚠️ Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Abrir pestana Reabastecer.</li><li>Revisar orden y datos de productos.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Muestra productos activos.</li><li>Prioriza productos con menor diferencia contra stock minimo.</li><li>Muestra categoria, stock actual, minimo y proveedor.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-INV-11</span><h3>Filtrar reabastecimiento</h3></div><select class="result-select"><option value="pending">⬜ Pendiente</option><option value="passed">✅ Paso</option><option value="failed">❌ Fallo</option><option value="blocked">⚠️ Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Buscar por producto o marca.</li><li>Filtrar por categoria.</li><li>Filtrar por proveedor.</li><li>Filtrar bajo minimo y sin proveedor.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>La tabla muestra solo productos que cumplen filtros.</li><li>Reinicia paginacion al cambiar filtros.</li><li>No muestra inactivos.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-INV-12</span><h3>Registrar reabastecimiento</h3></div><select class="result-select"><option value="pending">⬜ Pendiente</option><option value="passed">✅ Paso</option><option value="failed">❌ Fallo</option><option value="blocked">⚠️ Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Clic en Reabastecer.</li><li>Capturar proveedor y documento de compra.</li><li>Agregar producto, cantidad, lote y vencimiento opcional.</li><li>Guardar.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Suma stock al producto.</li><li>Crea movimiento tipo entrada.</li><li>Guarda lote, proveedor y documento.</li><li>Muestra resumen de unidades.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-INV-13</span><h3>Validaciones de reabastecimiento</h3></div><select class="result-select"><option value="pending">⬜ Pendiente</option><option value="passed">✅ Paso</option><option value="failed">❌ Fallo</option><option value="blocked">⚠️ Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Intentar guardar sin proveedor.</li><li>Intentar guardar sin documento.</li><li>Intentar agregar item sin lote o sin cantidad valida.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>No permite guardar datos incompletos.</li><li>No suma stock si falta validacion.</li><li>Muestra mensajes claros.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-INV-14</span><h3>Reabastecer varios productos en una entrada</h3></div><select class="result-select"><option value="pending">⬜ Pendiente</option><option value="passed">✅ Paso</option><option value="failed">❌ Fallo</option><option value="blocked">⚠️ Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Agregar dos o mas items al reabastecimiento.</li><li>Guardar.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Suma cada producto correctamente.</li><li>Crea movimientos separados o trazables por producto.</li><li>El total de unidades coincide con la suma de items.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <h2>Categorias</h2>
+        <p>Catalogo de categorias, relacion con productos y categorias de sistema.</p>
+      </div>
+      <div class="cases">
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-INV-15</span><h3>Ver categorias</h3></div><select class="result-select"><option value="pending">⬜ Pendiente</option><option value="passed">✅ Paso</option><option value="failed">❌ Fallo</option><option value="blocked">⚠️ Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Abrir pestana Categorias.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Muestra categorias con descripcion, estado y conteo de productos.</li><li>Las categorias de sistema se distinguen si aplica.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-INV-16</span><h3>Crear categoria</h3></div><select class="result-select"><option value="pending">⬜ Pendiente</option><option value="passed">✅ Paso</option><option value="failed">❌ Fallo</option><option value="blocked">⚠️ Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Clic en Categoria.</li><li>Capturar nombre y descripcion.</li><li>Guardar.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Crea categoria activa.</li><li>Aparece en selector de producto.</li><li>No rompe categorias existentes.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-INV-17</span><h3>Editar o eliminar categoria</h3></div><select class="result-select"><option value="pending">⬜ Pendiente</option><option value="passed">✅ Paso</option><option value="failed">❌ Fallo</option><option value="blocked">⚠️ Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Editar nombre/descripcion.</li><li>Intentar eliminar categoria sin productos.</li><li>Intentar eliminar categoria usada por productos.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Editar persiste cambios.</li><li>No debe eliminar categorias de sistema si estan protegidas.</li><li>No debe dejar productos apuntando a categoria inexistente.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <h2>Movimientos de Stock</h2>
+        <p>Historial, ajustes controlados, salidas clinicas y trazabilidad.</p>
+      </div>
+      <div class="cases">
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-INV-18</span><h3>Ver historial de movimientos</h3></div><select class="result-select"><option value="pending">⬜ Pendiente</option><option value="passed">✅ Paso</option><option value="failed">❌ Fallo</option><option value="blocked">⚠️ Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Abrir pestana Movimientos.</li><li>Revisar registros.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Muestra fecha, producto, tipo, cantidad, stock anterior/nuevo, referencia, lote, proveedor y motivo.</li><li>Entradas y salidas se distinguen.</li><li>La tabla tiene paginacion.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-INV-19</span><h3>Filtrar movimientos</h3></div><select class="result-select"><option value="pending">⬜ Pendiente</option><option value="passed">✅ Paso</option><option value="failed">❌ Fallo</option><option value="blocked">⚠️ Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Filtrar por fecha.</li><li>Filtrar por producto.</li><li>Filtrar por tipo.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Los filtros se combinan correctamente.</li><li>La paginacion vuelve a pagina 1.</li><li>Sin coincidencias muestra vacio.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-INV-20</span><h3>Registrar salida por uso clinico</h3></div><select class="result-select"><option value="pending">⬜ Pendiente</option><option value="passed">✅ Paso</option><option value="failed">❌ Fallo</option><option value="blocked">⚠️ Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Abrir accion manual de movimiento.</li><li>Seleccionar producto.</li><li>Tipo: uso clinico.</li><li>Capturar cantidad y motivo.</li><li>Guardar.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Descuenta stock.</li><li>Crea movimiento con stock anterior y nuevo.</li><li>No afecta caja porque es uso clinico interno.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-INV-21</span><h3>Registrar merma o caducidad</h3></div><select class="result-select"><option value="pending">⬜ Pendiente</option><option value="passed">✅ Paso</option><option value="failed">❌ Fallo</option><option value="blocked">⚠️ Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Registrar movimiento tipo merma.</li><li>Registrar movimiento tipo caducidad.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Ambos descuentan stock.</li><li>Queda motivo registrado.</li><li>No permite dejar stock negativo.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-INV-22</span><h3>Registrar devolucion o ajuste</h3></div><select class="result-select"><option value="pending">⬜ Pendiente</option><option value="passed">✅ Paso</option><option value="failed">❌ Fallo</option><option value="blocked">⚠️ Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Registrar devolucion al stock.</li><li>Registrar ajuste por conteo fisico.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Devolucion suma stock.</li><li>Ajuste modifica stock segun logica del sistema.</li><li>Queda trazabilidad del motivo y usuario.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-INV-23</span><h3>Material clasificado con doble autorizacion</h3></div><select class="result-select"><option value="pending">⬜ Pendiente</option><option value="passed">✅ Paso</option><option value="failed">❌ Fallo</option><option value="blocked">⚠️ Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Crear o usar producto clasificado.</li><li>Registrar retiro por uso clinico, merma o caducidad.</li><li>Intentar guardar sin autorizacion.</li><li>Capturar autorizaciones y guardar.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Sin autorizacion no guarda.</li><li>Con autorizacion guarda movimiento.</li><li>Genera notificacion/alerta de retiro clasificado.</li><li>Se ve en panel de Alertas.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <h2>Resumen e Integraciones</h2>
+        <p>Productos vendibles, uso clinico, ventas y comportamiento responsive.</p>
+      </div>
+      <div class="cases">
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-INV-24</span><h3>Resumen de productos vendibles</h3></div><select class="result-select"><option value="pending">⬜ Pendiente</option><option value="passed">✅ Paso</option><option value="failed">❌ Fallo</option><option value="blocked">⚠️ Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Abrir pestana Resumen.</li><li>Revisar Productos vendibles.</li><li>Usar paginador.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Muestra solo productos con precio de venta.</li><li>Muestra stock, unidad y precio.</li><li>No muestra todos de golpe: usa paginador 10/25/50.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-INV-25</span><h3>Resumen de uso clinico</h3></div><select class="result-select"><option value="pending">⬜ Pendiente</option><option value="passed">✅ Paso</option><option value="failed">❌ Fallo</option><option value="blocked">⚠️ Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Abrir Resumen.</li><li>Revisar Uso clinico.</li><li>Usar paginador.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>Muestra material clinico.</li><li>Indica que no mueve dinero en caja.</li><li>Muestra stock.</li><li>No muestra todos de golpe: usa paginador 10/25/50.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+
+        <article class="case" data-status="pending">
+          <div class="case-top"><div class="case-title"><span class="code">CU-INV-26</span><h3>Integracion con ventas y persistencia</h3></div><select class="result-select"><option value="pending">⬜ Pendiente</option><option value="passed">✅ Paso</option><option value="failed">❌ Fallo</option><option value="blocked">⚠️ Bloqueada</option></select></div>
+          <div class="grid"><div><h4>Pasos</h4><ol><li>Vender producto desde Ventas.</li><li>Regresar a Inventario.</li><li>Revisar stock y movimientos.</li><li>Recargar navegador.</li></ol></div><div><h4>Resultado esperado</h4><ul><li>La venta descuenta stock.</li><li>Queda movimiento tipo venta con referencia.</li><li>El stock persiste al recargar.</li><li>La UI se mantiene correcta en escritorio y movil.</li></ul></div></div>
+          <textarea placeholder="Notas del tester"></textarea>
+        </article>
+      </div>
+    </section>
+
+    <section class="final-summary">
+      <h2>📊 Resumen de pruebas</h2>
+      <table>
+        <thead>
+          <tr><th>Estado</th><th>Cantidad</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>⬜ Pendientes</td><td class="count" id="pending-count">26</td></tr>
+          <tr><td>✅ Pasaron</td><td class="count" id="passed-count">0</td></tr>
+          <tr><td>❌ Fallaron</td><td class="count" id="failed-count">0</td></tr>
+          <tr><td>⚠️ Bloqueadas</td><td class="count" id="blocked-count">0</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <p class="footer">ClauDent - QA funcional del modulo Inventario. Los cambios se cuentan automaticamente al seleccionar estado por caso.</p>
+  </main>
+
+  <script>
+    const storageKey = "claudent-qa-inventario-v1";
+    const statusIds = ["pending", "passed", "failed", "blocked"];
+
+    function readState() {
+      try {
+        return JSON.parse(localStorage.getItem(storageKey) || "{}");
+      } catch {
+        return {};
+      }
+    }
+
+    function writeState(state) {
+      localStorage.setItem(storageKey, JSON.stringify(state));
+    }
+
+    function getCaseCode(card) {
+      return card.querySelector(".code")?.textContent?.trim() || "";
+    }
+
+    function updateCounts() {
+      const counts = { pending: 0, passed: 0, failed: 0, blocked: 0 };
+      document.querySelectorAll(".case").forEach((card) => {
+        const status = card.dataset.status || "pending";
+        counts[status] += 1;
+      });
+      statusIds.forEach((status) => {
+        document.getElementById(status + "-count").textContent = counts[status];
+      });
+    }
+
+    const savedState = readState();
+
+    document.querySelectorAll(".result-select").forEach((select) => {
+      const card = select.closest(".case");
+      const code = getCaseCode(card);
+      if (savedState[code]?.status) {
+        card.dataset.status = savedState[code].status;
+      }
+      select.value = card.dataset.status || "pending";
+      select.addEventListener("change", () => {
+        card.dataset.status = select.value;
+        const current = readState();
+        current[code] = { ...(current[code] || {}), status: select.value };
+        writeState(current);
+        updateCounts();
+      });
+    });
+
+    document.querySelectorAll(".case textarea").forEach((textarea) => {
+      const card = textarea.closest(".case");
+      const code = getCaseCode(card);
+      if (savedState[code]?.notes) {
+        textarea.value = savedState[code].notes;
+      }
+      textarea.addEventListener("input", () => {
+        const current = readState();
+        current[code] = { ...(current[code] || {}), notes: textarea.value };
+        writeState(current);
+      });
+    });
+
+    document.querySelectorAll("[data-bulk]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const status = button.dataset.bulk;
+        const current = readState();
+        document.querySelectorAll(".case").forEach((card) => {
+          const code = getCaseCode(card);
+          card.dataset.status = status;
+          const select = card.querySelector(".result-select");
+          if (select) select.value = status;
+          current[code] = { ...(current[code] || {}), status };
+        });
+        writeState(current);
+        updateCounts();
+      });
+    });
+
+    updateCounts();
+  </script>
+</body>
+</html>
