@@ -28,10 +28,15 @@ const AppChrome: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 const BusinessProviders: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const { currentUser } = useAuth();
+  const { authLoading, currentUser, currentUserProfile, profileLoading } =
+    useAuth();
   const { can } = useCan();
 
-  const isSignedIn = Boolean(currentUser);
+  const canMountBusinessData =
+    Boolean(currentUser) &&
+    !authLoading &&
+    !profileLoading &&
+    currentUserProfile?.status === "active";
 
   const canUseInventory =
     can("inventory.view") ||
@@ -58,11 +63,15 @@ const BusinessProviders: React.FC<{ children: React.ReactNode }> = ({
 
   let content = <AppChrome>{children}</AppChrome>;
 
-  if (isSignedIn && canUseCash) {
+  if (!canMountBusinessData) {
+    return content;
+  }
+
+  if (canUseCash) {
     content = <CashProvider>{content}</CashProvider>;
   }
 
-  if (isSignedIn && canUseInventory) {
+  if (canUseInventory) {
     content = <InventoryProvider>{content}</InventoryProvider>;
   }
 

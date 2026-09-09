@@ -1,6 +1,12 @@
 import React from "react";
 
-import { AdminPanelPage, LoginPage, ResetPasswordPage, FirstAccessPage } from "@/auth";
+import {
+  AdminPanelPage,
+  FirstAccessPage,
+  LoginPage,
+  ResetPasswordPage,
+} from "@/auth";
+import type { PermissionKey } from "@/auth";
 import { AuditPage } from "@/modules/audit";
 import { AgendaPage } from "@/modules/agenda";
 import { DashboardPage } from "@/modules/dashboard";
@@ -15,23 +21,28 @@ import { ServicesPage } from "@/modules/services";
 import { CajaPage, VentasPage } from "@/modules/ventas";
 import { NotFoundPage } from "@/shared";
 
-
-import type { PermissionKey } from "@/auth";
-
-
 export interface AppRouteConfig {
   path: string;
   element: React.ReactElement;
   permission?: PermissionKey;
   anyPermission?: PermissionKey[];
+  redirectAuthenticated?: boolean;
 }
 
 export const publicRoutes: AppRouteConfig[] = [
-  { path: "/login", element: <LoginPage /> },
-  { path: "/reset-password", element: <ResetPasswordPage /> },
   {
-  path: "/primer-acceso",
-  element: <FirstAccessPage />,
+    path: "/login",
+    element: <LoginPage />,
+    redirectAuthenticated: true,
+  },
+  {
+    path: "/reset-password",
+    element: <ResetPasswordPage />,
+    redirectAuthenticated: true,
+  },
+  {
+    path: "/primer-acceso",
+    element: <FirstAccessPage />,
   },
 ];
 
@@ -92,9 +103,14 @@ export const protectedRoutes: AppRouteConfig[] = [
     permission: "audit.view",
   },
   {
-  path: "/administracion",
-  element: <AdminPanelPage />,
-  anyPermission: ["users.view", "roles.view", "security.sessions.view", "settings.view"],
+    path: "/administracion",
+    element: <AdminPanelPage />,
+    anyPermission: [
+      "users.view",
+      "roles.view",
+      "security.sessions.view",
+      "settings.view",
+    ],
   },
 ];
 

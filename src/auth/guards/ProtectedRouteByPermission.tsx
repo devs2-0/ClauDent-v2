@@ -2,6 +2,7 @@ import React from "react";
 import { Navigate, Outlet, useLocation } from "react-router-dom";
 
 import { SinPermisosPage } from "@/shared";
+import { AuthLoadingScreen } from "../components/AuthLoadingScreen";
 import { useCan } from "../hooks/useCan";
 import type { PermissionKey } from "../types/permission.types";
 
@@ -21,9 +22,10 @@ export const ProtectedRouteByPermission = ({
 
   if (loading) {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center text-sm text-muted-foreground">
-        Validando permisos...
-      </div>
+      <AuthLoadingScreen
+        message="Validando permisos..."
+        className="min-h-[50vh] bg-transparent"
+      />
     );
   }
 

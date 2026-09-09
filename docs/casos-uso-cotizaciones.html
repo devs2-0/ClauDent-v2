@@ -1,0 +1,673 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ClauDent - Casos de uso: Cotizaciones</title>
+  <style>
+    :root {
+      --bg: #f5f9fc;
+      --panel: #ffffff;
+      --ink: #0f172a;
+      --muted: #526179;
+      --line: #dbe7f0;
+      --brand: #28bdf2;
+      --brand-dark: #087ea4;
+      --good: #0f9f6e;
+      --warn: #d97706;
+      --danger: #dc2626;
+      --chip: #eef8fc;
+      --shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: linear-gradient(180deg, #eef9fd 0%, var(--bg) 280px);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+    }
+
+    .page {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 32px 20px 56px;
+    }
+
+    .hero {
+      display: grid;
+      gap: 16px;
+      padding: 28px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.86);
+      box-shadow: var(--shadow);
+    }
+
+    .eyebrow {
+      width: fit-content;
+      border-radius: 999px;
+      padding: 6px 12px;
+      background: var(--chip);
+      color: var(--brand-dark);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(28px, 4vw, 44px);
+      line-height: 1.05;
+      letter-spacing: 0;
+    }
+
+    .hero p {
+      max-width: 780px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 16px;
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    .pill {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 8px 12px;
+      background: #fff;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin: 20px 0;
+    }
+
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel);
+      padding: 16px;
+      box-shadow: 0 6px 18px rgba(15, 23, 42, 0.05);
+    }
+
+    .metric strong {
+      display: block;
+      font-size: 26px;
+    }
+
+    .metric span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .section {
+      margin-top: 24px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .section-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfdff;
+    }
+
+    .section-header h2 {
+      margin: 0;
+      font-size: 20px;
+    }
+
+    .section-header p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .cases {
+      display: grid;
+      gap: 14px;
+      padding: 20px;
+    }
+
+    .case {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px;
+      background: #fff;
+    }
+
+    .case-title {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .code {
+      border-radius: 8px;
+      padding: 4px 8px;
+      background: #0f172a;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .case h3 {
+      margin: 0;
+      font-size: 17px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1.2fr;
+      gap: 16px;
+    }
+
+    h4 {
+      margin: 0 0 6px;
+      color: var(--brand-dark);
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    ol, ul {
+      margin: 0;
+      padding-left: 20px;
+      color: var(--muted);
+    }
+
+    li + li { margin-top: 4px; }
+
+    .note {
+      margin-top: 12px;
+      border-left: 4px solid var(--warn);
+      border-radius: 8px;
+      padding: 10px 12px;
+      background: #fff7ed;
+      color: #7c2d12;
+      font-size: 13px;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 4px 8px;
+      background: #ecfdf5;
+      color: var(--good);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 20px 0;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fff;
+    }
+
+    .toolbar button {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 9px 12px;
+      background: #fff;
+      color: var(--ink);
+      cursor: pointer;
+      font-weight: 700;
+    }
+
+    .toolbar button:hover {
+      border-color: var(--brand);
+      color: var(--brand-dark);
+    }
+
+    .case[data-status="passed"] { border-color: rgba(15, 159, 110, 0.45); background: #f5fffb; }
+    .case[data-status="failed"] { border-color: rgba(220, 38, 38, 0.45); background: #fff7f7; }
+    .case[data-status="blocked"] { border-color: rgba(217, 119, 6, 0.45); background: #fffbeb; }
+
+    .result-select {
+      margin-left: auto;
+      min-width: 150px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px 10px;
+      background: #fff;
+      color: var(--ink);
+      font-weight: 700;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 66px;
+      margin-top: 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px 12px;
+      color: var(--ink);
+      font: inherit;
+      resize: vertical;
+    }
+
+    .final-summary {
+      margin-top: 24px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #fff;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .final-summary h2 {
+      margin: 0;
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfdff;
+      font-size: 20px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .count {
+      font-size: 20px;
+      font-weight: 900;
+    }
+
+    .footer {
+      margin-top: 24px;
+      color: var(--muted);
+      text-align: center;
+      font-size: 13px;
+    }
+
+    @media print {
+      .toolbar, textarea, .result-select { display: none; }
+      body { background: #fff; }
+      .hero, .section, .final-summary, .metric { box-shadow: none; }
+      .case { break-inside: avoid; }
+    }
+
+    @media (max-width: 860px) {
+      .summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .grid { grid-template-columns: 1fr; }
+    }
+
+    @media (max-width: 560px) {
+      .page { padding: 18px 12px 40px; }
+      .hero { padding: 20px; }
+      .summary { grid-template-columns: 1fr; }
+      .result-select { width: 100%; margin-left: 0; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <span class="eyebrow">Plan de pruebas funcionales</span>
+      <h1>ClauDent - Casos de uso del modulo Cotizaciones</h1>
+      <p>
+        Lista para testers. El objetivo es validar que las cotizaciones se creen, consulten,
+        editen, filtren y exporten correctamente, manteniendo la relacion con pacientes y
+        servicios sin afectar caja hasta que se conviertan en cobro desde el flujo correspondiente.
+      </p>
+      <div class="meta">
+        <span class="pill">Modulo: Cotizaciones</span>
+        <span class="pill">Ruta: /cotizaciones</span>
+        <span class="pill">Fecha: 15/08/2026</span>
+        <span class="pill">Estado: listo para QA</span>
+      </div>
+    </section>
+
+    <section class="summary" aria-label="Resumen">
+      <div class="metric"><strong>20</strong><span>Casos de uso</span></div>
+      <div class="metric"><strong>3</strong><span>Estados: borrador, activo, inactivo</span></div>
+      <div class="metric"><strong>2</strong><span>Tipos de servicio: catalogo y personalizado</span></div>
+      <div class="metric"><strong>PDF</strong><span>Exportacion de cotizacion</span></div>
+    </section>
+
+    <div class="toolbar">
+      <button type="button" data-bulk="pending">Marcar todo pendiente</button>
+      <button type="button" data-bulk="passed">Marcar todo paso</button>
+      <button type="button" data-bulk="failed">Marcar todo fallo</button>
+      <button type="button" data-bulk="blocked">Marcar todo bloqueado</button>
+      <button type="button" onclick="window.print()">Imprimir / guardar PDF</button>
+    </div>
+
+    <section class="section">
+      <div class="section-header">
+        <h2>Listado y Consulta</h2>
+        <p>Carga del modulo, busqueda, filtros y estados visibles.</p>
+      </div>
+      <div class="cases">
+        <article class="case">
+          <div class="case-title"><span class="code">CU-COT-01</span><h3>Ver listado de cotizaciones</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Entrar a <strong>/cotizaciones</strong>.</li><li>Esperar la carga de la tabla.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>Muestra ID, paciente, fecha, servicios, total, estado y acciones.</li><li>Si no hay registros, muestra mensaje de vacio.</li><li>Mientras carga, muestra skeletons.</li></ul></div>
+          </div>
+        </article>
+
+        <article class="case">
+          <div class="case-title"><span class="code">CU-COT-02</span><h3>Buscar cotizaciones</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Escribir nombre del paciente o estado en el buscador.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>Filtra la tabla por paciente o estado.</li><li>La busqueda no distingue mayusculas/minusculas.</li><li>Si no hay coincidencias, muestra mensaje claro.</li></ul></div>
+          </div>
+        </article>
+
+        <article class="case">
+          <div class="case-title"><span class="code">CU-COT-03</span><h3>Filtrar por rango de fechas</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Seleccionar fecha Desde.</li><li>Seleccionar fecha Hasta.</li><li>Limpiar filtros con el boton X.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>Muestra cotizaciones dentro del rango.</li><li>Desde funciona aunque Hasta este vacio.</li><li>Hasta funciona aunque Desde este vacio.</li><li>Limpiar restaura el listado.</li></ul></div>
+          </div>
+        </article>
+
+        <article class="case">
+          <div class="case-title"><span class="code">CU-COT-04</span><h3>Ver estado de cotizacion</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Crear o revisar cotizaciones en estado borrador, activo e inactivo.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>El estado aparece con badge visual.</li><li>Borrador usa estilo de borde.</li><li>Activo e inactivo se distinguen correctamente.</li></ul></div>
+          </div>
+        </article>
+
+        <article class="case">
+          <div class="case-title"><span class="code">CU-COT-05</span><h3>Cotizacion con paciente eliminado</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Revisar una cotizacion cuyo paciente ya no exista.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>La tabla no se rompe.</li><li>Muestra <strong>Paciente eliminado</strong>.</li><li>Permite seguir usando acciones disponibles.</li></ul></div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <h2>Crear Cotizacion</h2>
+        <p>Alta de cotizacion con paciente, servicios, descuento y notas.</p>
+      </div>
+      <div class="cases">
+        <article class="case">
+          <div class="case-title"><span class="code">CU-COT-06</span><h3>Abrir formulario de nueva cotizacion</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Clic en <strong>Nueva Cotizacion</strong>.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>Abre modal.</li><li>Fecha inicia con el dia actual.</li><li>Estado por defecto es borrador.</li><li>Lista de servicios inicia vacia.</li></ul></div>
+          </div>
+        </article>
+
+        <article class="case">
+          <div class="case-title"><span class="code">CU-COT-07</span><h3>Seleccionar paciente</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Abrir selector de paciente.</li><li>Buscar por nombre, apellido o CURP.</li><li>Seleccionar paciente.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>Muestra hasta 20 resultados.</li><li>El paciente seleccionado queda visible en el boton.</li><li>El paciente pasa a recientes.</li></ul></div>
+          </div>
+        </article>
+
+        <article class="case">
+          <div class="case-title"><span class="code">CU-COT-08</span><h3>Agregar servicio de catalogo</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Clic en <strong>Catalogo</strong>.</li><li>Buscar servicio por nombre o codigo.</li><li>Seleccionar servicio.</li><li>Ajustar cantidad.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>Trae nombre y precio del servicio.</li><li>La cantidad minima visual es 1.</li><li>El subtotal se calcula con cantidad x precio.</li><li>El servicio pasa a recientes.</li></ul></div>
+          </div>
+        </article>
+
+        <article class="case">
+          <div class="case-title"><span class="code">CU-COT-09</span><h3>Agregar servicio personalizado</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Clic en <strong>Personalizado</strong>.</li><li>Capturar nombre, precio y cantidad.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>Permite cotizar un concepto no existente en catalogo.</li><li>Usa el precio capturado.</li><li>No exige servicioId porque es personalizado.</li></ul></div>
+          </div>
+        </article>
+
+        <article class="case">
+          <div class="case-title"><span class="code">CU-COT-10</span><h3>Eliminar servicio de la cotizacion</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Agregar dos servicios.</li><li>Eliminar uno con el boton X.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>El servicio desaparece del formulario.</li><li>Subtotal, descuento y total se recalculan.</li><li>No elimina servicios del catalogo.</li></ul></div>
+          </div>
+        </article>
+
+        <article class="case">
+          <div class="case-title"><span class="code">CU-COT-11</span><h3>Aplicar descuento</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Agregar servicios.</li><li>Capturar descuento en porcentaje.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>Muestra subtotal.</li><li>Muestra descuento aplicado.</li><li>Total = subtotal - porcentaje de descuento.</li><li>El descuento maximo permitido por input es 100.</li></ul></div>
+          </div>
+        </article>
+
+        <article class="case">
+          <div class="case-title"><span class="code">CU-COT-12</span><h3>Guardar cotizacion valida</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Seleccionar paciente.</li><li>Agregar al menos un servicio.</li><li>Elegir estado y notas opcionales.</li><li>Guardar.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>Crea documento en cotizaciones.</li><li>Aparece en la tabla.</li><li>Registra bitacora CREATE.</li><li>Muestra mensaje de exito.</li></ul></div>
+          </div>
+        </article>
+
+        <article class="case">
+          <div class="case-title"><span class="code">CU-COT-13</span><h3>Validar cotizacion incompleta</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Intentar guardar sin paciente.</li><li>Intentar guardar sin servicios.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>No guarda.</li><li>Muestra aviso: debe seleccionar paciente y agregar al menos un servicio.</li><li>No crea registros vacios.</li></ul></div>
+          </div>
+          <div class="note">Punto sensible: revisar tambien servicios con nombre vacio, cantidad 0 o precio 0, porque el formulario convierte valores invalidos a 0.</div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <h2>Editar, Exportar y Eliminar</h2>
+        <p>Acciones disponibles sobre registros existentes.</p>
+      </div>
+      <div class="cases">
+        <article class="case">
+          <div class="case-title"><span class="code">CU-COT-14</span><h3>Abrir cotizacion existente</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Clic en el icono de ojo.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>Abre modal en modo edicion.</li><li>Carga paciente, fecha, servicios, descuento, estado y notas.</li><li>El boton final dice Actualizar.</li></ul></div>
+          </div>
+        </article>
+
+        <article class="case">
+          <div class="case-title"><span class="code">CU-COT-15</span><h3>Editar cotizacion</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Abrir cotizacion.</li><li>Cambiar servicios, descuento, fecha, estado o notas.</li><li>Guardar.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>Actualiza el mismo documento.</li><li>No crea duplicado.</li><li>Recalcula total.</li><li>Registra bitacora UPDATE.</li></ul></div>
+          </div>
+        </article>
+
+        <article class="case">
+          <div class="case-title"><span class="code">CU-COT-16</span><h3>Cambiar estado de cotizacion</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Abrir cotizacion.</li><li>Cambiar estado a borrador, activo o inactivo.</li><li>Guardar.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>La tabla refleja el nuevo estado.</li><li>El badge cambia de estilo.</li><li>Persiste al recargar.</li></ul></div>
+          </div>
+        </article>
+
+        <article class="case">
+          <div class="case-title"><span class="code">CU-COT-17</span><h3>Exportar PDF</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Clic en icono de impresora/PDF de una cotizacion.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>Genera PDF de la cotizacion.</li><li>Incluye paciente, fecha, servicios, cantidades, precios, descuento, total y notas.</li><li>Si falta el paciente, debe mostrar error o PDF controlado sin romper pantalla.</li></ul></div>
+          </div>
+        </article>
+
+        <article class="case">
+          <div class="case-title"><span class="code">CU-COT-18</span><h3>Eliminar cotizacion</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Clic en eliminar.</li><li>Cancelar confirmacion.</li><li>Repetir y aceptar.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>Cancelar no elimina.</li><li>Aceptar borra la cotizacion.</li><li>La tabla se actualiza.</li><li>Registra bitacora DELETE.</li></ul></div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <h2>Integracion y Robustez</h2>
+        <p>Relacion con pacientes, ficha clinica, persistencia y experiencia visual.</p>
+      </div>
+      <div class="cases">
+        <article class="case">
+          <div class="case-title"><span class="code">CU-COT-19</span><h3>Ver cotizaciones desde ficha del paciente</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Entrar a ficha de paciente.</li><li>Abrir pestaña Cotizaciones.</li><li>Comparar con modulo general.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>Solo muestra cotizaciones del paciente actual.</li><li>Permite ir a gestion completa.</li><li>Puede generar PDF desde la ficha.</li></ul></div>
+          </div>
+        </article>
+
+        <article class="case">
+          <div class="case-title"><span class="code">CU-COT-20</span><h3>Persistencia y responsive</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Crear o editar cotizacion.</li><li>Recargar navegador.</li><li>Probar en escritorio y movil/tablet.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>La informacion persiste.</li><li>No hay duplicados inesperados.</li><li>La tabla permite desplazamiento sin cortar acciones.</li><li>El modal no se sale de pantalla y permite scroll.</li></ul></div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="final-summary">
+      <h2>📊 Resumen de pruebas</h2>
+      <table>
+        <thead>
+          <tr><th>Estado</th><th>Cantidad</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>⬜ Pendientes</td><td class="count" id="pending-count">20</td></tr>
+          <tr><td>✅ Pasaron</td><td class="count" id="passed-count">0</td></tr>
+          <tr><td>❌ Fallaron</td><td class="count" id="failed-count">0</td></tr>
+          <tr><td>⚠️ Bloqueadas</td><td class="count" id="blocked-count">0</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <p class="footer">
+      <span class="status">Checklist interactivo</span>
+      &nbsp; ClauDent - QA funcional del modulo Cotizaciones. Los cambios se guardan en este navegador.
+    </p>
+  </main>
+  <script>
+    const storageKey = "claudent-qa-cotizaciones-v1";
+    const statusIds = ["pending", "passed", "failed", "blocked"];
+
+    function readState() {
+      try {
+        return JSON.parse(localStorage.getItem(storageKey) || "{}");
+      } catch {
+        return {};
+      }
+    }
+
+    function writeState(state) {
+      localStorage.setItem(storageKey, JSON.stringify(state));
+    }
+
+    function getCaseCode(card) {
+      return card.querySelector(".code")?.textContent?.trim() || "";
+    }
+
+    function updateCounts() {
+      const counts = { pending: 0, passed: 0, failed: 0, blocked: 0 };
+      document.querySelectorAll(".case").forEach((card) => {
+        counts[card.dataset.status || "pending"] += 1;
+      });
+      statusIds.forEach((status) => {
+        document.getElementById(status + "-count").textContent = counts[status];
+      });
+    }
+
+    const savedState = readState();
+
+    document.querySelectorAll(".case").forEach((card) => {
+      const code = getCaseCode(card);
+      card.dataset.status = savedState[code]?.status || "pending";
+
+      const select = document.createElement("select");
+      select.className = "result-select";
+      select.innerHTML = `
+        <option value="pending">⬜ Pendiente</option>
+        <option value="passed">✅ Paso</option>
+        <option value="failed">❌ Fallo</option>
+        <option value="blocked">⚠️ Bloqueada</option>
+      `;
+      select.value = card.dataset.status;
+      card.querySelector(".case-title")?.appendChild(select);
+
+      const notes = document.createElement("textarea");
+      notes.placeholder = "Notas del tester";
+      notes.value = savedState[code]?.notes || "";
+      card.appendChild(notes);
+
+      select.addEventListener("change", () => {
+        card.dataset.status = select.value;
+        const current = readState();
+        current[code] = { ...(current[code] || {}), status: select.value };
+        writeState(current);
+        updateCounts();
+      });
+
+      notes.addEventListener("input", () => {
+        const current = readState();
+        current[code] = { ...(current[code] || {}), notes: notes.value };
+        writeState(current);
+      });
+    });
+
+    document.querySelectorAll("[data-bulk]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const status = button.dataset.bulk;
+        const current = readState();
+        document.querySelectorAll(".case").forEach((card) => {
+          const code = getCaseCode(card);
+          card.dataset.status = status;
+          const select = card.querySelector(".result-select");
+          if (select) select.value = status;
+          current[code] = { ...(current[code] || {}), status };
+        });
+        writeState(current);
+        updateCounts();
+      });
+    });
+
+    updateCounts();
+  </script>
+</body>
+</html>

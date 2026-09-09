@@ -1,5 +1,3 @@
-import type { AppUser } from "./user.types";
-
 export interface UserSession {
   id: string;
   userId?: string;
@@ -29,9 +27,3 @@ export interface UserSession {
   revokeReason?: string | null;
   isCurrent: boolean;
 }
-
-/**
- * Alias temporal para no romper imports existentes.
- * A futuro se puede migrar todo a AppUser.
- */
-export type UserProfile = AppUser;

@@ -1,0 +1,744 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ClauDent - Casos de uso: Pacientes</title>
+  <style>
+    :root {
+      --bg: #f5f9fc;
+      --panel: #ffffff;
+      --ink: #0f172a;
+      --muted: #526179;
+      --line: #dbe7f0;
+      --brand: #28bdf2;
+      --brand-dark: #087ea4;
+      --good: #0f9f6e;
+      --warn: #d97706;
+      --danger: #dc2626;
+      --chip: #eef8fc;
+      --shadow: 0 12px 30px rgba(15, 23, 42, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      background: linear-gradient(180deg, #eef9fd 0%, var(--bg) 280px);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+    }
+
+    .page {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 32px 20px 56px;
+    }
+
+    .hero {
+      display: grid;
+      gap: 16px;
+      padding: 28px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: rgba(255, 255, 255, 0.86);
+      box-shadow: var(--shadow);
+    }
+
+    .eyebrow {
+      width: fit-content;
+      border-radius: 999px;
+      padding: 6px 12px;
+      background: var(--chip);
+      color: var(--brand-dark);
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(28px, 4vw, 44px);
+      line-height: 1.05;
+      letter-spacing: 0;
+    }
+
+    .hero p {
+      max-width: 780px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 16px;
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    .pill {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 8px 12px;
+      background: #fff;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .summary {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin: 20px 0;
+    }
+
+    .metric {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: var(--panel);
+      padding: 16px;
+      box-shadow: 0 6px 18px rgba(15, 23, 42, 0.05);
+    }
+
+    .metric strong {
+      display: block;
+      font-size: 26px;
+    }
+
+    .metric span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .section {
+      margin-top: 24px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: var(--panel);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .section-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfdff;
+    }
+
+    .section-header h2 {
+      margin: 0;
+      font-size: 20px;
+    }
+
+    .section-header p {
+      margin: 4px 0 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .cases {
+      display: grid;
+      gap: 14px;
+      padding: 20px;
+    }
+
+    .case {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 16px;
+      background: #fff;
+    }
+
+    .case-title {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .code {
+      border-radius: 8px;
+      padding: 4px 8px;
+      background: #0f172a;
+      color: #fff;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .case h3 {
+      margin: 0;
+      font-size: 17px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1.2fr;
+      gap: 16px;
+    }
+
+    h4 {
+      margin: 0 0 6px;
+      color: var(--brand-dark);
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+
+    ol,
+    ul {
+      margin: 0;
+      padding-left: 20px;
+      color: var(--muted);
+    }
+
+    li + li {
+      margin-top: 4px;
+    }
+
+    .note {
+      margin-top: 12px;
+      border-left: 4px solid var(--warn);
+      border-radius: 8px;
+      padding: 10px 12px;
+      background: #fff7ed;
+      color: #7c2d12;
+      font-size: 13px;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      padding: 4px 8px;
+      background: #ecfdf5;
+      color: var(--good);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin: 20px 0;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fff;
+    }
+
+    .toolbar button {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 9px 12px;
+      background: #fff;
+      color: var(--ink);
+      cursor: pointer;
+      font-weight: 700;
+    }
+
+    .toolbar button:hover {
+      border-color: var(--brand);
+      color: var(--brand-dark);
+    }
+
+    .case[data-status="passed"] { border-color: rgba(15, 159, 110, 0.45); background: #f5fffb; }
+    .case[data-status="failed"] { border-color: rgba(220, 38, 38, 0.45); background: #fff7f7; }
+    .case[data-status="blocked"] { border-color: rgba(217, 119, 6, 0.45); background: #fffbeb; }
+
+    .result-select {
+      margin-left: auto;
+      min-width: 150px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 8px 10px;
+      background: #fff;
+      color: var(--ink);
+      font-weight: 700;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 66px;
+      margin-top: 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px 12px;
+      color: var(--ink);
+      font: inherit;
+      resize: vertical;
+    }
+
+    .final-summary {
+      margin-top: 24px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #fff;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+
+    .final-summary h2 {
+      margin: 0;
+      padding: 20px 24px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfdff;
+      font-size: 20px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    .count {
+      font-size: 20px;
+      font-weight: 900;
+    }
+
+    .footer {
+      margin-top: 24px;
+      color: var(--muted);
+      text-align: center;
+      font-size: 13px;
+    }
+
+    @media print {
+      .toolbar, textarea, .result-select { display: none; }
+      body { background: #fff; }
+      .hero, .section, .final-summary, .metric { box-shadow: none; }
+      .case { break-inside: avoid; }
+    }
+
+    @media (max-width: 860px) {
+      .summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .page {
+        padding: 18px 12px 40px;
+      }
+
+      .hero {
+        padding: 20px;
+      }
+
+      .summary {
+        grid-template-columns: 1fr;
+      }
+
+      .result-select {
+        width: 100%;
+        margin-left: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="hero">
+      <span class="eyebrow">Plan de pruebas funcionales</span>
+      <h1>ClauDent - Casos de uso del modulo Pacientes</h1>
+      <p>
+        Lista para testers. El objetivo es validar que el modulo permita registrar, consultar,
+        editar y auditar la informacion clinica y administrativa del paciente sin duplicar datos
+        ni romper los flujos de pagos, historial, adjuntos, odontogramas y cotizaciones.
+      </p>
+      <div class="meta">
+        <span class="pill">Modulo: Pacientes</span>
+        <span class="pill">Version: actual del sistema</span>
+        <span class="pill">Fecha: 15/08/2026</span>
+        <span class="pill">Estado: listo para QA</span>
+      </div>
+    </section>
+
+    <section class="summary" aria-label="Resumen">
+      <div class="metric"><strong>25</strong><span>Casos de uso</span></div>
+      <div class="metric"><strong>7</strong><span>Areas de ficha</span></div>
+      <div class="metric"><strong>12</strong><span>Pacientes por pagina</span></div>
+      <div class="metric"><strong>QA</strong><span>Enfoque funcional</span></div>
+    </section>
+
+    <div class="toolbar">
+      <button type="button" data-bulk="pending">Marcar todo pendiente</button>
+      <button type="button" data-bulk="passed">Marcar todo paso</button>
+      <button type="button" data-bulk="failed">Marcar todo fallo</button>
+      <button type="button" data-bulk="blocked">Marcar todo bloqueado</button>
+      <button type="button" onclick="window.print()">Imprimir / guardar PDF</button>
+    </div>
+
+    <section class="section">
+      <div class="section-header">
+        <h2>Directorio de Pacientes</h2>
+        <p>Alta, busqueda, filtros, paginacion y administracion basica.</p>
+      </div>
+      <div class="cases">
+        <article class="case">
+          <div class="case-title"><span class="code">CU-PAC-01</span><h3>Ver listado de pacientes</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Entrar a <strong>/pacientes</strong>.</li><li>Esperar que cargue el directorio.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>Muestra tarjetas de pacientes.</li><li>Cada tarjeta muestra nombre, edad, telefono, fecha de registro y estado.</li><li>Si no hay datos, muestra mensaje de vacio.</li></ul></div>
+          </div>
+        </article>
+
+        <article class="case">
+          <div class="case-title"><span class="code">CU-PAC-02</span><h3>Registrar nuevo paciente</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Clic en <strong>Nuevo Paciente</strong>.</li><li>Capturar nombres, apellidos, fecha de nacimiento y datos opcionales.</li><li>Confirmar guardado.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>No permite guardar sin nombres/apellidos.</li><li>Muestra confirmacion antes de guardar.</li><li>Crea el paciente y aparece en listado.</li><li>Registra bitacora de creacion.</li></ul></div>
+          </div>
+        </article>
+
+        <article class="case">
+          <div class="case-title"><span class="code">CU-PAC-03</span><h3>Registrar paciente con historia clinica inicial</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Crear paciente nuevo.</li><li>Marcar <strong>Llenar Historia Clinica ahora mismo</strong>.</li><li>Confirmar guardado.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>Crea el paciente.</li><li>Abre modal de historia clinica inicial.</li><li>Guarda antecedentes iniciales.</li><li>Marca al paciente con historial inicial.</li></ul></div>
+          </div>
+        </article>
+
+        <article class="case">
+          <div class="case-title"><span class="code">CU-PAC-04</span><h3>Buscar paciente</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Escribir nombre, apellido o CURP en el buscador.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>El listado se filtra correctamente.</li><li>Si no hay coincidencias, muestra mensaje claro.</li></ul></div>
+          </div>
+        </article>
+
+        <article class="case">
+          <div class="case-title"><span class="code">CU-PAC-05</span><h3>Filtrar pacientes por estado</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Seleccionar Activos.</li><li>Seleccionar Inactivos.</li><li>Volver a Todos.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>Muestra solo el estado elegido.</li><li>La paginacion vuelve a pagina 1 al cambiar filtro.</li></ul></div>
+          </div>
+        </article>
+
+        <article class="case">
+          <div class="case-title"><span class="code">CU-PAC-06</span><h3>Filtrar pacientes por fecha de registro</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Seleccionar una fecha.</li><li>Limpiar la fecha.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>Solo aparecen pacientes registrados ese dia.</li><li>Al limpiar, vuelve el listado completo.</li></ul></div>
+          </div>
+        </article>
+
+        <article class="case">
+          <div class="case-title"><span class="code">CU-PAC-07</span><h3>Paginacion de pacientes</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Tener mas de 12 pacientes.</li><li>Usar botones anterior/siguiente.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>Muestra maximo 12 pacientes por pagina.</li><li>Anterior se desactiva en pagina 1.</li><li>Siguiente se desactiva en la ultima pagina.</li></ul></div>
+          </div>
+        </article>
+
+        <article class="case">
+          <div class="case-title"><span class="code">CU-PAC-08</span><h3>Editar paciente desde listado</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Clic en editar.</li><li>Cambiar un dato.</li><li>Confirmar guardado.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>Actualiza el paciente.</li><li>El cambio se refleja en listado y ficha.</li><li>Registra bitacora.</li></ul></div>
+          </div>
+        </article>
+
+        <article class="case">
+          <div class="case-title"><span class="code">CU-PAC-09</span><h3>Eliminar paciente</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Clic en eliminar.</li><li>Cancelar confirmacion.</li><li>Repetir y aceptar.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>Cancelar no elimina.</li><li>Aceptar elimina del listado.</li><li>Registra bitacora.</li></ul></div>
+          </div>
+          <div class="note">Punto sensible: verificar si eliminar pacientes con historial, adjuntos o cotizaciones deja datos huerfanos.</div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <h2>Ficha del Paciente</h2>
+        <p>Datos, antecedentes, historial clinico y navegacion interna.</p>
+      </div>
+      <div class="cases">
+        <article class="case">
+          <div class="case-title"><span class="code">CU-PAC-10</span><h3>Abrir ficha del paciente</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Clic en <strong>Ficha</strong> desde una tarjeta.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>Abre <strong>/pacientes/:id</strong>.</li><li>Muestra nombre, edad, CURP o N/A y estado.</li><li>Incluye pestañas: Datos, Antecedentes, Historial, Pagos, Adjuntos, Odontograma y Cotizaciones.</li></ul></div>
+          </div>
+        </article>
+
+        <article class="case">
+          <div class="case-title"><span class="code">CU-PAC-11</span><h3>Editar datos desde ficha</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Entrar a Datos.</li><li>Clic en Editar.</li><li>Cambiar telefono, correo, direccion o estado.</li><li>Guardar o cancelar.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>Los campos estan bloqueados hasta editar.</li><li>Cancelar revierte cambios.</li><li>Guardar actualiza Firestore y muestra mensaje correcto.</li></ul></div>
+          </div>
+        </article>
+
+        <article class="case">
+          <div class="case-title"><span class="code">CU-PAC-12</span><h3>Antecedentes clinicos</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Entrar a Antecedentes.</li><li>Revisar carga de historia inicial.</li><li>Editar/guardar si aplica.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>Si no hay antecedentes, no se rompe.</li><li>Si hay antecedentes, se muestran correctamente.</li><li>El guardado persiste al recargar.</li></ul></div>
+          </div>
+        </article>
+
+        <article class="case">
+          <div class="case-title"><span class="code">CU-PAC-13</span><h3>Agregar entrada al historial clinico</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Entrar a Historial.</li><li>Agregar nueva entrada.</li><li>Seleccionar fecha y servicios.</li><li>Guardar.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>No permite guardar sin servicios.</li><li>No permite servicios vacios.</li><li>Calcula total por servicio y cantidad.</li><li>Ordena entradas por fecha y registra bitacora.</li></ul></div>
+          </div>
+        </article>
+
+        <article class="case">
+          <div class="case-title"><span class="code">CU-PAC-14</span><h3>Historial clinico con materiales</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Agregar material clinico a una entrada.</li><li>Seleccionar producto y cantidad.</li><li>Capturar autorizacion si aplica.</li><li>Guardar.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>Con permiso <strong>inventory.usage.create</strong>, descuenta inventario.</li><li>Sin permiso, muestra aviso y no descuenta.</li><li>No permite cantidades invalidas.</li><li>Debe quedar movimiento de inventario si hubo descuento.</li></ul></div>
+          </div>
+        </article>
+
+        <article class="case">
+          <div class="case-title"><span class="code">CU-PAC-15</span><h3>Editar o eliminar historial clinico</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Crear una entrada.</li><li>Editarla.</li><li>Eliminarla con confirmacion.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>Editar actualiza datos.</li><li>Eliminar pide confirmacion.</li><li>Registra bitacora.</li></ul></div>
+          </div>
+          <div class="note">Punto sensible: confirmar que editar/eliminar historial no duplique descuentos de inventario.</div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <h2>Pagos y Cuentas por Cobrar</h2>
+        <p>Resumen financiero del paciente, abonos y recibos.</p>
+      </div>
+      <div class="cases">
+        <article class="case">
+          <div class="case-title"><span class="code">CU-PAC-16</span><h3>Consultar pagos del paciente</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Entrar a Pagos.</li><li>Revisar resumen y listas.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>Muestra total pagado, tratamientos, saldo pendiente y ultimo pago.</li><li>Pagos cancelados no suman al total.</li></ul></div>
+          </div>
+        </article>
+
+        <article class="case">
+          <div class="case-title"><span class="code">CU-PAC-17</span><h3>Crear cuenta por cobrar</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Clic en Nueva cuenta.</li><li>Capturar concepto, total, abono inicial opcional, metodo, fecha y alerta.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>No permite concepto vacio.</li><li>No permite total menor o igual a 0.</li><li>No permite abono negativo o mayor al total.</li><li>Saldo pendiente = total - abono inicial.</li></ul></div>
+          </div>
+        </article>
+
+        <article class="case">
+          <div class="case-title"><span class="code">CU-PAC-18</span><h3>Registrar abono adicional</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>En una cuenta pendiente, clic en Agregar abono.</li><li>Capturar monto, metodo, fecha y notas.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>No permite monto menor o igual a 0.</li><li>No permite abono mayor al saldo.</li><li>Actualiza saldo pendiente.</li><li>Si llega a 0, la cuenta queda pagada.</li><li>Debe reflejarse en caja del dia correspondiente.</li></ul></div>
+          </div>
+        </article>
+
+        <article class="case">
+          <div class="case-title"><span class="code">CU-PAC-19</span><h3>Descargar recibo de pago</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>En Historial de pagos, clic en Recibo.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>Genera PDF con paciente, concepto, metodo, fecha y monto.</li><li>No muestra recibo para pagos cancelados.</li></ul></div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <h2>Adjuntos, Odontogramas y Cotizaciones</h2>
+        <p>Documentos clinicos, odontogramas y propuestas vinculadas al paciente.</p>
+      </div>
+      <div class="cases">
+        <article class="case">
+          <div class="case-title"><span class="code">CU-PAC-20</span><h3>Gestionar adjuntos</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Entrar a Adjuntos.</li><li>Subir imagen, PDF o documento permitido.</li><li>Abrir/ver archivo.</li><li>Eliminar archivo.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>Sube a Storage.</li><li>Crea metadata en Firestore.</li><li>Muestra nombre, fecha e icono correcto.</li><li>Eliminar borra Storage y Firestore.</li><li>Registra bitacora.</li></ul></div>
+          </div>
+        </article>
+
+        <article class="case">
+          <div class="case-title"><span class="code">CU-PAC-21</span><h3>Gestionar odontogramas</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Entrar a Odontograma.</li><li>Crear odontograma adulto, nino o mixto.</li><li>Abrirlo, renombrarlo y eliminarlo.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>Se lista por fecha.</li><li>Ver abre el editor.</li><li>Renombrar actualiza nombre.</li><li>Eliminar pide confirmacion y registra bitacora.</li></ul></div>
+          </div>
+        </article>
+
+        <article class="case">
+          <div class="case-title"><span class="code">CU-PAC-22</span><h3>Consultar cotizaciones del paciente</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Entrar a Cotizaciones dentro de ficha.</li><li>Revisar cotizaciones existentes.</li><li>Ir a gestion completa.</li><li>Generar PDF.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>Solo muestra cotizaciones del paciente.</li><li>Muestra estado, fecha, servicios y total.</li><li>PDF se genera con datos del paciente.</li><li>Si no hay cotizaciones, muestra vacio.</li></ul></div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-header">
+        <h2>Robustez y Experiencia</h2>
+        <p>Casos de borde, persistencia y responsive.</p>
+      </div>
+      <div class="cases">
+        <article class="case">
+          <div class="case-title"><span class="code">CU-PAC-23</span><h3>Paciente no encontrado</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Entrar manualmente a una URL con ID inexistente.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>Muestra Paciente no encontrado.</li><li>Permite volver al listado.</li><li>No rompe la pantalla.</li></ul></div>
+          </div>
+        </article>
+
+        <article class="case">
+          <div class="case-title"><span class="code">CU-PAC-24</span><h3>Persistencia al recargar</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Crear o editar paciente.</li><li>Recargar navegador.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>Los datos siguen iguales.</li><li>No se duplican pacientes.</li><li>No se pierde historial, pagos ni adjuntos.</li></ul></div>
+          </div>
+        </article>
+
+        <article class="case">
+          <div class="case-title"><span class="code">CU-PAC-25</span><h3>Responsive</h3></div>
+          <div class="grid">
+            <div><h4>Pasos</h4><ol><li>Probar escritorio.</li><li>Probar tablet.</li><li>Probar movil.</li></ol></div>
+            <div><h4>Resultado esperado</h4><ul><li>Tarjetas no se enciman.</li><li>Botones son accesibles.</li><li>Pestanas de ficha se desplazan horizontalmente.</li><li>Formularios no cortan campos importantes.</li></ul></div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="final-summary">
+      <h2>📊 Resumen de pruebas</h2>
+      <table>
+        <thead>
+          <tr><th>Estado</th><th>Cantidad</th></tr>
+        </thead>
+        <tbody>
+          <tr><td>⬜ Pendientes</td><td class="count" id="pending-count">25</td></tr>
+          <tr><td>✅ Pasaron</td><td class="count" id="passed-count">0</td></tr>
+          <tr><td>❌ Fallaron</td><td class="count" id="failed-count">0</td></tr>
+          <tr><td>⚠️ Bloqueadas</td><td class="count" id="blocked-count">0</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <p class="footer">
+      <span class="status">Checklist interactivo</span>
+      &nbsp; ClauDent - QA funcional del modulo Pacientes. Los cambios se guardan en este navegador.
+    </p>
+  </main>
+  <script>
+    const storageKey = "claudent-qa-pacientes-v1";
+    const statusIds = ["pending", "passed", "failed", "blocked"];
+
+    function readState() {
+      try {
+        return JSON.parse(localStorage.getItem(storageKey) || "{}");
+      } catch {
+        return {};
+      }
+    }
+
+    function writeState(state) {
+      localStorage.setItem(storageKey, JSON.stringify(state));
+    }
+
+    function getCaseCode(card) {
+      return card.querySelector(".code")?.textContent?.trim() || "";
+    }
+
+    function updateCounts() {
+      const counts = { pending: 0, passed: 0, failed: 0, blocked: 0 };
+      document.querySelectorAll(".case").forEach((card) => {
+        counts[card.dataset.status || "pending"] += 1;
+      });
+      statusIds.forEach((status) => {
+        document.getElementById(status + "-count").textContent = counts[status];
+      });
+    }
+
+    const savedState = readState();
+
+    document.querySelectorAll(".case").forEach((card) => {
+      const code = getCaseCode(card);
+      card.dataset.status = savedState[code]?.status || "pending";
+
+      const select = document.createElement("select");
+      select.className = "result-select";
+      select.innerHTML = `
+        <option value="pending">⬜ Pendiente</option>
+        <option value="passed">✅ Paso</option>
+        <option value="failed">❌ Fallo</option>
+        <option value="blocked">⚠️ Bloqueada</option>
+      `;
+      select.value = card.dataset.status;
+      card.querySelector(".case-title")?.appendChild(select);
+
+      const notes = document.createElement("textarea");
+      notes.placeholder = "Notas del tester";
+      notes.value = savedState[code]?.notes || "";
+      card.appendChild(notes);
+
+      select.addEventListener("change", () => {
+        card.dataset.status = select.value;
+        const current = readState();
+        current[code] = { ...(current[code] || {}), status: select.value };
+        writeState(current);
+        updateCounts();
+      });
+
+      notes.addEventListener("input", () => {
+        const current = readState();
+        current[code] = { ...(current[code] || {}), notes: notes.value };
+        writeState(current);
+      });
+    });
+
+    document.querySelectorAll("[data-bulk]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const status = button.dataset.bulk;
+        const current = readState();
+        document.querySelectorAll(".case").forEach((card) => {
+          const code = getCaseCode(card);
+          card.dataset.status = status;
+          const select = card.querySelector(".result-select");
+          if (select) select.value = status;
+          current[code] = { ...(current[code] || {}), status };
+        });
+        writeState(current);
+        updateCounts();
+      });
+    });
+
+    updateCounts();
+  </script>
+</body>
+</html>
