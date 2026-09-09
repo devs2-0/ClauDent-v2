@@ -20,6 +20,9 @@ import {
   type PaymentMethod,
   type PaymentOrigin,
 } from "@/modules/ventas";
+import { useCan } from "@/auth";
+import { useOptionalCash } from "@/modules/ventas/store/CashProvider";
+import { cashService } from "@/modules/ventas/services/cashService";
 import { generateSaleReceiptPDF, type SaleReceiptKind } from "@/modules/ventas/services/saleReceiptPdfService";
 import { Badge } from "@/shared/components/ui/badge";
 import {
@@ -140,7 +143,7 @@ const getReceiptKind = (payment: Payment): SaleReceiptKind => {
 
 const getCurrentTime = () => new Date().toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
 
-const normalizeName = (value: string) => value.trim().toLowerCase().replace(/\s+/g, " ");
+const normalizeName = (value: string) => (value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 
 const parseMoneyInput = (value: string) => Number(value || 0);
 
@@ -177,7 +180,20 @@ const PaymentSummaryCard = ({
 );
 
 const PatientPayments: React.FC<PatientPaymentsProps> = ({ patientId, patientName }) => {
-  const { payments, paymentsLoading } = useCashRegister();
+  const { can } = useCan();
+  const cash = useOptionalCash();
+  const [scopedPayments, setScopedPayments] = useState<Payment[]>([]);
+  const [scopedLoading, setScopedLoading] = useState(true);
+  const [unavailable, setUnavailable] = useState(false);
+  const payments = cash?.payments ?? scopedPayments;
+  const paymentsLoading = cash?.paymentsLoading ?? scopedLoading;
+  const canCreateAccount = can("sales.create") || can("sales.payments.manage");
+  const canRegisterPayment = can("sales.payments.manage");
+  useEffect(() => {
+    if (cash) return;
+    setScopedLoading(true);
+    return cashService.listenPatientPayments(patientId, (data) => { setScopedPayments(data); setScopedLoading(false); }, () => { setScopedPayments([]); setUnavailable(true); setScopedLoading(false); });
+  }, [patientId, Boolean(cash)]);
   const [accounts, setAccounts] = useState<AccountReceivable[]>([]);
   const [accountsLoading, setAccountsLoading] = useState(true);
   const [isAccountDialogOpen, setIsAccountDialogOpen] = useState(false);
@@ -192,7 +208,7 @@ const PatientPayments: React.FC<PatientPaymentsProps> = ({ patientId, patientNam
     const unsubscribe = accountsReceivableService.listenPatientAccounts(patientId, (nextAccounts) => {
       setAccounts(nextAccounts);
       setAccountsLoading(false);
-    });
+    }, () => { setAccounts([]); setUnavailable(true); setAccountsLoading(false); });
 
     return unsubscribe;
   }, [patientId]);
@@ -261,6 +277,7 @@ const PatientPayments: React.FC<PatientPaymentsProps> = ({ patientId, patientNam
   };
 
   const handleCreateAccount = async () => {
+    if (!canCreateAccount) return;
     if (isSavingAccountRef.current) return;
     const total = parseMoneyInput(accountForm.total);
     const abonoInicial = parseMoneyInput(accountForm.abonoInicial);
@@ -282,7 +299,7 @@ const PatientPayments: React.FC<PatientPaymentsProps> = ({ patientId, patientNam
     setIsSavingAccount(true);
     try {
       await accountsReceivableService.createAccount({
-        pacienteId,
+        pacienteId: patientId,
         pacienteNombre: patientName,
         concepto: accountForm.concepto.trim(),
         total,
@@ -305,6 +322,7 @@ const PatientPayments: React.FC<PatientPaymentsProps> = ({ patientId, patientNam
   };
 
   const handleRegisterInstallment = async () => {
+    if (!canRegisterPayment) return;
     if (isSavingAccountRef.current) return;
     if (!selectedAccount) return;
     const amount = parseMoneyInput(installmentForm.monto);
@@ -337,6 +355,8 @@ const PatientPayments: React.FC<PatientPaymentsProps> = ({ patientId, patientNam
       setIsSavingAccount(false);
     }
   };
+
+  if (unavailable || cash?.paymentsUnavailable) return <p className="py-8 text-center text-muted-foreground">Información no disponible</p>;
 
   if (paymentsLoading || accountsLoading) {
     return (
@@ -396,10 +416,10 @@ const PatientPayments: React.FC<PatientPaymentsProps> = ({ patientId, patientNam
               </p>
             )}
           </div>
-          <Button onClick={() => setIsAccountDialogOpen(true)}>
+          {canCreateAccount && (<Button onClick={() => setIsAccountDialogOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Nueva cuenta
-          </Button>
+          </Button>)}
         </CardHeader>
         <CardContent className="p-0">
           {patientAccounts.length === 0 ? (
@@ -436,7 +456,7 @@ const PatientPayments: React.FC<PatientPaymentsProps> = ({ patientId, patientNam
                     )}
                   </div>
                   <div className="flex justify-start lg:justify-end">
-                    {account.saldoPendiente > 0 && account.estado !== "cancelada" && (
+                    {canRegisterPayment && account.saldoPendiente > 0 && account.estado !== "cancelada" && (
                       <Button variant="outline" size="sm" onClick={() => setSelectedAccount(account)}>
                         <HandCoins className="mr-2 h-4 w-4" />
                         Agregar abono
@@ -526,7 +546,7 @@ const PatientPayments: React.FC<PatientPaymentsProps> = ({ patientId, patientNam
         </AccordionItem>
       </Accordion>
 
-      <Dialog open={isAccountDialogOpen} onOpenChange={(open) => (open ? setIsAccountDialogOpen(true) : resetAccountDialog())}>
+      <Dialog open={isAccountDialogOpen && canCreateAccount} onOpenChange={(open) => (open ? setIsAccountDialogOpen(true) : resetAccountDialog())}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Nueva cuenta por cobrar</DialogTitle>
@@ -633,7 +653,7 @@ const PatientPayments: React.FC<PatientPaymentsProps> = ({ patientId, patientNam
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(selectedAccount)} onOpenChange={(open) => !open && resetInstallmentDialog()}>
+      <Dialog open={Boolean(selectedAccount) && canRegisterPayment} onOpenChange={(open) => !open && resetInstallmentDialog()}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Registrar abono</DialogTitle>

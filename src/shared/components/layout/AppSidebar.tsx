@@ -22,7 +22,7 @@ import { NavLink } from "./NavLink";
 export function AppSidebar() {
   const { can, loading } = useCan();
   const { state, toggleSidebar, isMobile, setOpenMobile } = useSidebar();
-  const visibleItems = navigationItems.filter((item) => can(item.permission));
+  const visibleItems = navigationItems.filter((item) => (item.anyPermission ? item.anyPermission.some((permission) => can(permission)) : can(item.permission)));
   const mainItems = visibleItems.filter((item) => item.url !== "/administracion");
   const administrationItems = visibleItems.filter((item) => item.url === "/administracion");
 

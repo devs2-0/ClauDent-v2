@@ -3,7 +3,7 @@ import { Outlet, useNavigate } from "react-router-dom";
 import { LogOut, Search, User } from "lucide-react";
 
 import { GlobalNotificationsButton } from "@/app/components/GlobalNotificationsButton";
-import { useAuth } from "@/auth";
+import { useAuth, useCan } from "@/auth";
 import { usePatients } from "@/modules/patients";
 import { ThemeSwitch } from "@/shared/components/ThemeSwitch";
 import { AppSidebar } from "@/shared/components/layout/AppSidebar";
@@ -24,6 +24,8 @@ import { SidebarInset, SidebarProvider, SidebarTrigger } from "@/shared/componen
 
 const AppHeader = () => {
   const { currentUser, logout } = useAuth();
+  const { can } = useCan();
+  const canOpenPatient = can("patients.record.view");
   const { patients } = usePatients();
   const navigate = useNavigate();
   const [searchInput, setSearchInput] = useState("");
@@ -32,7 +34,7 @@ const AppHeader = () => {
   const searchRef = useRef<HTMLDivElement | null>(null);
 
   const filteredPatients = patients.filter((patient) => {
-    if (!searchInput.trim()) return false;
+    if (!canOpenPatient || !searchInput.trim()) return false;
     const term = searchInput.toLowerCase();
     const fullName = `${patient.nombres} ${patient.apellidos}`.toLowerCase();
     return fullName.includes(term) || (patient.curp || "").toLowerCase().includes(term);
@@ -49,6 +51,7 @@ const AppHeader = () => {
   }, []);
 
   const handleSelectPatient = (patientId: string) => {
+    if (!canOpenPatient) return;
     navigate(`/pacientes/${patientId}`);
     setShowResults(false);
     setSearchInput("");
@@ -70,7 +73,7 @@ const AppHeader = () => {
         <ThemeSwitch />
       </div>
 
-      <div ref={searchRef} className="relative mx-auto min-w-0 max-w-lg flex-1">
+      {canOpenPatient && <div ref={searchRef} className="relative mx-auto min-w-0 max-w-lg flex-1">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           type="search"
@@ -112,9 +115,9 @@ const AppHeader = () => {
             )}
           </div>
         )}
-      </div>
+      </div>}
 
-      <div className="flex shrink-0 items-center gap-1 border-l pl-3 sm:gap-2 sm:pl-4">
+      <div className="ml-auto flex shrink-0 items-center gap-1 border-l pl-3 sm:gap-2 sm:pl-4">
         <GlobalNotificationsButton />
         <p className="hidden max-w-44 truncate text-sm text-muted-foreground xl:block">
           {currentUser?.displayName || currentUser?.email}

@@ -23,6 +23,7 @@ export interface AppRouteConfig {
   path: string;
   element: React.ReactElement;
   permission?: PermissionKey;
+  anyPermission?: PermissionKey[];
 }
 
 export const publicRoutes: AppRouteConfig[] = [
@@ -48,7 +49,7 @@ export const protectedRoutes: AppRouteConfig[] = [
   {
     path: "/pacientes/:id",
     element: <PatientRecordPage />,
-    permission: "patients.view",
+    permission: "patients.record.view",
   },
   {
     path: "/pacientes/:patientId/odontograma/:odontogramId",
@@ -58,7 +59,7 @@ export const protectedRoutes: AppRouteConfig[] = [
   {
     path: "/servicios",
     element: <ServicesPage />,
-    permission: "services.view",
+    anyPermission: ["services.view", "packages.view"],
   },
   {
     path: "/cotizaciones",
@@ -93,6 +94,7 @@ export const protectedRoutes: AppRouteConfig[] = [
   {
   path: "/administracion",
   element: <AdminPanelPage />,
+  anyPermission: ["users.view", "roles.view", "security.sessions.view", "settings.view"],
   },
 ];
 

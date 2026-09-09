@@ -147,6 +147,7 @@ const Pacientes: React.FC = () => {
   }, [localSearch, filterStatus, sortOrder]);
 
   const handleOpenDialog = (patientId?: string) => {
+    if (!can(patientId ? "patients.update" : "patients.create")) return;
     setCrearHistorial(false);
     if (patientId) {
       const patient = patients.find((p) => p.id === patientId);
@@ -179,11 +180,13 @@ const Pacientes: React.FC = () => {
 
   const handleRequestSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!can(editingPatient ? "patients.update" : "patients.create")) return;
     if (!formData.nombres || !formData.apellidos) { toast.error('Nombres y Apellidos requeridos'); return; }
     setIsConfirmationOpen(true);
   };
 
   const handleSubmit = async () => {
+    if (!can(editingPatient ? "patients.update" : "patients.create")) return;
     setIsFormLoading(true);
     try {
       const normalizedFormData = {
@@ -198,7 +201,7 @@ const Pacientes: React.FC = () => {
       } else {
         const newId = await addPatient(normalizedFormData);
         toast.success('Paciente creado');
-        if (crearHistorial) setHistoryModalState({ isOpen: true, patientId: newId });
+        if (crearHistorial && can("patients.clinicalHistory.update")) setHistoryModalState({ isOpen: true, patientId: newId });
       }
       setIsDialogOpen(false);
       setEditingPatient(null);
@@ -230,6 +233,7 @@ const Pacientes: React.FC = () => {
     status: 'activo' | 'inactivo',
     actionLabel: 'Activar' | 'Desactivar' | 'Eliminar',
   ) => {
+    if (!can(actionLabel === 'Eliminar' ? 'patients.delete' : 'patients.update')) return;
     const selectedPatients = patients.filter(
       (patient) => selectedPatientIds.has(patient.id) && patient.estado !== status,
     );
@@ -268,6 +272,7 @@ const Pacientes: React.FC = () => {
   };
 
   const handleRemovePatient = async (patient: Patient) => {
+    if (!canDeletePatient) return;
     const confirmed = await confirm({
       title: 'Eliminar paciente',
       description: `${patient.nombres} ${patient.apellidos} dejará de aparecer entre los pacientes activos. Sus datos e historial se conservarán.`,
@@ -340,23 +345,23 @@ const Pacientes: React.FC = () => {
                     <Phone className="h-3 w-3" /> 
                     {p.telefonoPrincipal ? p.telefonoPrincipal : <span className="italic text-xs">Sin teléfono</span>}
                  </div>
-                 <div className="flex items-center gap-2">
+                 {can("patients.clinicalHistory.view") && <div className="flex items-center gap-2">
                     <ClipboardCheck className="h-3 w-3" />
                     <Badge variant="outline" className={`font-normal ${clinicalHistoryClassName}`}>
                       {clinicalHistoryStatusesLoading && !clinicalHistoryStatuses.has(p.id)
                         ? 'Sin historial'
                         : clinicalHistoryLabel}
                     </Badge>
-                 </div>
+                 </div>}
             </div>
         </div>
 
         <div className="pt-3 border-t flex gap-2 mt-auto">
-            <Link to={`/pacientes/${p.id}`} className="flex-1">
+            {can("patients.record.view") && (<Link to={`/pacientes/${p.id}`} className="flex-1">
                 <Button className="w-full h-8" variant="outline" size="sm">
                     <Eye className="h-3.5 w-3.5 mr-2" /> Ver ficha
                 </Button>
-            </Link>
+            </Link>)}
             {canUpdatePatient && (
               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(p.id)} title="Editar" aria-label="Editar"><Edit className="h-3.5 w-3.5" /></Button>
             )}
@@ -555,7 +560,7 @@ const Pacientes: React.FC = () => {
       )}
 
       {/* Modal de Formulario */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog open={isDialogOpen && can(editingPatient ? "patients.update" : "patients.create")} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingPatient ? 'Editar Paciente' : 'Registrar Nuevo Paciente'}</DialogTitle>
@@ -622,7 +627,7 @@ const Pacientes: React.FC = () => {
                   </div>
               </div>
 
-              {!editingPatient && (
+              {!editingPatient && can("patients.clinicalHistory.update") && (
                   <div className="flex items-center space-x-2 bg-primary/5 p-3 rounded-md border border-primary/20">
                     <Checkbox id="crearHistorial" checked={crearHistorial} onCheckedChange={(c) => setCrearHistorial(!!c)} />
                     <Label htmlFor="crearHistorial" className="cursor-pointer">Llenar Historia Clínica ahora mismo</Label>
@@ -650,7 +655,7 @@ const Pacientes: React.FC = () => {
         </AlertDialogContent>
       </AlertDialog>
 
-      <InitialHistoryModal isOpen={historyModalState.isOpen} patientId={historyModalState.patientId} onClose={() => setHistoryModalState({ isOpen: false, patientId: null })} />
+      <InitialHistoryModal isOpen={historyModalState.isOpen && can("patients.clinicalHistory.update")} patientId={historyModalState.patientId} onClose={() => setHistoryModalState({ isOpen: false, patientId: null })} />
       {confirmationDialog}
     </div>
   );

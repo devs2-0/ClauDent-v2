@@ -1,5 +1,6 @@
 // Patient data form (CORREGIDO)
 import React, { useState } from 'react';
+import { Can, useCan } from '@/auth';
 import { Patient, usePatients } from '@/modules/patients';
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
@@ -38,6 +39,7 @@ const mapPatientToFormData = (patient: Patient) => ({
 });
 
 const PatientData: React.FC<PatientDataProps> = ({ patient }) => {
+  const { can } = useCan();
   const { updatePatient } = usePatients();
   const [isEditing, setIsEditing] = useState(false);
   
@@ -45,6 +47,7 @@ const PatientData: React.FC<PatientDataProps> = ({ patient }) => {
   const [formData, setFormData] = useState(mapPatientToFormData(patient));
 
   const handleSave = async () => {
+    if (!can("patients.update")) return;
     try {
       await updatePatient(patient.id, formData);
       setIsEditing(false);
@@ -76,7 +79,7 @@ const PatientData: React.FC<PatientDataProps> = ({ patient }) => {
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-semibold">Información Personal</h3>
         <div className="flex gap-2">
-          {isEditing ? (
+          {isEditing && can("patients.update") ? (
             <>
               <Button variant="outline" onClick={handleCancel}>
                 Cancelar
@@ -84,13 +87,13 @@ const PatientData: React.FC<PatientDataProps> = ({ patient }) => {
               <Button onClick={handleSave}>Guardar Cambios</Button>
             </>
           ) : (
-            <Button onClick={() => setIsEditing(true)}>Editar</Button>
+            <Can permission="patients.update"><Button onClick={() => setIsEditing(true)}>Editar</Button></Can>
           )}
         </div>
       </div>
 
       {/* ¡MODIFICADO! Formulario actualizado a los nuevos campos */}
-      <fieldset disabled={!isEditing} className="space-y-6">
+      <fieldset disabled={!isEditing || !can("patients.update")} className="space-y-6">
         {/* --- Datos Personales --- */}
         <div className="space-y-4">
           <h4 className="text-base font-medium text-muted-foreground">Datos Personales</h4>

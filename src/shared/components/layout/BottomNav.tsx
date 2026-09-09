@@ -10,7 +10,7 @@ export function BottomNav() {
   const { can } = useCan();
   const visibleItems = navigationItems
     .filter((item) => item.mobile)
-    .filter((item) => can(item.permission))
+    .filter((item) => (item.anyPermission ? item.anyPermission.some((permission) => can(permission)) : can(item.permission)))
     .slice(0, 5);
 
   return (

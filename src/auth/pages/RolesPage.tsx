@@ -19,6 +19,7 @@ import {
   ROLE_COLORS,
   ROLE_EMOJIS,
 } from "@/auth/constants/roleAppearance";
+import { getPermissionDependencies, removeOrphanPermissions, togglePermissionGrant } from "../constants/permissionDependencies";
 import { roleService } from "@/auth/services/roleService";
 import type { PermissionDefinition, PermissionKey, Role } from "@/auth";
 import { Badge } from "@/shared/components/ui/badge";
@@ -77,6 +78,7 @@ const getRoleEmoji = (icon?: string | null) => {
 };
 
 const moduleLabels: Record<string, string> = {
+  administration: "Administración / Seguridad",
   dashboard: "Dashboard",
   patients: "Pacientes",
   services: "Servicios",
@@ -111,11 +113,12 @@ const RolesPage = () => {
   const permissionsByModule = useMemo(() => {
     return permissionCatalog.reduce(
       (acc, permission) => {
-        if (!acc[permission.module]) {
-          acc[permission.module] = [];
+        const category = permission.module === "packages" ? "services" : ["users", "roles", "security", "audit", "settings"].includes(permission.module) ? "administration" : permission.module;
+        if (!acc[category]) {
+          acc[category] = [];
         }
 
-        acc[permission.module].push(permission);
+        acc[category].push(permission);
         return acc;
       },
       {} as Record<string, PermissionDefinition[]>,
@@ -206,14 +209,7 @@ const RolesPage = () => {
 
   const togglePermission = (permission: PermissionKey) => {
     setForm((current) => {
-      const exists = current.permissions.includes(permission);
-
-      return {
-        ...current,
-        permissions: exists
-          ? current.permissions.filter((item) => item !== permission)
-          : [...current.permissions, permission],
-      };
+      return { ...current, permissions: togglePermissionGrant(current.permissions, permission) };
     });
   };
 
@@ -240,7 +236,7 @@ const RolesPage = () => {
 
       return {
         ...current,
-        permissions: Array.from(currentPermissions),
+        permissions: removeOrphanPermissions(Array.from(currentPermissions)),
       };
     });
   };
@@ -258,6 +254,11 @@ const RolesPage = () => {
       return;
     }
 
+    if (removeOrphanPermissions(form.permissions).length !== form.permissions.length) {
+      toast.error("Activa las vistas necesarias de los permisos seleccionados o quita los permisos dependientes antes de guardar.");
+      return;
+    }
+
     setSaving(true);
 
     try {
@@ -269,7 +270,7 @@ const RolesPage = () => {
             description: form.description,
             color: form.color,
             icon: form.icon,
-            permissions: form.permissions,
+            permissions: removeOrphanPermissions(form.permissions),
           },
           currentUser?.uid,
         );
@@ -282,7 +283,7 @@ const RolesPage = () => {
             description: form.description,
             color: form.color,
             icon: form.icon,
-            permissions: form.permissions,
+            permissions: removeOrphanPermissions(form.permissions),
           },
           currentUser?.uid,
         );
@@ -730,7 +731,7 @@ const RolesPage = () => {
               </div>
 
               <div className="grid gap-4">
-                {Object.entries(permissionsByModule).map(
+                {Object.entries(permissionsByModule).sort(([a], [b]) => ["dashboard", "patients", "agenda", "services", "quotations", "sales", "inventory", "administration", "reports"].indexOf(a) - ["dashboard", "patients", "agenda", "services", "quotations", "sales", "inventory", "administration", "reports"].indexOf(b)).map(
                   ([moduleName, modulePermissions]) => {
                     const allSelected = modulePermissions.every((permission) =>
                       form.permissions.includes(permission.key),
@@ -775,19 +776,25 @@ const RolesPage = () => {
                           </Button>
                         </div>
 
-                        <div className="grid gap-3 md:grid-cols-2">
-                          {modulePermissions.map((permission) => {
+                        <div className="space-y-4">
+                          {Array.from(new Set(modulePermissions.map((permission) => permission.group))).map((group) => (
+                          <fieldset key={group} className="rounded-lg border bg-muted/10 p-3">
+                            <legend className="px-2 text-sm font-semibold text-primary">{group}</legend>
+                            <div className="grid gap-3 md:grid-cols-2">
+                          {modulePermissions.filter((permission) => permission.group === group).map((permission) => {
                             const checked = form.permissions.includes(
                               permission.key,
                             );
 
+                            const disabled = !getPermissionDependencies(permission.key).every((parent) => form.permissions.includes(parent));
                             return (
                               <label
                                 key={permission.key}
-                                className="flex cursor-pointer gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/50"
+                                className={`flex gap-3 rounded-lg border p-3 transition-colors ${disabled ? "cursor-not-allowed bg-muted/40 opacity-50" : checked ? "cursor-pointer border-primary/40 bg-primary/10" : "cursor-pointer bg-muted/30 text-muted-foreground hover:bg-muted/50"}`}
                               >
                                 <Checkbox
                                   checked={checked}
+                                  disabled={disabled}
                                   onCheckedChange={() =>
                                     togglePermission(permission.key)
                                   }
@@ -809,11 +816,15 @@ const RolesPage = () => {
                                   <p className="text-xs text-muted-foreground">
                                     {permission.description}
                                   </p>
+                                  {disabled && <p className="text-xs text-muted-foreground">Activa primero: {getPermissionDependencies(permission.key).filter((parent) => !form.permissions.includes(parent)).map((parent) => permissionCatalog.find((item) => item.key === parent)?.label).join(", ")}</p>}
 
                                 </div>
                               </label>
                             );
                           })}
+                            </div>
+                          </fieldset>
+                          ))}
                         </div>
                       </section>
                     );

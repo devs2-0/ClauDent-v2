@@ -1,4 +1,5 @@
 // RF07: Odontogram Editor (CORREGIDO: ERROR AL GUARDAR)
+import { Can, useCan } from '@/auth';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Odontogram, ToothState, usePatients } from '@/modules/patients';
@@ -127,6 +128,8 @@ const OdontogramEditorPage: React.FC = () => {
   const navigate = useNavigate();
   const { patients } = usePatients();
   
+  const { can } = useCan();
+  const canEdit = can("patients.odontogram.update");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [odontogram, setOdontogram] = useState<Odontogram | null>(null);
@@ -146,7 +149,7 @@ const OdontogramEditorPage: React.FC = () => {
         const snap = await getDoc(docRef);
         if (snap.exists()) {
           const data = snap.data() as Odontogram;
-          setOdontogram({ ...data, id: snap.id });
+          setOdontogram({ ...data, dientes: data.dientes ?? {}, id: snap.id });
           setNotas(data.notas || '');
         } else {
           toast.error("El odontograma no existe");
@@ -163,6 +166,7 @@ const OdontogramEditorPage: React.FC = () => {
   }, [patientId, odontogramId, navigate]);
 
   const handleSave = async () => {
+    if (!canEdit) return;
     if (!patientId || !odontogramId || !odontogram) return;
     setSaving(true);
     try {
@@ -190,6 +194,7 @@ const OdontogramEditorPage: React.FC = () => {
   };
 
   const handleToothClick = (toothNumber: number) => {
+    if (!canEdit) return;
     if (!odontogram) return;
     const toothKey = toothNumber.toString();
     const currentToothState = odontogram.dientes[toothKey] || { estados: [], superficies: {} };
@@ -308,16 +313,16 @@ const OdontogramEditorPage: React.FC = () => {
             </p>
           </div>
         </div>
-        <Button onClick={handleSave} disabled={saving} size="sm" className={cn(saving && "opacity-80")}>
+        <Can permission="patients.odontogram.update"><Button onClick={handleSave} disabled={saving} size="sm" className={cn(saving && "opacity-80")}>
           {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
           Guardar
-        </Button>
+        </Button></Can>
       </div>
 
       <div className="flex flex-col lg:flex-row flex-1 gap-4 overflow-hidden">
         
         {/* HERRAMIENTAS */}
-        <Card className="w-full lg:w-60 shrink-0 flex flex-col max-h-[200px] lg:max-h-full">
+        <Can permission="patients.odontogram.update"><Card className="w-full lg:w-60 shrink-0 flex flex-col max-h-[200px] lg:max-h-full">
           <CardHeader className="p-3 pb-2 border-b">
             <CardTitle className="text-xs uppercase text-muted-foreground font-bold">Diagnósticos</CardTitle>
           </CardHeader>
@@ -340,7 +345,7 @@ const OdontogramEditorPage: React.FC = () => {
               ))}
             </div>
           </CardContent>
-        </Card>
+        </Card></Can>
 
         {/* CANVAS CON SCROLL HORIZONTAL MEJORADO */}
         <div className="flex-1 bg-card rounded-xl border p-0 lg:p-4 overflow-hidden flex flex-col min-h-[300px] relative">
@@ -435,7 +440,7 @@ const OdontogramEditorPage: React.FC = () => {
             </ScrollArea>
             
             <div className="p-3 border-t bg-background">
-              <Textarea 
+              <Textarea readOnly={!canEdit}
                 placeholder="Notas generales..." 
                 className="min-h-[60px] text-xs resize-none"
                 value={notas}

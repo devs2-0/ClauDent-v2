@@ -179,6 +179,7 @@ const Cotizaciones: React.FC = () => {
     });
   }, [quotations, patients, mainSearch, dateFilterStart, dateFilterEnd, statusFilter, sortOrder]);
   const handleOpenDialog = (quotation?: Quotation) => {
+    if (!can(quotation ? "quotations.update" : "quotations.create")) return;
     if (quotation) {
         setEditingQuotationId(quotation.id);
         setFormData({
@@ -271,6 +272,7 @@ const Cotizaciones: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!can(editingQuotationId ? "quotations.update" : "quotations.create")) return;
     if (!formData.pacienteId || !formData.fecha || formData.items.length === 0) {
       toast.error('Selecciona paciente, fecha y al menos un servicio');
       return;
@@ -314,6 +316,7 @@ const Cotizaciones: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
+    if (!can("quotations.delete")) return;
     if (confirm('¿Está seguro de eliminar esta cotización?')) {
       try {
         await deleteQuotation(id);
@@ -326,6 +329,7 @@ const Cotizaciones: React.FC = () => {
   };
 
   const handleExportPDF = (quotationId: string) => {
+    if (!can("quotations.pdf.generate")) return;
     const quotation = quotations.find(q => q.id === quotationId);
     if (!quotation) {
       toast.error("No se encontró la cotización.");
@@ -515,23 +519,23 @@ const Cotizaciones: React.FC = () => {
                         </TableCell>
                         <TableCell className="text-right whitespace-nowrap">
                           <div className="flex justify-end gap-2">
-                            <Button 
+                            {can("quotations.update") && (<Button
                                 variant="ghost" 
                                 size="icon" 
                                 aria-label="Ver/Editar detalle"
                                 onClick={() => handleOpenDialog(quotation)}
                             >
                               <Eye className="h-4 w-4" />
-                            </Button>
-                            <Button
+                            </Button>)}
+                            {can("quotations.pdf.generate") && (<Button
                               variant="ghost"
                               size="icon"
                               onClick={() => handleExportPDF(quotation.id)}
                               aria-label="Exportar PDF"
                             >
                               <Printer className="h-4 w-4" />
-                            </Button>
-                            <Button
+                            </Button>)}
+                            {can("quotations.delete") && (<Button
                               variant="ghost"
                               size="icon"
                               className="text-destructive hover:text-destructive"
@@ -539,7 +543,7 @@ const Cotizaciones: React.FC = () => {
                               aria-label="Eliminar Cotización"
                             >
                               <Trash2 className="h-4 w-4" />
-                            </Button>
+                            </Button>)}
                           </div>
                         </TableCell>
                       </TableRow>
@@ -552,7 +556,7 @@ const Cotizaciones: React.FC = () => {
         </CardContent>
       </Card>
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog open={isDialogOpen && can(editingQuotationId ? "quotations.update" : "quotations.create")} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>{editingQuotationId ? 'Editar Cotización' : 'Nueva Cotización'}</DialogTitle>

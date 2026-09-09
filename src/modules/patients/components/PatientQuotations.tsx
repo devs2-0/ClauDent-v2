@@ -1,4 +1,5 @@
 // Patient quotations list (ACTUALIZADO A NUEVOS ESTADOS)
+import { Can, useCan } from '@/auth';
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Plus, FileText, Printer } from 'lucide-react';
@@ -21,6 +22,7 @@ interface PatientQuotationsProps {
 }
 
 const PatientQuotations: React.FC<PatientQuotationsProps> = ({ patientId }) => {
+  const { can } = useCan();
   const { patients } = usePatients();
   const { quotations, quotationsLoading, updateQuotation } = useQuotations();
   const [patientQuotations, setPatientQuotations] = useState<Quotation[]>([]);
@@ -46,6 +48,7 @@ const PatientQuotations: React.FC<PatientQuotationsProps> = ({ patientId }) => {
   }, [patientId, quotations]);
 
   const handleEditClick = (quotation: Quotation) => {
+      if (!can("quotations.update")) return;
       setEditingQuotation(quotation);
       setFormData({
           fecha: quotation.fecha,
@@ -57,6 +60,7 @@ const PatientQuotations: React.FC<PatientQuotationsProps> = ({ patientId }) => {
   };
   
   const handleSave = async () => {
+      if (!can("quotations.update")) return;
       if(!editingQuotation) return;
       setIsSaving(true);
       try {
@@ -77,6 +81,7 @@ const PatientQuotations: React.FC<PatientQuotationsProps> = ({ patientId }) => {
   };
 
   const handlePrint = (q: Quotation) => {
+      if (!can("quotations.pdf.generate")) return;
       const patient = patients.find(p => p.id === q.pacienteId);
       generateQuotationPDF(q, patient);
   }
@@ -115,12 +120,12 @@ const PatientQuotations: React.FC<PatientQuotationsProps> = ({ patientId }) => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-semibold">Cotizaciones del Paciente</h3>
-        <Link to="/cotizaciones">
+        <Can permission="quotations.create"><Link to="/cotizaciones">
           <Button>
             <Plus className="h-4 w-4 mr-2" />
             Ir a Gestión Completa
           </Button>
-        </Link>
+        </Link></Can>
       </div>
 
       {quotationsLoading ? (
@@ -140,7 +145,7 @@ const PatientQuotations: React.FC<PatientQuotationsProps> = ({ patientId }) => {
             <Card 
                 key={quotation.id} 
                 className="hover:shadow-md transition-shadow cursor-pointer"
-                onClick={() => handleEditClick(quotation)}
+                onClick={can("quotations.update") ? () => handleEditClick(quotation) : undefined}
             >
               <CardHeader>
                 <div className="flex items-start justify-between">
@@ -166,9 +171,9 @@ const PatientQuotations: React.FC<PatientQuotationsProps> = ({ patientId }) => {
                     <div className="text-xl font-bold text-foreground">
                         {formatCurrency(quotation.total)}
                     </div>
-                    <Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handlePrint(quotation); }}>
+                    <Can permission="quotations.pdf.generate"><Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handlePrint(quotation); }}>
                         <Printer className="h-4 w-4 text-muted-foreground" />
-                    </Button>
+                    </Button></Can>
                   </div>
                 </div>
               </CardContent>
@@ -178,7 +183,7 @@ const PatientQuotations: React.FC<PatientQuotationsProps> = ({ patientId }) => {
       )}
 
       {/* Mini Dialogo de Edición Rápida */}
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog open={isDialogOpen && can("quotations.update")} onOpenChange={setIsDialogOpen}>
         <DialogContent>
             <DialogHeader>
                 <DialogTitle>Editar Estado / Notas</DialogTitle>

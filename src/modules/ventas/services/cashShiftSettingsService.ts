@@ -50,11 +50,11 @@ const mapSettings = (data: any): CashShiftSettings => ({
 });
 
 export const cashShiftSettingsService = {
-  listenSettings: (onChange: (settings: CashShiftSettings) => void) => {
+  listenSettings: (onChange: (settings: CashShiftSettings) => void, onError?: () => void) => {
     const settingsRef = doc(db, CASH_SETTINGS_COLLECTION, CASH_SHIFT_SETTINGS_DOC);
     return onSnapshot(settingsRef, (snapshot) => {
       onChange(snapshot.exists() ? mapSettings(snapshot.data()) : defaultCashShiftSettings);
-    });
+    }, onError);
   },
 
   updateSettings: async (settings: CashShiftSettings) => {

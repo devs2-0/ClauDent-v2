@@ -25,6 +25,13 @@ export type PermissionKey =
   | "patients.create"
   | "patients.update"
   | "patients.delete"
+  | "patients.record.view"
+  | "patients.procedures.view"
+  | "patients.procedures.create"
+  | "patients.procedures.update"
+  | "patients.procedures.delete"
+  | "patients.payments.view"
+  | "patients.quotations.view"
   | "patients.clinicalHistory.view"
   | "patients.clinicalHistory.update"
   | "patients.odontogram.view"
@@ -54,6 +61,9 @@ export type PermissionKey =
 
   // Agenda
   | "agenda.view"
+  | "agenda.doctors.view"
+  | "agenda.assistants.view"
+  | "agenda.availability.view"
   | "agenda.doctors.viewAll"
   | "agenda.doctors.viewOwn"
   | "agenda.doctors.manage"

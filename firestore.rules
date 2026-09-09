@@ -28,15 +28,58 @@ service cloud.firestore {
         && currentUserData().isAdmin == true;
     }
 
-    function hasPermission(permission) {
+    function hasPermissions(required) {
       return isActiveUser()
-        && (
-          isAdmin()
-          || (
-            currentUserData().permissions is list
-            && currentUserData().permissions.hasAny([permission])
-          )
-        );
+        && (currentUserData().get("isAdmin", false) == true
+          || (currentUserData().get("permissions", []) is list
+            && currentUserData().get("permissions", []).hasAll(required)));
+    }
+
+    function hasSomePermissions(permissions) {
+      return isActiveUser()
+        && (currentUserData().get("isAdmin", false) == true
+          || (currentUserData().get("permissions", []) is list
+            && currentUserData().get("permissions", []).hasAny(permissions)));
+    }
+
+    function hasPermission(permission) {
+      return hasPermissions([permission]);
+    }
+
+    // Effective grants already live in usuarios.permissions; views never imply writes.
+    function hasModulePermission(module, permission) {
+      return hasPermissions([module + ".view", permission]);
+    }
+
+    function hasPatientSectionPermission(section, permission) {
+      return hasPermissions(["patients.view", "patients.record.view", "patients." + section + ".view", permission]);
+    }
+
+    function canWriteAgendaHistory() {
+      return hasModulePermission("agenda", "agenda.appointments.create")
+        || hasModulePermission("agenda", "agenda.appointments.update")
+        || hasModulePermission("agenda", "agenda.appointments.cancel")
+        || hasModulePermission("agenda", "agenda.blocks.create")
+        || hasModulePermission("agenda", "agenda.blocks.delete")
+        || hasModulePermission("agenda", "agenda.doctors.manage")
+        || hasModulePermission("agenda", "agenda.assistants.manage");
+    }
+
+    function canManageSchedule(data) {
+      return hasPermission("agenda.view")
+        && hasPermission("agenda.availability.view")
+        && ((data.staffType == "doctor" && hasPermission("agenda.doctors.view") && hasPermission("agenda.doctors.manage"))
+          || (data.staffType == "assistant" && hasPermission("agenda.assistants.view") && hasPermission("agenda.assistants.manage")));
+    }
+
+    // Sales already create a clinical entry and settle a quotation in the payment transaction.
+    function isNewLinkedSalePayment(patientId, paymentId) {
+      return hasModulePermission("sales", "sales.create")
+        && paymentId is string
+        && !exists(paymentPath(paymentId))
+        && existsAfter(paymentPath(paymentId))
+        && getAfter(paymentPath(paymentId)).data.pacienteId == patientId
+        && getAfter(paymentPath(paymentId)).data.estado == "activo";
     }
 
     function canUseAgendaHistory() {
@@ -73,24 +116,15 @@ service cloud.firestore {
     }
 
     function canReadSales() {
-      return hasPermission("sales.view")
-        || hasPermission("sales.cancel")
-        || hasPermission("sales.payments.manage")
-        || hasPermission("sales.cashCuts.history.view")
-        || hasPermission("sales.reports.view")
-        || hasPermission("reports.view");
+      return hasSomePermissions(["sales.view","sales.cancel","sales.payments.manage","sales.cashCuts.history.view","sales.reports.view","reports.view"]);
     }
 
     function canReadFinancialReports() {
-      return hasPermission("sales.reports.view")
-        || hasPermission("reports.view")
-        || hasPermission("reports.export");
+      return hasSomePermissions(["sales.reports.view","reports.view","reports.export"]);
     }
 
     function canReadAccountsReceivable() {
-      return canReadSales()
-        || canReadFinancialReports()
-        || hasPermission("sales.payments.manage");
+      return hasSomePermissions(["sales.view","sales.cancel","sales.payments.manage","sales.cashCuts.history.view","sales.reports.view","reports.view","reports.export"]);
     }
 
     function canManageAccountsReceivable() {
@@ -719,7 +753,10 @@ service cloud.firestore {
         && request.resource.data.isSystem == false;
 
       allow update: if hasPermission("roles.update")
-        && resource.data.isSystem != true;
+        && (resource.data.isSystem != true
+          || (isAdmin() && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            "name", "description", "color", "icon", "permissions", "updatedAt", "updatedBy"
+          ])));
 
       allow delete: if hasPermission("roles.delete")
         && resource.data.isSystem != true;
@@ -794,13 +831,13 @@ service cloud.firestore {
         || hasPermission("agenda.view")
         || hasPermission("agenda.doctors.viewAll")
         || hasPermission("agenda.doctors.viewOwn")
-        || hasPermission("agenda.doctors.manage");
+        || (hasModulePermission("agenda", "agenda.doctors.manage") && hasPermission("agenda.doctors.view"));
 
       allow create: if isAdmin()
-        || hasPermission("agenda.doctors.manage");
+        || (hasModulePermission("agenda", "agenda.doctors.manage") && hasPermission("agenda.doctors.view"));
 
       allow update: if isAdmin()
-        || hasPermission("agenda.doctors.manage")
+        || (hasModulePermission("agenda", "agenda.doctors.manage") && hasPermission("agenda.doctors.view"))
         || canLinkDoctorByInvitation(doctorId);
 
       allow delete: if isAdmin();
@@ -809,57 +846,97 @@ service cloud.firestore {
     match /asistentes/{assistantId} {
       allow read: if isAdmin()
         || hasPermission("agenda.view")
-        || hasPermission("agenda.assistants.manage");
+        || (hasModulePermission("agenda", "agenda.assistants.manage") && hasPermission("agenda.assistants.view"));
 
       allow create: if isAdmin()
-        || hasPermission("agenda.assistants.manage");
+        || (hasModulePermission("agenda", "agenda.assistants.manage") && hasPermission("agenda.assistants.view"));
 
       allow update: if isAdmin()
-        || hasPermission("agenda.assistants.manage")
+        || (hasModulePermission("agenda", "agenda.assistants.manage") && hasPermission("agenda.assistants.view"))
         || canLinkAssistantByInvitation(assistantId);
 
       allow delete: if isAdmin();
     }
 
     match /pacientes/{patientId} {
-      allow read, write: if isActiveUser();
+      // Operational patient lookups share this existing document with the list.
+      allow read: if hasPermission("patients.view")
+        || hasModulePermission("agenda", "agenda.appointments.create")
+        || hasModulePermission("agenda", "agenda.appointments.update")
+        || hasPermission("quotations.view") || hasPermission("sales.view");
+      allow create: if hasModulePermission("patients", "patients.create");
+      allow update: if hasModulePermission("patients", "patients.update")
+        || (hasModulePermission("patients", "patients.delete")
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["estado"])
+          && request.resource.data.estado == "inactivo")
+        || (hasPatientSectionPermission("clinicalHistory", "patients.clinicalHistory.update")
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["hasHistorial"])
+          && request.resource.data.hasHistorial == true);
+      allow delete: if hasModulePermission("patients", "patients.delete");
 
       match /historial/{entryId} {
-        allow read, write: if isActiveUser();
+        allow read: if hasPatientSectionPermission("procedures", "patients.procedures.view");
+        allow create: if hasPatientSectionPermission("procedures", "patients.procedures.create")
+          || isNewLinkedSalePayment(patientId, request.resource.data.pagoId);
+        allow update: if hasPatientSectionPermission("procedures", "patients.procedures.update");
+        allow delete: if hasPatientSectionPermission("procedures", "patients.procedures.delete");
       }
 
       match /historia_clinica/{formId} {
-        allow read, write: if isActiveUser();
+        allow read: if hasPatientSectionPermission("clinicalHistory", "patients.clinicalHistory.view");
+        allow create, update: if hasPatientSectionPermission("clinicalHistory", "patients.clinicalHistory.update");
+        allow delete: if isAdmin();
       }
 
       match /odontograma/{odontogramId} {
-        allow read, write: if isActiveUser();
+        allow read: if hasPatientSectionPermission("odontogram", "patients.odontogram.view");
+        allow create, update, delete: if hasPatientSectionPermission("odontogram", "patients.odontogram.update");
       }
 
       match /adjuntos/{attachmentId} {
-        allow read: if isActiveUser();
-
-        allow create, update: if isActiveUser()
+        allow read: if hasPatientSectionPermission("attachments", "patients.attachments.view");
+        allow create: if hasPatientSectionPermission("attachments", "patients.attachments.upload")
           && hasPatientAttachmentFields(patientId);
-
-        allow delete: if isActiveUser();
+        allow update: if false;
+        allow delete: if hasPatientSectionPermission("attachments", "patients.attachments.delete");
       }
     }
 
     match /servicios/{serviceId} {
-      allow read, write: if isActiveUser();
+      // Package composition needs the service catalog, but never its management actions.
+      allow read: if hasPermission("services.view")
+        || hasModulePermission("packages", "packages.create") || hasModulePermission("packages", "packages.update")
+        || hasPatientSectionPermission("procedures", "patients.procedures.view")
+        || hasModulePermission("agenda", "agenda.appointments.create") || hasModulePermission("agenda", "agenda.appointments.update")
+        || hasPermission("quotations.view") || hasPermission("sales.view");
+      allow create: if hasModulePermission("services", "services.create");
+      allow update: if hasModulePermission("services", "services.update");
+      allow delete: if hasModulePermission("services", "services.delete");
     }
 
     match /cotizaciones/{cotizacionId} {
-      allow read, write: if isActiveUser();
+      allow read: if hasPermission("quotations.view") || hasPermission("sales.view")
+        || hasPatientSectionPermission("quotations", "patients.quotations.view");
+      allow create: if hasModulePermission("quotations", "quotations.create");
+      allow update: if hasModulePermission("quotations", "quotations.update")
+        || (isNewLinkedSalePayment(resource.data.pacienteId, request.resource.data.pagoId)
+          && getAfter(paymentPath(request.resource.data.pagoId)).data.cotizacionId == cotizacionId
+          && request.resource.data.pagada == true
+          && request.resource.data.estado == "activo"
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["estado", "pagada", "pagoId", "tratamientoId", "fechaPago", "metodoPago"]));
+      allow delete: if hasModulePermission("quotations", "quotations.delete");
     }
 
     match /paquetes/{paqueteId} {
-      allow read, write: if isActiveUser();
+      allow read: if hasPermission("packages.view") || hasPermission("quotations.view") || hasPermission("sales.view");
+      allow create: if hasModulePermission("packages", "packages.create");
+      allow update: if hasModulePermission("packages", "packages.update");
+      allow delete: if hasModulePermission("packages", "packages.delete");
     }
 
     match /pagos/{pagoId} {
-      allow read: if canReadSales() || canReadFinancialReports();
+      allow read: if canReadSales() || canReadFinancialReports()
+        || (hasPatientSectionPermission("payments", "patients.payments.view") && resource.data.pacienteId is string);
 
       allow create: if hasPaymentCreateShape()
         && (
@@ -926,7 +1003,8 @@ service cloud.firestore {
     }
 
     match /cuentasPorCobrar/{accountId} {
-      allow read: if canReadAccountsReceivable();
+      allow read: if canReadAccountsReceivable()
+        || (hasPatientSectionPermission("payments", "patients.payments.view") && resource.data.pacienteId is string);
       allow create: if isValidReceivableCreate(accountId);
       allow update: if isValidReceivableInstallmentUpdate(accountId)
         || isValidReceivablePaymentCancelUpdate(accountId);
@@ -939,6 +1017,9 @@ service cloud.firestore {
       allow create: if isAdmin() || isInventoryProductCreate();
 
       allow update: if isInventoryProductCatalogUpdate()
+        || (hasModulePermission("inventory", "inventory.delete")
+          && request.resource.data.estado == "inactivo"
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["estado", "updatedAt"]))
         || (
           isStockOnlyProductUpdate()
           && (
@@ -1017,30 +1098,38 @@ service cloud.firestore {
     }
 
     match /horariosPersonal/{scheduleId} {
-      allow read, create, update: if isAdmin()
-        || isActiveUser();
-
-      allow delete: if isAdmin();
+      allow read: if hasPermission("agenda.view");
+      allow create: if canManageSchedule(request.resource.data);
+      allow update: if canManageSchedule(resource.data) && canManageSchedule(request.resource.data);
+      allow delete: if canManageSchedule(resource.data);
     }
 
     match /bloqueosAgenda/{blockId} {
-      allow read, create, update: if isAdmin()
-        || isActiveUser();
-
-      allow delete: if isAdmin();
+      allow read: if hasPermission("agenda.view");
+      allow create: if hasModulePermission("agenda", "agenda.blocks.create") && hasPermission("agenda.availability.view");
+      // Existing cancellation is a soft delete, restricted to its status and audit fields.
+      allow update: if hasModulePermission("agenda", "agenda.blocks.delete") && hasPermission("agenda.availability.view")
+        && request.resource.data.status == "cancelled"
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "cancelledAt", "cancelledBy", "updatedAt", "updatedBy"]);
+      allow delete: if hasModulePermission("agenda", "agenda.blocks.delete") && hasPermission("agenda.availability.view");
     }
 
     match /citas/{appointmentId} {
-      allow read, create, update: if isAdmin()
-        || isActiveUser();
-
+      allow read: if hasPermission("agenda.view");
+      allow create: if hasModulePermission("agenda", "agenda.appointments.create")
+        && request.resource.data.status != "cancelled";
+      allow update: if (hasModulePermission("agenda", "agenda.appointments.update")
+          && request.resource.data.status != "cancelled")
+        || (hasModulePermission("agenda", "agenda.appointments.cancel")
+          && request.resource.data.status == "cancelled"
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "updatedAt", "updatedBy"]));
       allow delete: if isAdmin();
     }
 
     match /notificacionesAgenda/{notificationId} {
       allow read: if canUseAgendaHistory();
 
-      allow create: if canUseAgendaHistory();
+      allow create: if canWriteAgendaHistory();
 
       allow update: if isSignedIn()
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
@@ -1058,7 +1147,7 @@ service cloud.firestore {
     match /historialAgenda/{historyId} {
       allow read: if canUseAgendaHistory();
 
-      allow create: if canUseAgendaHistory();
+      allow create: if canWriteAgendaHistory();
 
       allow update, delete: if isAdmin();
     }

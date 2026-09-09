@@ -1,5 +1,6 @@
 // RF06: Lista de Odontogramas (DISEÑO LIMPIO + RESPONSIVE)
 import React, { useState, useEffect } from 'react';
+import { Can, useCan } from '@/auth';
 import { Link } from 'react-router-dom'; 
 import { Odontogram, usePatients } from '@/modules/patients';
 import { Button } from '@/shared/components/ui/button';
@@ -22,6 +23,7 @@ interface PatientOdontogramProps {
 }
 
 const PatientOdontogram: React.FC<PatientOdontogramProps> = ({ patientId }) => {
+  const { can } = useCan();
   const { addOdontogram, deleteOdontogram, updateOdontogramName } = usePatients();
   
   const [odontogramList, setOdontogramList] = useState<Odontogram[]>([]);
@@ -49,11 +51,12 @@ const PatientOdontogram: React.FC<PatientOdontogramProps> = ({ patientId }) => {
       } as Odontogram));
       setOdontogramList(list);
       setListLoading(false);
-    });
+    }, () => { setOdontogramList([]); setListLoading(false); toast.error("Información no disponible"); });
     return () => unsubscribe();
   }, [patientId]);
 
   const handleCreateNew = async () => {
+    if (!can("patients.odontogram.update")) return;
     setIsSaving(true);
     try {
       await addOdontogram(patientId, selectedType, customName || undefined);
@@ -69,6 +72,7 @@ const PatientOdontogram: React.FC<PatientOdontogramProps> = ({ patientId }) => {
   };
 
   const handleConfirmDelete = async () => {
+    if (!can("patients.odontogram.update")) return;
     if (deleteId) {
         await deleteOdontogram(patientId, deleteId);
         setDeleteId(null);
@@ -76,6 +80,7 @@ const PatientOdontogram: React.FC<PatientOdontogramProps> = ({ patientId }) => {
   };
 
   const handleConfirmRename = async () => {
+    if (!can("patients.odontogram.update")) return;
       if (renameData) {
           await updateOdontogramName(patientId, renameData.id, renameData.name);
           setRenameData(null);
@@ -86,12 +91,12 @@ const PatientOdontogram: React.FC<PatientOdontogramProps> = ({ patientId }) => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-semibold">Historial de Odontogramas</h3>
-        <Dialog open={isNewModalOpen} onOpenChange={setIsNewModalOpen}>
-            <DialogTrigger asChild>
+        <Dialog open={isNewModalOpen && can("patients.odontogram.update")} onOpenChange={setIsNewModalOpen}>
+            <Can permission="patients.odontogram.update"><DialogTrigger asChild>
             <Button>
                 <Plus className="h-4 w-4 mr-2" /> Nuevo
             </Button>
-            </DialogTrigger>
+            </DialogTrigger></Can>
             <DialogContent>
             <DialogHeader>
                 <DialogTitle>Crear Nuevo Odontograma</DialogTitle>
@@ -165,12 +170,12 @@ const PatientOdontogram: React.FC<PatientOdontogramProps> = ({ patientId }) => {
                     </Link>
                     
                     <div className="flex gap-1 border-l pl-2 ml-2">
-                        <Button variant="ghost" size="icon" onClick={() => setRenameData({ id: odonto.id, name: odonto.nombre || '' })} title="Cambiar nombre">
+                        <Can permission="patients.odontogram.update"><Button variant="ghost" size="icon" onClick={() => setRenameData({ id: odonto.id, name: odonto.nombre || '' })} title="Cambiar nombre">
                             <Pencil className="h-4 w-4 text-muted-foreground" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="hover:bg-destructive/10 hover:text-destructive text-muted-foreground" onClick={() => setDeleteId(odonto.id)} title="Eliminar">
+                        </Button></Can>
+                        <Can permission="patients.odontogram.update"><Button variant="ghost" size="icon" className="hover:bg-destructive/10 hover:text-destructive text-muted-foreground" onClick={() => setDeleteId(odonto.id)} title="Eliminar">
                             <Trash2 className="h-4 w-4" />
-                        </Button>
+                        </Button></Can>
                     </div>
                   </div>
                 </div>
@@ -181,7 +186,7 @@ const PatientOdontogram: React.FC<PatientOdontogramProps> = ({ patientId }) => {
       </Card>
 
       {/* Alertas y Modales */}
-      <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
+      <AlertDialog open={!!deleteId && can("patients.odontogram.update")} onOpenChange={(open) => !open && setDeleteId(null)}>
         <AlertDialogContent>
             <AlertDialogHeader>
                 <AlertDialogTitle>¿Eliminar odontograma?</AlertDialogTitle>
@@ -194,7 +199,7 @@ const PatientOdontogram: React.FC<PatientOdontogramProps> = ({ patientId }) => {
         </AlertDialogContent>
       </AlertDialog>
 
-      <Dialog open={!!renameData} onOpenChange={(open) => !open && setRenameData(null)}>
+      <Dialog open={!!renameData && can("patients.odontogram.update")} onOpenChange={(open) => !open && setRenameData(null)}>
           <DialogContent>
               <DialogHeader><DialogTitle>Renombrar</DialogTitle></DialogHeader>
               <div className="py-4">

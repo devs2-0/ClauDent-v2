@@ -1,6 +1,6 @@
 import React, { createContext, ReactNode, useContext, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { useAuth } from "@/auth";
+import { useAuth, useCan } from "@/auth";
 import { inventoryService } from "../services/inventoryService";
 import type {
   CreateInventoryCategoryInput,
@@ -36,6 +36,7 @@ const InventoryContext = createContext<InventoryContextValue | undefined>(undefi
 
 export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { currentUser } = useAuth();
+  const { can } = useCan();
   const [products, setProducts] = useState<InventoryProduct[]>([]);
   const [categories, setCategories] = useState<InventoryCategoryRecord[]>([]);
   const [movements, setMovements] = useState<InventoryMovement[]>([]);
@@ -102,44 +103,52 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
   }, [currentUser]);
 
   const createCategory = async (category: CreateInventoryCategoryInput) => {
+    if (!can("inventory.categories.manage")) throw new Error("No tienes permiso para realizar esta acción.");
     const id = await inventoryService.createCategory(category);
     toast.success("Categoria guardada");
     return id;
   };
 
   const updateCategory = async (id: string, updates: Partial<CreateInventoryCategoryInput>) => {
+    if (!can("inventory.categories.manage")) throw new Error("No tienes permiso para realizar esta acción.");
     await inventoryService.updateCategory(id, updates);
     toast.success("Categoria actualizada");
   };
 
   const deleteCategory = async (id: string) => {
+    if (!can("inventory.categories.manage")) throw new Error("No tienes permiso para realizar esta acción.");
     await inventoryService.deleteCategory(id);
     toast.success("Categoria eliminada");
   };
 
   const createProduct = async (product: CreateInventoryProductInput) => {
+    if (!can("inventory.create")) throw new Error("No tienes permiso para realizar esta acción.");
     const id = await inventoryService.createProduct(product);
     toast.success("Producto guardado en inventario");
     return id;
   };
 
   const updateProduct = async (id: string, updates: Partial<CreateInventoryProductInput>) => {
+    if (!can("inventory.update")) throw new Error("No tienes permiso para realizar esta acción.");
     await inventoryService.updateProduct(id, updates);
     toast.success("Producto actualizado");
   };
 
   const deleteProduct = async (id: string) => {
+    if (!can("inventory.delete")) throw new Error("No tienes permiso para realizar esta acción.");
     await inventoryService.deleteProduct(id);
     toast.success("Producto desactivado");
   };
 
   const registerMovement = async (input: RegisterInventoryMovementInput) => {
+    if (!can(input.tipo === "uso_clinico" ? "inventory.usage.create" : "inventory.stock.adjust")) throw new Error("No tienes permiso para registrar este movimiento.");
     const id = await inventoryService.registerMovement(input);
     toast.success("Movimiento registrado");
     return id;
   };
 
   const registerStockEntry = async (input: RegisterStockEntryInput) => {
+    if (!can("inventory.stock.adjust") && !can("inventory.purchaseList.manage")) throw new Error("No tienes permiso para registrar reabastecimientos.");
     const id = await inventoryService.registerStockEntry(input);
     toast.success("Reabastecimiento registrado");
     return id;
@@ -176,3 +185,4 @@ export const useInventoryContext = () => {
   if (!context) throw new Error("useInventory must be used within InventoryProvider");
   return context;
 };
+export const useOptionalInventory = () => useContext(InventoryContext);

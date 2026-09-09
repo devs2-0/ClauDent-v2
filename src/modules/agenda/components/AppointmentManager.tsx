@@ -210,10 +210,7 @@ const AppointmentManager = ({
   const canUpdateAppointment = can("agenda.appointments.update");
   const canCancelAppointment = can("agenda.appointments.cancel");
 
-  const canCreateBlock =
-    can("agenda.blocks.create") ||
-    can("agenda.doctors.manage") ||
-    can("agenda.assistants.manage");
+  const canCreateBlock = can("agenda.blocks.create");
 
   const canViewAllDoctors =
     agendaUser?.isAdmin === true ||
@@ -609,8 +606,8 @@ const AppointmentManager = ({
         appointmentService.listAppointments(),
         availabilityService.listSchedules(),
         availabilityService.listBlocks(),
-        patientLookupService.listPatients(),
-        serviceLookupService.listServices(),
+        canCreateAppointment || canUpdateAppointment ? patientLookupService.listPatients() : Promise.resolve([]),
+        canCreateAppointment || canUpdateAppointment ? serviceLookupService.listServices() : Promise.resolve([]),
       ]);
 
       setAppointments(appointmentsData);
@@ -628,7 +625,7 @@ const AppointmentManager = ({
 
   useEffect(() => {
     void loadAppointments();
-  }, [refreshKey]);
+  }, [refreshKey, canCreateAppointment, canUpdateAppointment]);
 
   const updateSelectedDate = (date: string) => {
     setSelectedDate(date);
@@ -729,6 +726,7 @@ const AppointmentManager = ({
   };
 
   const openManualAppointmentDialog = () => {
+    if (!canCreateAppointment) return;
     setSelectedSlot(null);
     setEditingAppointment(null);
 
@@ -2004,7 +2002,7 @@ const AppointmentManager = ({
       />
 
       <AppointmentDialog
-        open={appointmentDialogOpen}
+        open={appointmentDialogOpen && (editingAppointment ? canUpdateAppointment : canCreateAppointment)}
         onOpenChange={handleAppointmentDialogOpenChange}
         form={form}
         setForm={setForm}
@@ -2038,7 +2036,7 @@ const AppointmentManager = ({
       />
 
       <AgendaBlockDialog
-        open={blockDialogOpen}
+        open={blockDialogOpen && canCreateBlock}
         onOpenChange={setBlockDialogOpen}
         slot={selectedSlot}
         doctor={selectedSlotDoctor}

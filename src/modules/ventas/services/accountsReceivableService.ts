@@ -21,6 +21,8 @@ import type {
   RegisterInstallmentInput,
 } from "../types/accountsReceivable.types";
 
+import type { PaymentMethod } from "../types/cash.types";
+
 const COLLECTION = "cuentasPorCobrar";
 const PAYMENTS_COLLECTION = "pagos";
 const CASH_CLOSURES_COLLECTION = "cortesCaja";
@@ -88,7 +90,7 @@ export const accountsReceivableService = {
     });
   },
 
-  listenPatientAccounts: (patientId: string, onChange: (accounts: AccountReceivable[]) => void) => {
+  listenPatientAccounts: (patientId: string, onChange: (accounts: AccountReceivable[]) => void, onError?: () => void) => {
     const accountsQuery = query(
       collection(db, COLLECTION),
       where("pacienteId", "==", patientId),
@@ -96,7 +98,7 @@ export const accountsReceivableService = {
     );
     return onSnapshot(accountsQuery, (snapshot) => {
       onChange(snapshot.docs.map((accountDoc) => mapAccount(accountDoc.id, accountDoc.data())));
-    });
+    }, onError);
   },
 
   createAccount: async (input: CreateAccountReceivableInput) => {

@@ -9,33 +9,33 @@ All colors MUST be HSL.
 @layer base {
   :root {
     /* Pastel dental palette - sky/emerald/sand */
-    --background: 200 35% 96%;
+    --background: 184 28% 92%;
     --foreground: 215 25% 20%;
 
-    --card: 200 30% 98%;
+    --card: 180 27% 96%;
     --card-foreground: 215 25% 20%;
 
-    --popover: 200 30% 98%;
+    --popover: 180 27% 96%;
     --popover-foreground: 222 47% 11%;
 
-    --primary: 200 95% 65%;
+    --primary: 190 70% 32%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 160 60% 89%;
     --secondary-foreground: 160 60% 20%;
 
-    --muted: 40 30% 94%;
+    --muted: 182 20% 89%;
     --muted-foreground: 215 15% 45%;
 
-    --accent: 40 50% 88%;
-    --accent-foreground: 40 50% 25%;
+    --accent: 175 30% 86%;
+    --accent-foreground: 184 40% 22%;
 
     --destructive: 0 75% 65%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 210 25% 88%;
-    --input: 210 25% 92%;
-    --ring: 200 95% 65%;
+    --border: 184 19% 80%;
+    --input: 184 22% 86%;
+    --ring: 190 70% 32%;
 
     --radius: 0.75rem;
 
@@ -48,14 +48,14 @@ All colors MUST be HSL.
     --warning-foreground: 40 95% 15%;
 
     /* Sidebar */
-    --sidebar-background: 210 35% 96%;
+    --sidebar-background: 183 26% 89%;
     --sidebar-foreground: 215 25% 25%;
-    --sidebar-primary: 200 95% 65%;
+    --sidebar-primary: 190 70% 32%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 210 30% 92%;
+    --sidebar-accent: 180 24% 84%;
     --sidebar-accent-foreground: 215 25% 25%;
-    --sidebar-border: 210 25% 88%;
-    --sidebar-ring: 200 95% 65%;
+    --sidebar-border: 184 19% 80%;
+    --sidebar-ring: 190 70% 32%;
 
     /* Smooth transitions */
     --transition-smooth: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
@@ -107,9 +107,12 @@ All colors MUST be HSL.
   }
 }
 
+/* Stacking: content 0, calendar internals 1–20, navigation 30–40, portals 50. */
 @layer components {
   .app-module-content h1 {
     @apply text-2xl font-semibold tracking-tight text-foreground;
+    font-size: 1.5rem !important;
+    line-height: 2rem !important;
   }
 }
 

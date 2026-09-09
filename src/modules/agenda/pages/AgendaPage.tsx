@@ -124,11 +124,7 @@ const AgendaPage = () => {
 
   const canManageDoctors = can("agenda.doctors.manage");
   const canManageAssistants = can("agenda.assistants.manage");
-  const canManageAvailability =
-  canManageDoctors ||
-  canManageAssistants ||
-  can("agenda.blocks.create") ||
-  can("agenda.blocks.delete");
+  const canManageAvailability = can("agenda.availability.view");
 
   const canViewAgendaHistory =
     can("agenda.view") ||
@@ -173,13 +169,13 @@ const AgendaPage = () => {
         value: "doctores",
         label: "Doctores",
         icon: Stethoscope,
-        visible: canManageDoctors,
+        visible: can("agenda.doctors.view"),
       },
       {
         value: "asistentes",
         label: "Asistentes",
         icon: UsersRound,
-        visible: canManageAssistants,
+        visible: can("agenda.assistants.view"),
       },
       {
         value: "disponibilidad",
@@ -235,12 +231,14 @@ const AgendaPage = () => {
   }, []);
 
   const openCreateDoctorDialog = () => {
+    if (!canManageDoctors) return;
     setEditingDoctor(null);
     setDoctorForm(emptyDoctorForm);
     setDoctorDialogOpen(true);
   };
 
   const openEditDoctorDialog = (doctor: Doctor) => {
+    if (!canManageDoctors) return;
     setEditingDoctor(doctor);
     setDoctorForm({
       nombre: doctor.nombre,
@@ -358,6 +356,7 @@ const AgendaPage = () => {
   };
 
   const openCreateAssistantDialog = () => {
+    if (!canManageAssistants) return;
     setEditingAssistant(null);
     setAssistantForm(emptyAssistantForm);
     setAssistantDoctorSearch("");
@@ -366,6 +365,7 @@ const AgendaPage = () => {
   };
 
   const openEditAssistantDialog = (assistant: Assistant) => {
+    if (!canManageAssistants) return;
     setEditingAssistant(assistant);
     setAssistantForm({
       nombre: assistant.nombre,
@@ -562,7 +562,7 @@ const AgendaPage = () => {
           })}
         </TabsList>
 
-        <TabsContent value="calendario" className="mt-4">
+        <TabsContent value="calendario" className="relative isolate z-0 mt-4">
           <AppointmentManager doctors={doctors} assistants={assistants} refreshKey={refreshKey} />
         </TabsContent>
 
@@ -649,15 +649,15 @@ const AgendaPage = () => {
                       </div>
 
                       <div className="mt-4 flex flex-wrap gap-2">
-                        <Button
+                        {canManageDoctors && (<Button
                           variant="outline"
                           size="sm"
                           onClick={() => openEditDoctorDialog(doctor)}
                         >
                           Editar
-                        </Button>
+                        </Button>)}
 
-                        <Button
+                        {canManageDoctors && (<Button
                           variant={
                             doctor.status === "active"
                               ? "destructive"
@@ -674,7 +674,7 @@ const AgendaPage = () => {
                           {doctor.status === "active"
                             ? "Desactivar"
                             : "Activar"}
-                        </Button>
+                        </Button>)}
                       </div>
                     </div>
                   ))}
@@ -776,15 +776,15 @@ const AgendaPage = () => {
                         </div>
 
                         <div className="mt-4 flex flex-wrap gap-2">
-                          <Button
+                          {canManageAssistants && (<Button
                             variant="outline"
                             size="sm"
                             onClick={() => openEditAssistantDialog(assistant)}
                           >
                             Editar
-                          </Button>
+                          </Button>)}
 
-                          <Button
+                          {canManageAssistants && (<Button
                             variant={
                               assistant.status === "active"
                                 ? "destructive"
@@ -803,7 +803,7 @@ const AgendaPage = () => {
                             {assistant.status === "active"
                               ? "Desactivar"
                               : "Activar"}
-                          </Button>
+                          </Button>)}
                         </div>
                       </div>
                     );

@@ -13,7 +13,8 @@ import {
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 
-import { useCan } from "@/auth";
+import { type PermissionKey, useCan } from "@/auth";
+import { SinPermisosPage } from "@/shared";
 import { usePatients } from "@/modules/patients";
 import PatientAntecedentes from "@/modules/patients/components/PatientAntecedentes";
 import PatientData from "@/modules/patients/components/PatientData";
@@ -34,13 +35,17 @@ import {
 const PatientRecordPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { patients, updatePatient } = usePatients();
+  const { patients, patientsLoading, patientsUnavailable, updatePatient } = usePatients();
   const { can } = useCan();
   const { confirm, confirmationDialog } = useConfirmAction();
   const [activeTab, setActiveTab] = useState("datos");
 
   const patient = patients.find((item) => item.id === id);
   const patientName = patient ? `${patient.nombres} ${patient.apellidos}`.trim() : "";
+
+  if (!can("patients.record.view")) return <SinPermisosPage />;
+  if (patientsLoading) return <p className="py-12 text-center text-muted-foreground">Cargando paciente...</p>;
+  if (patientsUnavailable) return <p className="py-12 text-center text-muted-foreground">Información no disponible</p>;
 
   if (!patient) {
     return (
@@ -51,14 +56,16 @@ const PatientRecordPage: React.FC = () => {
     );
   }
 
-  const tabs = [
-    { value: "datos", label: "Datos", icon: User },
-    { value: "antecedentes", label: "Antecedentes", icon: ClipboardPaste },
-    { value: "historial", label: "Historial", icon: FileText },
-    { value: "odontograma", label: "Odontograma", icon: Heart },
-    { value: "cotizaciones", label: "Cotizaciones", icon: DollarSign },
-    { value: "pagos", label: "Pagos", icon: CreditCard },
+  const tabs: { value: string; label: string; icon: typeof User; permission: PermissionKey }[] = [
+    { value: "datos", label: "Datos", icon: User, permission: "patients.record.view" },
+    { value: "antecedentes", label: "Antecedentes", icon: ClipboardPaste, permission: "patients.clinicalHistory.view" },
+    { value: "historial", label: "Procedimientos", icon: FileText, permission: "patients.procedures.view" },
+    { value: "odontograma", label: "Odontograma", icon: Heart, permission: "patients.odontogram.view" },
+    { value: "cotizaciones", label: "Cotizaciones", icon: DollarSign, permission: "patients.quotations.view" },
+    { value: "pagos", label: "Pagos", icon: CreditCard, permission: "patients.payments.view" },
   ];
+  const visibleTabs = tabs.filter((tab) => can(tab.permission));
+  const allowedTab = visibleTabs.some((tab) => tab.value === activeTab) ? activeTab : "datos";
   const patientAge = calculatePatientAge(patient.fechaNacimiento);
   const patientDetails = [
     getPatientSexLabel(patient.sexo),
@@ -79,6 +86,7 @@ const PatientRecordPage: React.FC = () => {
     : null;
 
   const handleRemovePatient = async () => {
+    if (!can("patients.delete")) return;
     const confirmed = await confirm({
       title: "Eliminar paciente",
       description: `${patientName} dejará de aparecer entre los pacientes activos. Sus datos e historial se conservarán.`,
@@ -103,7 +111,7 @@ const PatientRecordPage: React.FC = () => {
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div className="min-w-0 flex-1">
-          <h1 className="break-words text-2xl font-bold text-foreground sm:text-3xl">
+          <h1 className="break-words text-2xl font-semibold text-foreground">
             {patient.nombres} {patient.apellidos}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
@@ -131,9 +139,9 @@ const PatientRecordPage: React.FC = () => {
 
       <Card>
         <CardContent className="p-0">
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <Tabs value={allowedTab} onValueChange={setActiveTab}>
             <TabsList className="h-auto w-full justify-start overflow-x-auto rounded-none border-b bg-transparent p-0">
-              {tabs.map((tab) => {
+              {visibleTabs.map((tab) => {
                 const Icon = tab.icon;
                 return (
                   <TabsTrigger
@@ -149,29 +157,29 @@ const PatientRecordPage: React.FC = () => {
             </TabsList>
 
             <div className="p-4 sm:p-6">
-              <TabsContent value="datos" className="mt-0">
+              {visibleTabs.some((item) => item.value === "datos") && (<TabsContent value="datos" className="mt-0">
                 <PatientData patient={patient} />
-              </TabsContent>
+              </TabsContent>)}
 
-              <TabsContent value="antecedentes" className="mt-0">
+              {visibleTabs.some((item) => item.value === "antecedentes") && (<TabsContent value="antecedentes" className="mt-0">
                 <PatientAntecedentes />
-              </TabsContent>
+              </TabsContent>)}
 
-              <TabsContent value="historial" className="mt-0">
+              {visibleTabs.some((item) => item.value === "historial") && (<TabsContent value="historial" className="mt-0">
                 <PatientHistory patientId={patient.id} />
-              </TabsContent>
+              </TabsContent>)}
 
-              <TabsContent value="odontograma" className="mt-0">
+              {visibleTabs.some((item) => item.value === "odontograma") && (<TabsContent value="odontograma" className="mt-0">
                 <PatientOdontogram patientId={patient.id} />
-              </TabsContent>
+              </TabsContent>)}
 
-              <TabsContent value="cotizaciones" className="mt-0">
+              {visibleTabs.some((item) => item.value === "cotizaciones") && (<TabsContent value="cotizaciones" className="mt-0">
                 <PatientQuotations patientId={patient.id} />
-              </TabsContent>
+              </TabsContent>)}
 
-              <TabsContent value="pagos" className="mt-0">
+              {visibleTabs.some((item) => item.value === "pagos") && (<TabsContent value="pagos" className="mt-0">
                 <PatientPayments patientId={patient.id} patientName={patientName} />
-              </TabsContent>
+              </TabsContent>)}
             </div>
           </Tabs>
         </CardContent>

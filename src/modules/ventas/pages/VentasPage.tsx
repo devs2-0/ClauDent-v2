@@ -347,11 +347,13 @@ const VentasPage: React.FC = () => {
 
   const handleRequestSaleConfirmation = (event?: React.SyntheticEvent) => {
     event?.preventDefault();
+    if (!canCreateSale) return;
     if (!validateSaleBeforeCheckout()) return;
     setIsConfirmSaleOpen(true);
   };
 
   const handleConfirmSale = async () => {
+    if (!canCreateSale) return;
     if (isSavingRef.current) return;
     if (!validateSaleBeforeCheckout()) return;
 
@@ -458,7 +460,7 @@ const VentasPage: React.FC = () => {
               </p>
             </div>
           </div>
-          {!hasOpenCashForSelectedDate && (
+          {!hasOpenCashForSelectedDate && can("sales.cashShift.open") && (
             <Button asChild>
               <Link to="/caja">Abrir o revisar caja</Link>
             </Button>
@@ -991,7 +993,7 @@ const VentasPage: React.FC = () => {
         )}
       </Card>
 
-      <Dialog open={isConfirmSaleOpen} onOpenChange={setIsConfirmSaleOpen}>
+      <Dialog open={isConfirmSaleOpen && canCreateSale} onOpenChange={setIsConfirmSaleOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Confirmar venta</DialogTitle>

@@ -1,5 +1,6 @@
 // src/components/ServiciosPaquetes.tsx (CANTIDADES Y SUMA/RESTA)
 import React, { useState, useMemo } from 'react';
+import { Can, useCan } from '@/auth';
 import { Plus, Search, Edit, Trash2, X, Check, History, ChevronsUpDown, Minus } from 'lucide-react';
 import { Paquete, usePackages } from '@/modules/packages';
 import { Service, useDentalServices } from '@/modules/services';
@@ -56,6 +57,7 @@ const ServiciosPaquetes: React.FC = () => {
   const { services } = useDentalServices();
   const { paquetes, paquetesLoading, addPaquete, updatePaquete, deletePaquete } = usePackages();
   
+  const { can } = useCan();
   const [searchQuery, setSearchQuery] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingPaquete, setEditingPaquete] = useState<Paquete | null>(null);
@@ -92,13 +94,14 @@ const ServiciosPaquetes: React.FC = () => {
   }, [services, serviceSearch, recentServices]);
 
   const handleOpenDialog = (paquete?: Paquete) => {
+    if (!can(paquete ? 'packages.update' : 'packages.create')) return;
     setServiceSearch(''); 
     if (paquete) {
       // Mapear los datos guardados (que ya tienen cantidad) al formulario
       const serviciosCompletos = paquete.serviciosIncluidos
         .map(sIncluido => {
             const originalService = services.find(s => s.id === sIncluido.servicioId);
-            if (!originalService) return null;
+            if (!originalService) return { id: sIncluido.servicioId, nombre: sIncluido.nombre, precio: sIncluido.precioOriginal, codigo: "", descripcion: "", categoria: "", estado: "activo" as const, cantidad: sIncluido.cantidad || 1 };
             return { 
                 ...originalService, 
                 cantidad: sIncluido.cantidad || 1 // Recuperar cantidad
@@ -183,6 +186,7 @@ const ServiciosPaquetes: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!can(editingPaquete ? 'packages.update' : 'packages.create')) return;
     if (!formData.nombre || !formData.fechaInicio || !formData.fechaFin) {
       return toast.error("Nombre y fechas son obligatorios.");
     }
@@ -225,6 +229,7 @@ const ServiciosPaquetes: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
+    if (!can('packages.delete')) return;
     if (confirm('¿Está seguro de eliminar este paquete?')) {
       try {
         await deletePaquete(id);
@@ -255,8 +260,8 @@ const ServiciosPaquetes: React.FC = () => {
   );
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div className="flex h-[max(22rem,calc(100dvh-16rem))] min-h-0 flex-col gap-4">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
         <div className="relative w-full max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -267,15 +272,15 @@ const ServiciosPaquetes: React.FC = () => {
             className="pl-10"
           />
         </div>
-        <Button onClick={() => handleOpenDialog()}>
+        <Can permission="packages.create"><Button onClick={() => handleOpenDialog()}>
           <Plus className="h-4 w-4 mr-2" />
           Nuevo Paquete
-        </Button>
+        </Button></Can>
       </div>
 
-      <Card className="relative isolate z-0 overflow-hidden">
-        <CardContent className="p-0">
-          <div className="relative isolate z-0 max-h-[600px] overflow-auto overscroll-contain">
+      <Card className="relative isolate z-0 flex min-h-0 flex-1 flex-col overflow-hidden">
+        <CardContent className="min-h-0 flex-1 p-0">
+          <div className="relative isolate z-0 h-full min-h-0 overflow-y-auto overscroll-contain [&>div]:overflow-visible">
             <Table>
               <TableHeader className="sticky top-0 z-[1] bg-card shadow-sm">
                 <TableRow>
@@ -313,22 +318,22 @@ const ServiciosPaquetes: React.FC = () => {
                       </TableCell>
                       <TableCell className="text-right whitespace-nowrap">
                         <div className="flex justify-end gap-2">
-                          <Button
+                          <Can permission="packages.update"><Button
                             variant="ghost"
                             size="icon"
                             onClick={() => handleOpenDialog(paquete)}
                             aria-label="Editar"
                           >
                             <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
+                          </Button></Can>
+                          <Can permission="packages.delete"><Button
                             variant="ghost"
                             size="icon"
                             onClick={() => handleDelete(paquete.id)}
                             aria-label="Eliminar"
                           >
                             <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
+                          </Button></Can>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -340,7 +345,7 @@ const ServiciosPaquetes: React.FC = () => {
         </CardContent>
       </Card>
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog open={isDialogOpen && can(editingPaquete ? 'packages.update' : 'packages.create')} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-4xl">
           <DialogHeader>
             <DialogTitle>{editingPaquete ? 'Editar Paquete' : 'Nuevo Paquete'}</DialogTitle>

@@ -15,7 +15,9 @@ import {
   UserRoundPlus,
 } from "lucide-react";
 
-import { type PermissionKey, useCan } from "@/auth";
+import { type PermissionKey, useCan, useCurrentUserProfile } from "@/auth";
+import { assistantService } from "@/modules/agenda/services/assistantService";
+import { doctorService } from "@/modules/agenda/services/doctorService";
 import { appointmentService, type Appointment } from "@/modules/agenda";
 import { usePackages } from "@/modules/packages";
 import { useCashRegister } from "@/modules/ventas";
@@ -126,6 +128,7 @@ const ActiveShiftIncomeCard: React.FC = () => {
     [incomeMovements],
   );
 
+  const { cashSummaryUnavailable } = useCashRegister();
   const loading = cashClosuresLoading || cashMovementsLoading;
 
   return (
@@ -144,7 +147,7 @@ const ActiveShiftIncomeCard: React.FC = () => {
               <Skeleton className="mt-1 h-6 w-28" />
             ) : (
               <p className="truncate text-xl font-semibold tracking-tight text-foreground">
-                {formatCurrency(activeShiftIncome)}
+                {cashSummaryUnavailable ? "Información no disponible" : formatCurrency(activeShiftIncome)}
               </p>
             )}
             <p className="truncate text-[11px] text-muted-foreground">
@@ -155,7 +158,7 @@ const ActiveShiftIncomeCard: React.FC = () => {
           </div>
         </div>
 
-        {!loading && (
+        {!loading && !cashSummaryUnavailable && (
           <Badge
             variant={openCashClosure ? "default" : "secondary"}
             className="shrink-0"
@@ -284,7 +287,7 @@ const DailyAgendaCard: React.FC<DailyAgendaCardProps> = ({
           </>
         ) : unavailable ? (
           <p className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
-            Agenda no disponible.
+            Información no disponible
           </p>
         ) : (
           <>
@@ -372,6 +375,7 @@ const DailyAgendaCard: React.FC<DailyAgendaCardProps> = ({
 interface ActivePackagesCardProps {
   activePackages: ReturnType<typeof usePackages>["paquetes"];
   loading: boolean;
+  unavailable: boolean;
 }
 
 type DashboardPackage = ActivePackagesCardProps["activePackages"][number];
@@ -379,6 +383,7 @@ type DashboardPackage = ActivePackagesCardProps["activePackages"][number];
 const ActivePackagesCard: React.FC<ActivePackagesCardProps> = ({
   activePackages,
   loading,
+  unavailable,
 }) => {
   const [selectedPackage, setSelectedPackage] = useState<DashboardPackage | null>(null);
 
@@ -391,7 +396,7 @@ const ActivePackagesCard: React.FC<ActivePackagesCardProps> = ({
         <div className="min-w-0">
           <CardTitle className="text-base">Paquetes activos</CardTitle>
           <p className="mt-1 text-lg font-semibold leading-none text-primary sm:text-xl">
-            {loading ? "Cargando" : `${activePackages.length} vigentes`}
+            {loading ? "Cargando" : unavailable ? "Información no disponible" : `${activePackages.length} vigentes`}
           </p>
         </div>
         <Package className="mt-1 h-5 w-5 shrink-0 text-muted-foreground" />
@@ -404,6 +409,8 @@ const ActivePackagesCard: React.FC<ActivePackagesCardProps> = ({
               <Skeleton key={index} className="h-20 rounded-lg" />
             ))}
           </div>
+        ) : unavailable ? (
+          <p className="py-10 text-center text-sm text-muted-foreground">Información no disponible</p>
         ) : activePackages.length === 0 ? (
           <p className="rounded-lg border border-dashed py-10 text-center text-sm text-muted-foreground">
             No hay paquetes activos vigentes.
@@ -440,7 +447,7 @@ const ActivePackagesCard: React.FC<ActivePackagesCardProps> = ({
       </CardContent>
       </Card>
 
-      <Dialog open={Boolean(selectedPackage)} onOpenChange={(open) => !open && setSelectedPackage(null)}>
+      <Dialog open={Boolean(selectedPackage) && !unavailable} onOpenChange={(open) => !open && setSelectedPackage(null)}>
         <DialogContent className="max-w-md">
           <DialogHeader>
             <DialogTitle>{selectedPackage?.nombre}</DialogTitle>
@@ -490,13 +497,15 @@ const ActivePackagesCard: React.FC<ActivePackagesCardProps> = ({
 
 const Dashboard: React.FC = () => {
   const { can } = useCan();
-  const { paquetes, paquetesLoading } = usePackages();
+  const { profile } = useCurrentUserProfile();
+  const { paquetes, paquetesLoading, paquetesUnavailable } = usePackages();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [appointmentsLoading, setAppointmentsLoading] = useState(false);
   const [agendaUnavailable, setAgendaUnavailable] = useState(false);
 
   const today = getLocalDateValue();
   const canViewAgenda = can("agenda.view");
+  const canViewAllDoctors = can("agenda.doctors.viewAll") || can("agenda.doctors.manage") || can("agenda.assistants.manage");
   const canViewPackages = can("packages.view");
   const canViewActiveShiftIncome =
     can("sales.view") ||
@@ -538,10 +547,16 @@ const Dashboard: React.FC = () => {
     setAppointmentsLoading(true);
     setAgendaUnavailable(false);
 
-    void appointmentService
-      .listAppointments()
-      .then((nextAppointments) => {
-        if (mounted) setAppointments(nextAppointments);
+    void Promise.all([appointmentService.listAppointments(), doctorService.listDoctors(), assistantService.listAssistants()])
+      .then(([nextAppointments, doctors, assistants]) => {
+        if (!mounted) return;
+        const activeDoctors = doctors.filter((doctor) => doctor.status === "active");
+        const linkedDoctor = profile?.doctorId || activeDoctors.find((doctor) => doctor.userUid === profile?.uid)?.id;
+        const assistant = assistants.find((item) => item.status === "active" && (item.id === profile?.assistantId || item.userUid === profile?.uid));
+        const visibleIds = new Set(canViewAllDoctors || (assistant && assistant.doctorIdsAsignados.length === 0)
+          ? activeDoctors.map((doctor) => doctor.id)
+          : [linkedDoctor, ...(assistant?.doctorIdsAsignados ?? [])].filter(Boolean));
+        setAppointments(nextAppointments.filter((appointment) => visibleIds.has(appointment.doctorId)));
       })
       .catch(() => {
         if (mounted) setAgendaUnavailable(true);
@@ -553,7 +568,7 @@ const Dashboard: React.FC = () => {
     return () => {
       mounted = false;
     };
-  }, [canViewAgenda]);
+  }, [canViewAgenda, canViewAllDoctors, profile?.uid, profile?.doctorId, profile?.assistantId]);
 
   return (
     <div className="mx-auto flex min-h-[calc(100dvh-7rem)] w-full max-w-[1600px] flex-col gap-4 overflow-x-hidden pb-4">
@@ -565,7 +580,7 @@ const Dashboard: React.FC = () => {
           </h1>
         </div>
 
-        {canViewActiveShiftIncome && <ActiveShiftIncomeCard />}
+        {canViewActiveShiftIncome ? <ActiveShiftIncomeCard /> : <Card className="p-4"><p className="text-xs text-muted-foreground">Ingresos del turno</p><p className="text-sm">Información no disponible</p></Card>}
       </header>
 
       {visibleQuickActions.length > 0 && (
@@ -606,28 +621,10 @@ const Dashboard: React.FC = () => {
         </section>
       )}
 
-      {(canViewAgenda || canViewPackages) && (
-      <section className={cn(
-        "grid gap-4 lg:h-[calc(100dvh-22rem)] lg:min-h-[460px] lg:overflow-hidden",
-        canViewAgenda && canViewPackages && "lg:grid-cols-2",
-      )}>
-        {canViewAgenda && (
-          <DailyAgendaCard
-            appointments={appointments}
-            loading={appointmentsLoading}
-            unavailable={agendaUnavailable}
-            today={today}
-          />
-        )}
-
-        {canViewPackages && (
-          <ActivePackagesCard
-            activePackages={activePackages}
-            loading={paquetesLoading}
-          />
-        )}
+      <section className="grid gap-4 lg:h-[calc(100dvh-22rem)] lg:min-h-[460px] lg:grid-cols-2 lg:overflow-hidden">
+        <DailyAgendaCard appointments={canViewAgenda ? appointments : []} loading={appointmentsLoading} unavailable={!canViewAgenda || agendaUnavailable} today={today} />
+        <ActivePackagesCard activePackages={canViewPackages ? activePackages : []} loading={canViewPackages && paquetesLoading} unavailable={!canViewPackages || paquetesUnavailable} />
       </section>
-      )}
     </div>
   );
 };

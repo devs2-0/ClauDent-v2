@@ -1,9 +1,9 @@
 // RF03: Patient clinical history (BUSCADOR + EDITABLE + FIX FECHA)
 import React, { useState, useEffect, useMemo } from 'react';
 import { AlertTriangle, PackageMinus, Plus, Check, ChevronsUpDown, X, Edit, Trash2 } from 'lucide-react';
-import { usePermissions } from '@/auth';
+import { Can, usePermissions } from '@/auth';
 import { usePatients, HistoryEntry } from '@/modules/patients';
-import { useInventory } from '@/modules/inventario';
+import { useOptionalInventory } from '@/modules/inventario/store/InventoryProvider';
 import { Service, useDentalServices } from '@/modules/services';
 import { formatCurrency, formatDate } from '@/shared/utils/utils';
 import { Button } from '@/shared/components/ui/button';
@@ -41,11 +41,14 @@ interface PatientHistoryProps {
 const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
   const { services } = useDentalServices();
   const { addHistoryEntry, updateHistoryEntry, deleteHistoryEntry } = usePatients();
-  const { products, registerMovement } = useInventory();
+  const inventory = useOptionalInventory();
+  const products = inventory?.products ?? [];
+  const registerMovement = inventory?.registerMovement;
   const { hasPermission } = usePermissions();
-  const canRegisterClinicalMaterials = hasPermission('inventory.usage.create');
+  const canRegisterClinicalMaterials = hasPermission('inventory.usage.create') && hasPermission('patients.procedures.update') && Boolean(registerMovement);
   
   const [historial, setHistorial] = useState<HistoryEntry[]>([]);
+  const [unavailable, setUnavailable] = useState(false);
   const [historialLoading, setHistorialLoading] = useState(true);
   
   const [isDialogOpen, setIsDialogOpen] = useState(false);
@@ -128,7 +131,7 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
 
   const handleSelectMaterial = (index: number, productId: string) => {
     const newMateriales = [...formData.materialesClinicos];
-    newMateriales[index] = { ...newMateriales[index], productoId };
+    newMateriales[index] = { ...newMateriales[index], productoId: productId };
     setFormData({ ...formData, materialesClinicos: newMateriales });
     setOpenMaterialComboboxIndex(null);
     setMaterialSearch('');
@@ -156,16 +159,19 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
             id: doc.id,
             ...data,
             fecha: fechaIso,
+            servicios: Array.isArray(data.servicios) ? data.servicios : [],
+            materialesClinicos: Array.isArray(data.materialesClinicos) ? data.materialesClinicos : [],
         } as HistoryEntry;
       });
       setHistorial(historyData);
       setHistorialLoading(false);
-    });
+    }, () => { setHistorial([]); setUnavailable(true); setHistorialLoading(false); });
 
     return () => unsubscribe();
   }, [patientId]);
 
   const handleOpenDialog = (entry?: HistoryEntry) => {
+    if (!hasPermission(entry ? "patients.procedures.update" : "patients.procedures.create")) return;
     if (entry) {
         setEditingEntryId(entry.id);
         setFormData({
@@ -253,6 +259,7 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!hasPermission(editingEntryId ? "patients.procedures.update" : "patients.procedures.create")) return;
     if (formData.servicios.length === 0) {
       toast.error('Debe agregar al menos un servicio');
       return;
@@ -264,7 +271,7 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
 
     if (!editingEntryId && formData.materialesClinicos.length > 0) {
       if (!canRegisterClinicalMaterials) {
-        toast.error('Tu rol necesita el permiso inventory.usage.create para registrar salidas clinicas de inventario');
+        toast.error('No tienes permiso para registrar el uso de materiales clínicos.');
         return;
       }
 
@@ -343,7 +350,7 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
           if (!product) continue;
 
           const quantity = Number(material.cantidad) || 0;
-          const movimientoId = await registerMovement({
+          const movimientoId = await registerMovement!({
             productoId: product.id,
             fecha: formData.fecha,
             tipo: 'uso_clinico',
@@ -381,6 +388,7 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
   };
 
   const handleDelete = async (entryId: string) => {
+    if (!hasPermission("patients.procedures.delete")) return;
     if (confirm('¿Eliminar esta entrada del historial?')) {
         try {
             await deleteHistoryEntry(patientId, entryId);
@@ -410,10 +418,10 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-semibold">Historial de Procedimientos</h3>
-        <Button onClick={() => handleOpenDialog()} disabled={historialLoading}>
+        <Can permission="patients.procedures.create"><Button onClick={() => handleOpenDialog()} disabled={historialLoading}>
           <Plus className="h-4 w-4 mr-2" />
           Nueva Entrada
-        </Button>
+        </Button></Can>
       </div>
 
       <div className="space-y-4">
@@ -425,7 +433,7 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
         ) : historial.length === 0 ? (
           <Card>
             <CardContent className="py-12 text-center text-muted-foreground">
-              No hay entradas en el historial. Agrega la primera entrada.
+              {unavailable ? "Información no disponible" : "Sin datos para mostrar"}
             </CardContent>
           </Card>
         ) : (
@@ -438,12 +446,12 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
                         <CardDescription>Total: {formatCurrency(entry.total)}</CardDescription>
                     </div>
                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(entry)}>
+                        <Can permission="patients.procedures.update"><Button variant="ghost" size="icon" aria-label="Editar" onClick={() => handleOpenDialog(entry)}>
                             <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button variant="ghost" size="icon" onClick={() => handleDelete(entry.id)} className="text-destructive hover:text-destructive">
+                        </Button></Can>
+                        <Can permission="patients.procedures.delete"><Button variant="ghost" size="icon" onClick={() => handleDelete(entry.id)} className="text-destructive hover:text-destructive">
                             <Trash2 className="h-4 w-4" />
-                        </Button>
+                        </Button></Can>
                     </div>
                 </div>
               </CardHeader>
@@ -492,7 +500,7 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
         )}
       </div>
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog open={isDialogOpen && hasPermission(editingEntryId ? "patients.procedures.update" : "patients.procedures.create")} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
           <DialogHeader>
             <DialogTitle>{editingEntryId ? 'Editar Entrada' : 'Nueva Entrada en Historial'}</DialogTitle>

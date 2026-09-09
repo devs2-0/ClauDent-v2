@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { collection, getDocs } from "firebase/firestore";
 
+import { useCan } from "@/auth";
 import { db } from "@/lib/firebase";
 import type { Patient } from "@/modules/patients";
 import {
@@ -20,6 +21,8 @@ const supportedSections = new Set<keyof ClinicalHistorySections>([
 ]);
 
 export const usePatientClinicalHistoryStatuses = (visiblePatients: Patient[]) => {
+  const { can } = useCan();
+  const canReadHistory = can("patients.clinicalHistory.view");
   const [statuses, setStatuses] = useState<Map<string, ClinicalHistoryStatus>>(new Map());
   const [loading, setLoading] = useState(false);
   const visiblePatientsKey = useMemo(
@@ -32,7 +35,7 @@ export const usePatientClinicalHistoryStatuses = (visiblePatients: Patient[]) =>
   useEffect(() => {
     let cancelled = false;
 
-    if (visiblePatients.length === 0) {
+    if (!canReadHistory || visiblePatients.length === 0) {
       setStatuses(new Map());
       setLoading(false);
       return () => {
@@ -74,7 +77,7 @@ export const usePatientClinicalHistoryStatuses = (visiblePatients: Patient[]) =>
     };
   // The key intentionally refreshes statuses when visible IDs or their saved-history flag changes.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [visiblePatientsKey]);
+  }, [visiblePatientsKey, canReadHistory]);
 
   return { clinicalHistoryStatuses: statuses, clinicalHistoryStatusesLoading: loading };
 };

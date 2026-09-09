@@ -3,7 +3,7 @@ import { doc, getDoc } from "firebase/firestore";
 import { Ban, CalendarOff, ChevronDown, Clock, Plus } from "lucide-react";
 import { toast } from "sonner";
 
-import { useAuth, useCan } from "@/auth";
+import { Can, useAuth, useCan } from "@/auth";
 import { db } from "@/lib/firebase";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -190,12 +190,13 @@ const AvailabilityManager = ({
     can("agenda.assistants.manage");
 
   const canManageSchedules = canManageAllAvailability;
+  const canManageStaffSchedule = (staffType: AgendaStaffType) => can(staffType === "doctor" ? "agenda.doctors.manage" : "agenda.assistants.manage");
 
   const canCreateBlocks =
-    canManageAllAvailability || can("agenda.blocks.create");
+    can("agenda.blocks.create");
 
   const canDeleteBlocks =
-    canManageAllAvailability || can("agenda.blocks.delete");
+    can("agenda.blocks.delete");
 
   const createAgendaHistoryLog = async (
     input: Omit<CreateAgendaHistoryLogInput, "createdBy" | "createdByEmail">,
@@ -514,6 +515,7 @@ const AvailabilityManager = ({
   }, [refreshKey]);
 
   const handleCreateSchedule = async () => {
+    if (!canManageStaffSchedule(scheduleForm.staffType)) return;
     if (!canManageSchedules) {
       toast.error("No tienes permiso para gestionar horarios.");
       return;
@@ -605,6 +607,7 @@ const AvailabilityManager = ({
   };
 
   const handleCreateSpecialSchedule = async () => {
+    if (!canManageStaffSchedule(specialScheduleForm.staffType)) return;
     if (!canManageAllAvailability) {
       toast.error("No tienes permiso para crear horarios especiales.");
       return;
@@ -722,6 +725,8 @@ const AvailabilityManager = ({
   };
 
   const handleDeactivateSchedule = async (scheduleId: string) => {
+    const target = schedules.find((schedule) => schedule.id === scheduleId);
+    if (!target || !canManageStaffSchedule(target.staffType)) return;
     if (!canManageSchedules) {
       toast.error("No tienes permiso para desactivar horarios.");
       return;
@@ -982,11 +987,11 @@ const AvailabilityManager = ({
                       )
                     }
                   >
-                    {visibleDoctors.length > 0 && (
+                    {visibleDoctors.length > 0 && canManageStaffSchedule("doctor") && (
                       <option value="doctor">Doctor</option>
                     )}
 
-                    {visibleAssistants.length > 0 && (
+                    {visibleAssistants.length > 0 && canManageStaffSchedule("assistant") && (
                       <option value="assistant">Asistente</option>
                     )}
                   </select>
@@ -1103,7 +1108,7 @@ const AvailabilityManager = ({
               </div>
 
               <div className="mt-4">
-                <Button onClick={handleCreateSchedule} disabled={saving}>
+                <Button onClick={handleCreateSchedule} disabled={saving || !canManageStaffSchedule(scheduleForm.staffType)}>
                   <Plus className="mr-2 h-4 w-4" />
                   {saving ? "Guardando..." : "Agregar horario"}
                 </Button>
@@ -1149,7 +1154,7 @@ const AvailabilityManager = ({
                     </div>
 
                     {canManageSchedules && (
-                      <Button
+                      <Can permission={schedule.staffType === "doctor" ? "agenda.doctors.manage" : "agenda.assistants.manage"}><Button
                         variant="outline"
                         size="sm"
                         disabled={saving}
@@ -1158,7 +1163,7 @@ const AvailabilityManager = ({
                         }
                       >
                         Desactivar
-                      </Button>
+                      </Button></Can>
                     )}
                   </div>
                 </div>
@@ -1321,7 +1326,7 @@ const AvailabilityManager = ({
               </div>
 
               <div className="mt-4">
-                <Button onClick={handleCreateSpecialSchedule} disabled={saving}>
+                <Button onClick={handleCreateSpecialSchedule} disabled={saving || !canManageStaffSchedule(specialScheduleForm.staffType)}>
                   <Plus className="mr-2 h-4 w-4" />
                   {saving ? "Guardando..." : "Agregar horario especial"}
                 </Button>
@@ -1364,7 +1369,7 @@ const AvailabilityManager = ({
                         )}
                       </div>
 
-                      <Button
+                      <Can permission={schedule.staffType === "doctor" ? "agenda.doctors.manage" : "agenda.assistants.manage"}><Button
                         variant="outline"
                         size="sm"
                         disabled={saving}
@@ -1373,7 +1378,7 @@ const AvailabilityManager = ({
                         }
                       >
                         Desactivar
-                      </Button>
+                      </Button></Can>
                     </div>
                   </div>
                 ))}

@@ -18,6 +18,7 @@ export interface NavigationItem {
   url: string;
   icon: React.ComponentType<{ className?: string }>;
   permission: PermissionKey;
+  anyPermission?: PermissionKey[];
   mobile?: boolean;
 }
 
@@ -41,6 +42,7 @@ export const navigationItems: NavigationItem[] = [
     url: "/servicios",
     icon: Stethoscope,
     permission: "services.view",
+    anyPermission: ["services.view", "packages.view"],
     mobile: true,
   },
   {
@@ -86,5 +88,6 @@ export const navigationItems: NavigationItem[] = [
   url: "/administracion",
   icon: Settings,
   permission: "users.view",
+  anyPermission: ["users.view", "roles.view", "security.sessions.view", "settings.view"],
   },
 ];
