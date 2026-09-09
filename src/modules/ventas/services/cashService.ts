@@ -352,25 +352,30 @@ const buildDirectSaleConcept = (input: RegisterDirectSaleInput) => {
 };
 
 export const cashService = {
-  listenPayments: (onChange: (payments: Payment[]) => void) => {
+  listenPatientPayments: (patientId: string, onChange: (payments: Payment[]) => void, onError: () => void) => {
+    return onSnapshot(query(collection(db, PAYMENTS_COLLECTION), where("pacienteId", "==", patientId)), (snapshot) => {
+      onChange(snapshot.docs.map((paymentDoc) => mapPayment(paymentDoc.id, paymentDoc.data())));
+    }, onError);
+  },
+  listenPayments: (onChange: (payments: Payment[]) => void, onError?: () => void) => {
     const paymentsQuery = query(collection(db, PAYMENTS_COLLECTION), orderBy("fecha", "desc"));
     return onSnapshot(paymentsQuery, (snapshot) => {
       onChange(snapshot.docs.map((paymentDoc) => mapPayment(paymentDoc.id, paymentDoc.data())));
-    });
+    }, onError);
   },
 
-  listenCashClosures: (onChange: (closures: CashClosure[]) => void) => {
+  listenCashClosures: (onChange: (closures: CashClosure[]) => void, onError?: () => void) => {
     const closuresQuery = query(collection(db, CASH_CLOSURES_COLLECTION), orderBy("fecha", "desc"));
     return onSnapshot(closuresQuery, (snapshot) => {
       onChange(snapshot.docs.map((closureDoc) => mapCashClosure(closureDoc.id, closureDoc.data())));
-    });
+    }, onError);
   },
 
-  listenCashMovements: (onChange: (movements: CashMovement[]) => void) => {
+  listenCashMovements: (onChange: (movements: CashMovement[]) => void, onError?: () => void) => {
     const movementsQuery = query(collection(db, CASH_MOVEMENTS_COLLECTION), orderBy("fecha", "desc"));
     return onSnapshot(movementsQuery, (snapshot) => {
       onChange(snapshot.docs.map((movementDoc) => mapCashMovement(movementDoc.id, movementDoc.data())));
-    });
+    }, onError);
   },
 
   openCashRegister: async (input: OpenCashRegisterInput) => {

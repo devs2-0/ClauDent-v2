@@ -5,6 +5,7 @@ import {
   Plus,
   Power,
   RefreshCw,
+  Search,
   ShieldCheck,
   Trash2,
 } from "lucide-react";
@@ -18,6 +19,7 @@ import {
   ROLE_COLORS,
   ROLE_EMOJIS,
 } from "@/auth/constants/roleAppearance";
+import { getPermissionDependencies, removeOrphanPermissions, togglePermissionGrant } from "../constants/permissionDependencies";
 import { roleService } from "@/auth/services/roleService";
 import type { PermissionDefinition, PermissionKey, Role } from "@/auth";
 import { Badge } from "@/shared/components/ui/badge";
@@ -40,7 +42,15 @@ import {
 } from "@/shared/components/ui/dialog";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/components/ui/select";
 import { Textarea } from "@/shared/components/ui/textarea";
+import { useConfirmAction } from "@/shared/hooks/useConfirmAction";
 
 interface RoleFormState {
   id?: string;
@@ -67,6 +77,24 @@ const getRoleEmoji = (icon?: string | null) => {
     : DEFAULT_ROLE_EMOJI;
 };
 
+const moduleLabels: Record<string, string> = {
+  administration: "Administración / Seguridad",
+  dashboard: "Dashboard",
+  patients: "Pacientes",
+  services: "Servicios",
+  packages: "Paquetes",
+  quotations: "Cotizaciones",
+  agenda: "Agenda",
+  inventory: "Inventario",
+  sales: "Ventas y caja",
+  audit: "Bitácora",
+  security: "Seguridad",
+  users: "Usuarios",
+  roles: "Roles",
+  reports: "Reportes",
+  settings: "Configuración",
+};
+
 const RolesPage = () => {
   const { currentUser } = useAuth();
   const { can } = useCan();
@@ -74,6 +102,9 @@ const RolesPage = () => {
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
+  const { confirm, confirmationDialog } = useConfirmAction();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<Role | null>(null);
@@ -82,16 +113,36 @@ const RolesPage = () => {
   const permissionsByModule = useMemo(() => {
     return permissionCatalog.reduce(
       (acc, permission) => {
-        if (!acc[permission.module]) {
-          acc[permission.module] = [];
+        const category = permission.module === "packages" ? "services" : ["users", "roles", "security", "audit", "settings"].includes(permission.module) ? "administration" : permission.module;
+        if (!acc[category]) {
+          acc[category] = [];
         }
 
-        acc[permission.module].push(permission);
+        acc[category].push(permission);
         return acc;
       },
       {} as Record<string, PermissionDefinition[]>,
     );
   }, []);
+
+  const filteredRoles = useMemo(() => {
+    const term = search.trim().toLocaleLowerCase("es-MX");
+
+    return roles.filter((role) => {
+      const matchesStatus =
+        statusFilter === "all" ||
+        (statusFilter === "active" ? role.status === "active" : role.status !== "active");
+      const matchesSearch =
+        !term ||
+        [role.name, role.description]
+          .filter(Boolean)
+          .join(" ")
+          .toLocaleLowerCase("es-MX")
+          .includes(term);
+
+      return matchesStatus && matchesSearch;
+    });
+  }, [roles, search, statusFilter]);
 
   const blurActiveElement = () => {
     const activeElement = document.activeElement;
@@ -158,14 +209,7 @@ const RolesPage = () => {
 
   const togglePermission = (permission: PermissionKey) => {
     setForm((current) => {
-      const exists = current.permissions.includes(permission);
-
-      return {
-        ...current,
-        permissions: exists
-          ? current.permissions.filter((item) => item !== permission)
-          : [...current.permissions, permission],
-      };
+      return { ...current, permissions: togglePermissionGrant(current.permissions, permission) };
     });
   };
 
@@ -192,7 +236,7 @@ const RolesPage = () => {
 
       return {
         ...current,
-        permissions: Array.from(currentPermissions),
+        permissions: removeOrphanPermissions(Array.from(currentPermissions)),
       };
     });
   };
@@ -210,6 +254,11 @@ const RolesPage = () => {
       return;
     }
 
+    if (removeOrphanPermissions(form.permissions).length !== form.permissions.length) {
+      toast.error("Activa las vistas necesarias de los permisos seleccionados o quita los permisos dependientes antes de guardar.");
+      return;
+    }
+
     setSaving(true);
 
     try {
@@ -221,7 +270,7 @@ const RolesPage = () => {
             description: form.description,
             color: form.color,
             icon: form.icon,
-            permissions: form.permissions,
+            permissions: removeOrphanPermissions(form.permissions),
           },
           currentUser?.uid,
         );
@@ -234,7 +283,7 @@ const RolesPage = () => {
             description: form.description,
             color: form.color,
             icon: form.icon,
-            permissions: form.permissions,
+            permissions: removeOrphanPermissions(form.permissions),
           },
           currentUser?.uid,
         );
@@ -269,11 +318,15 @@ const RolesPage = () => {
 
     const nextStatus = role.status === "active" ? "archived" : "active";
 
-    const confirmed = window.confirm(
-      nextStatus === "archived"
-        ? "¿Seguro que deseas desactivar este rol? Los usuarios que lo tengan perderán sus permisos efectivos de este rol."
-        : "¿Deseas activar nuevamente este rol?",
-    );
+    const confirmed = await confirm({
+      title: nextStatus === "archived" ? "Desactivar rol" : "Activar rol",
+      description:
+        nextStatus === "archived"
+          ? `El rol ${role.name} dejará de habilitar funciones a los usuarios asignados.`
+          : `El rol ${role.name} volverá a estar disponible.`,
+      confirmLabel: nextStatus === "archived" ? "Desactivar" : "Activar",
+      destructive: nextStatus === "archived",
+    });
 
     if (!confirmed) return;
 
@@ -317,9 +370,12 @@ const RolesPage = () => {
       return;
     }
 
-    const confirmed = window.confirm(
-      `¿Seguro que deseas eliminar el rol "${role.name}"? Esta acción no se puede deshacer.`,
-    );
+    const confirmed = await confirm({
+      title: "Eliminar rol",
+      description: `Se eliminará el rol ${role.name}. Esta acción no se puede deshacer.`,
+      confirmLabel: "Eliminar rol",
+      destructive: true,
+    });
 
     if (!confirmed) return;
 
@@ -338,7 +394,7 @@ const RolesPage = () => {
   };
 
   return (
-    <main className="space-y-6">
+    <main className="space-y-4">
       <section className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <div className="flex items-center gap-2">
@@ -369,13 +425,31 @@ const RolesPage = () => {
       </section>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Roles configurados</CardTitle>
-          <CardDescription>
-            Los roles del sistema sirven como base. Los roles personalizados se
-            pueden crear, editar, activar, desactivar o eliminar si no están en
-            uso.
-          </CardDescription>
+        <CardHeader className="gap-3">
+          <div>
+            <CardTitle>Roles configurados</CardTitle>
+            <CardDescription>Administra perfiles de acceso y sus funciones.</CardDescription>
+          </div>
+          <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_180px]">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                type="search"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Buscar rol..."
+                className="h-9 pl-9"
+              />
+            </div>
+            <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as typeof statusFilter)}>
+              <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Todos</SelectItem>
+                <SelectItem value="active">Activos</SelectItem>
+                <SelectItem value="inactive">Inactivos</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </CardHeader>
 
         <CardContent>
@@ -383,16 +457,16 @@ const RolesPage = () => {
             <div className="py-8 text-center text-sm text-muted-foreground">
               Cargando roles...
             </div>
-          ) : roles.length === 0 ? (
+          ) : filteredRoles.length === 0 ? (
             <div className="py-8 text-center text-sm text-muted-foreground">
-              No hay roles registrados en Firestore.
+              No hay roles que coincidan con los filtros.
             </div>
           ) : (
-            <div className="grid gap-4">
-              {roles.map((role) => (
+            <div className="grid gap-3">
+              {filteredRoles.map((role) => (
                 <div
                   key={role.id}
-                  className="rounded-xl border bg-background p-4"
+                  className="rounded-lg border bg-muted/20 p-3"
                 >
                   <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                     <div className="space-y-2">
@@ -412,9 +486,6 @@ const RolesPage = () => {
                             <h2 className="font-semibold text-foreground">
                               {role.name}
                             </h2>
-                            <p className="text-xs text-muted-foreground">
-                              {role.id}
-                            </p>
                           </div>
                         </div>
 
@@ -492,6 +563,8 @@ const RolesPage = () => {
           )}
         </CardContent>
       </Card>
+
+      {confirmationDialog}
 
       <Dialog
         open={dialogOpen}
@@ -658,7 +731,7 @@ const RolesPage = () => {
               </div>
 
               <div className="grid gap-4">
-                {Object.entries(permissionsByModule).map(
+                {Object.entries(permissionsByModule).sort(([a], [b]) => ["dashboard", "patients", "agenda", "services", "quotations", "sales", "inventory", "administration", "reports"].indexOf(a) - ["dashboard", "patients", "agenda", "services", "quotations", "sales", "inventory", "administration", "reports"].indexOf(b)).map(
                   ([moduleName, modulePermissions]) => {
                     const allSelected = modulePermissions.every((permission) =>
                       form.permissions.includes(permission.key),
@@ -675,8 +748,8 @@ const RolesPage = () => {
                       >
                         <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                           <div>
-                            <h4 className="font-semibold capitalize">
-                              {moduleName}
+                            <h4 className="font-semibold">
+                              {moduleLabels[moduleName] ?? "Otras funciones"}
                             </h4>
                             <p className="text-xs text-muted-foreground">
                               {modulePermissions.length} permiso(s)
@@ -703,19 +776,25 @@ const RolesPage = () => {
                           </Button>
                         </div>
 
-                        <div className="grid gap-3 md:grid-cols-2">
-                          {modulePermissions.map((permission) => {
+                        <div className="space-y-4">
+                          {Array.from(new Set(modulePermissions.map((permission) => permission.group))).map((group) => (
+                          <fieldset key={group} className="rounded-lg border bg-muted/10 p-3">
+                            <legend className="px-2 text-sm font-semibold text-primary">{group}</legend>
+                            <div className="grid gap-3 md:grid-cols-2">
+                          {modulePermissions.filter((permission) => permission.group === group).map((permission) => {
                             const checked = form.permissions.includes(
                               permission.key,
                             );
 
+                            const disabled = !getPermissionDependencies(permission.key).every((parent) => form.permissions.includes(parent));
                             return (
                               <label
                                 key={permission.key}
-                                className="flex cursor-pointer gap-3 rounded-lg border p-3 transition-colors hover:bg-muted/50"
+                                className={`flex gap-3 rounded-lg border p-3 transition-colors ${disabled ? "cursor-not-allowed bg-muted/40 opacity-50" : checked ? "cursor-pointer border-primary/40 bg-primary/10" : "cursor-pointer bg-muted/30 text-muted-foreground hover:bg-muted/50"}`}
                               >
                                 <Checkbox
                                   checked={checked}
+                                  disabled={disabled}
                                   onCheckedChange={() =>
                                     togglePermission(permission.key)
                                   }
@@ -737,14 +816,15 @@ const RolesPage = () => {
                                   <p className="text-xs text-muted-foreground">
                                     {permission.description}
                                   </p>
+                                  {disabled && <p className="text-xs text-muted-foreground">Activa primero: {getPermissionDependencies(permission.key).filter((parent) => !form.permissions.includes(parent)).map((parent) => permissionCatalog.find((item) => item.key === parent)?.label).join(", ")}</p>}
 
-                                  <code className="text-[11px] text-muted-foreground">
-                                    {permission.key}
-                                  </code>
                                 </div>
                               </label>
                             );
                           })}
+                            </div>
+                          </fieldset>
+                          ))}
                         </div>
                       </section>
                     );

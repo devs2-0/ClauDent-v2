@@ -1,4 +1,5 @@
 // (Archivo MODIFICADO) src/components/InitialHistoryModal.tsx
+import { useCan } from '@/auth';
 import React, { useState, useEffect } from 'react';
 // ¡CORREGIDO! Importamos initialState desde AppContext
 import { IHistoriaClinicaCompleta, initialState, usePatients } from '@/modules/patients';
@@ -39,6 +40,7 @@ interface Props {
 }
 
 const InitialHistoryModal: React.FC<Props> = ({ isOpen, patientId, onClose, initialData }) => {
+  const { can } = useCan();
   const { addInitialHistoryForms } = usePatients();
   const [formData, setFormData] = useState(initialState);
   const [isSaving, setIsSaving] = useState(false);
@@ -63,6 +65,7 @@ const InitialHistoryModal: React.FC<Props> = ({ isOpen, patientId, onClose, init
   };
 
   const handleSubmit = async () => {
+    if (!can("patients.clinicalHistory.update")) return;
     if (!patientId) {
       toast.error("Error: No se ha seleccionado un paciente.");
       return;
@@ -82,7 +85,7 @@ const InitialHistoryModal: React.FC<Props> = ({ isOpen, patientId, onClose, init
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
+    <Dialog open={isOpen && can("patients.clinicalHistory.update")} onOpenChange={onClose}>
       <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
         <DialogHeader>
           <DialogTitle>

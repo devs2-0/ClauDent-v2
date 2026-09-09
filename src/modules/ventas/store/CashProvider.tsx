@@ -21,6 +21,8 @@ import type {
 interface CashContextValue {
   payments: Payment[];
   paymentsLoading: boolean;
+  paymentsUnavailable: boolean;
+  cashSummaryUnavailable: boolean;
   cashClosures: CashClosure[];
   cashClosuresLoading: boolean;
   cashMovements: CashMovement[];
@@ -43,6 +45,8 @@ const CashContext = createContext<CashContextValue | undefined>(undefined);
 
 export const CashProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { currentUser } = useAuth();
+  const [paymentsUnavailable, setPaymentsUnavailable] = useState(false);
+  const [cashSummaryUnavailable, setCashSummaryUnavailable] = useState(false);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [cashClosures, setCashClosures] = useState<CashClosure[]>([]);
   const [cashMovements, setCashMovements] = useState<CashMovement[]>([]);
@@ -63,7 +67,7 @@ export const CashProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return cashService.listenPayments((nextPayments) => {
       setPayments(nextPayments);
       setPaymentsLoading(false);
-    });
+    }, () => { setPayments([]); setPaymentsLoading(false); setPaymentsUnavailable(true); });
   }, [currentUser]);
 
   useEffect(() => {
@@ -77,7 +81,7 @@ export const CashProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return cashShiftSettingsService.listenSettings((nextSettings) => {
       setCashShiftSettings(nextSettings);
       setCashShiftSettingsLoading(false);
-    });
+    }, () => { setCashShiftSettings(defaultCashShiftSettings); setCashShiftSettingsLoading(false); });
   }, [currentUser]);
 
   useEffect(() => {
@@ -91,7 +95,7 @@ export const CashProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return cashService.listenCashClosures((nextClosures) => {
       setCashClosures(nextClosures);
       setCashClosuresLoading(false);
-    });
+    }, () => { setCashClosures([]); setCashClosuresLoading(false); setCashSummaryUnavailable(true); });
   }, [currentUser]);
 
   useEffect(() => {
@@ -105,7 +109,7 @@ export const CashProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return cashService.listenCashMovements((nextMovements) => {
       setCashMovements(nextMovements);
       setCashMovementsLoading(false);
-    });
+    }, () => { setCashMovements([]); setCashMovementsLoading(false); setCashSummaryUnavailable(true); });
   }, [currentUser]);
 
   const openCashRegister = useCallback(async (input: OpenCashRegisterInput) => {
@@ -171,6 +175,8 @@ export const CashProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       value={{
         payments,
         paymentsLoading,
+        paymentsUnavailable,
+        cashSummaryUnavailable,
         cashClosures,
         cashClosuresLoading,
         cashMovements,
@@ -199,3 +205,5 @@ export const useCashContext = () => {
   if (!context) throw new Error("useCashRegister must be used within CashProvider");
   return context;
 };
+
+export const useOptionalCash = () => useContext(CashContext);

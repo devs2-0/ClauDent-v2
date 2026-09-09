@@ -81,7 +81,7 @@ const AppointmentDetailsDialog = ({
       <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            {isWalkIn ? "Detalle de walk-in" : "Detalle de cita"}
+            {isWalkIn ? "Detalle sin cita" : "Detalle de cita"}
           </DialogTitle>
           <DialogDescription>
             Consulta la información de la cita y actualiza su estado.
@@ -98,7 +98,7 @@ const AppointmentDetailsDialog = ({
               {isWalkIn && (
                 <Badge variant="secondary" className="gap-1">
                   <UserPlus className="h-3.5 w-3.5" />
-                  Walk-in
+                  Sin cita
                 </Badge>
               )}
 
@@ -169,7 +169,7 @@ const AppointmentDetailsDialog = ({
               <div className="rounded-xl border p-4">
                 <p className="mb-2 flex items-center gap-2 text-sm font-medium">
                   <UserPlus className="h-4 w-4" />
-                  Responsable walk-in
+                  Responsable
                 </p>
 
                 <p className="text-sm text-muted-foreground">

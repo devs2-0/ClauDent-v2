@@ -147,7 +147,7 @@ const WeeklyCalendarView = ({
 
                     <div className="mt-1 flex flex-wrap gap-1.5 text-[11px] text-muted-foreground">
                       <span>{dayAppointments.length} cita(s)</span>
-                      {walkInCount > 0 && <span>· {walkInCount} walk-in</span>}
+                      {walkInCount > 0 && <span>· {walkInCount} sin cita</span>}
                       {dayBlocks.length > 0 && (
                         <span>· {dayBlocks.length} bloqueo(s)</span>
                       )}
@@ -253,7 +253,7 @@ const WeeklyCalendarView = ({
                                 className="gap-1 px-1.5 py-0 text-[10px]"
                               >
                                 <UserPlus className="h-3 w-3" />
-                                Walk-in
+                                Sin cita
                               </Badge>
                             )}
 

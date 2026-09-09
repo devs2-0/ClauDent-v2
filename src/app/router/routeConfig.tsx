@@ -1,6 +1,12 @@
 import React from "react";
 
-import { AdminPanelPage, LoginPage, ResetPasswordPage, FirstAccessPage } from "@/auth";
+import {
+  AdminPanelPage,
+  FirstAccessPage,
+  LoginPage,
+  ResetPasswordPage,
+} from "@/auth";
+import type { PermissionKey } from "@/auth";
 import { AuditPage } from "@/modules/audit";
 import { AgendaPage } from "@/modules/agenda";
 import { DashboardPage } from "@/modules/dashboard";
@@ -15,27 +21,28 @@ import { ServicesPage } from "@/modules/services";
 import { CajaPage, VentasPage } from "@/modules/ventas";
 import { NotFoundPage } from "@/shared";
 
-
-import type { PermissionKey } from "@/auth";
-
-
 export interface AppRouteConfig {
   path: string;
   element: React.ReactElement;
   permission?: PermissionKey;
+  anyPermission?: PermissionKey[];
   redirectAuthenticated?: boolean;
 }
 
 export const publicRoutes: AppRouteConfig[] = [
-  { path: "/login", element: <LoginPage />, redirectAuthenticated: true },
+  {
+    path: "/login",
+    element: <LoginPage />,
+    redirectAuthenticated: true,
+  },
   {
     path: "/reset-password",
     element: <ResetPasswordPage />,
     redirectAuthenticated: true,
   },
   {
-  path: "/primer-acceso",
-  element: <FirstAccessPage />,
+    path: "/primer-acceso",
+    element: <FirstAccessPage />,
   },
 ];
 
@@ -53,7 +60,7 @@ export const protectedRoutes: AppRouteConfig[] = [
   {
     path: "/pacientes/:id",
     element: <PatientRecordPage />,
-    permission: "patients.view",
+    permission: "patients.record.view",
   },
   {
     path: "/pacientes/:patientId/odontograma/:odontogramId",
@@ -63,7 +70,7 @@ export const protectedRoutes: AppRouteConfig[] = [
   {
     path: "/servicios",
     element: <ServicesPage />,
-    permission: "services.view",
+    anyPermission: ["services.view", "packages.view"],
   },
   {
     path: "/cotizaciones",
@@ -96,8 +103,14 @@ export const protectedRoutes: AppRouteConfig[] = [
     permission: "audit.view",
   },
   {
-  path: "/administracion",
-  element: <AdminPanelPage />,
+    path: "/administracion",
+    element: <AdminPanelPage />,
+    anyPermission: [
+      "users.view",
+      "roles.view",
+      "security.sessions.view",
+      "settings.view",
+    ],
   },
 ];
 

@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from "react";
 
+import { hasGrantedPermission } from "../constants/permissionDependencies";
 import { useAuth } from "./useAuth";
 import { useCurrentUserProfile } from "./useCurrentUserProfile";
 import type { PermissionKey } from "../types/permission.types";
@@ -60,7 +61,7 @@ export const useCan = (permission?: PermissionKey | null): UseCanResult => {
 
       if (profile.isAdmin) return true;
 
-      return permissions.includes(targetPermission);
+      return hasGrantedPermission(permissions, targetPermission);
     },
     [currentUser, loading, permissions, profile],
   );

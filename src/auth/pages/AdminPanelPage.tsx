@@ -1,10 +1,10 @@
 import { useMemo, useState } from "react";
-import { Palette, ShieldCheck, UserCog, UsersRound } from "lucide-react";
+import { Settings2, ShieldCheck, UserCog, UsersRound } from "lucide-react";
 
 import { useCan } from "@/auth";
 import RolesPage from "./RolesPage";
 import UsersPage from "./UsersPage";
-import AppearancePage from "./AppearancePage";
+import PatientInactivitySettings from "@/modules/patients/components/PatientInactivitySettings";
 import { SecurityPage } from "@/modules/security";
 import { SinPermisosPage } from "@/shared";
 import { SectionHelp } from "@/shared/components/SectionHelp";
@@ -43,11 +43,11 @@ const AdminPanelPage = () => {
         content: <SecurityPage />,
       },
       {
-        value: "apariencia",
-        label: "Apariencia",
-        icon: Palette,
+        value: "configuracion",
+        label: "Configuración",
+        icon: Settings2,
         permission: "settings.view" as const,
-        content: <AppearancePage />,
+        content: <PatientInactivitySettings />,
       },
     ].filter((tab) => can(tab.permission));
   }, [can]);
@@ -69,15 +69,15 @@ const AdminPanelPage = () => {
   }
 
   return (
-    <main className="space-y-6">
-      <section className="rounded-2xl border bg-card p-6 shadow-sm">
+    <main className="space-y-4">
+      <section className="rounded-xl border bg-card p-4 shadow-sm">
         <div className="flex items-center gap-2">
           <h1 className="text-2xl font-semibold text-foreground">
             Panel de administración
           </h1>
           <SectionHelp title="Acerca del Panel de administración">
             <p>
-              Reúne la gestión de usuarios, roles, permisos, seguridad y apariencia del sistema.
+              Reúne la gestión de usuarios, roles, permisos y seguridad del sistema.
             </p>
             <p>
               Solo verás las pestañas para las que tu cuenta tenga autorización.
@@ -87,7 +87,7 @@ const AdminPanelPage = () => {
       </section>
 
       <Tabs value={activeTab} onValueChange={setSelectedTab}>
-        <TabsList className="h-auto flex-wrap justify-start">
+        <TabsList className="h-auto w-full flex-wrap justify-start gap-1 p-1 sm:w-auto">
           {visibleTabs.map((tab) => {
             const Icon = tab.icon;
 
@@ -95,7 +95,7 @@ const AdminPanelPage = () => {
               <TabsTrigger
                 key={tab.value}
                 value={tab.value}
-                className="gap-2"
+                className="flex-1 gap-2 sm:flex-none"
               >
                 <Icon className="h-4 w-4" />
                 {tab.label}
@@ -105,7 +105,7 @@ const AdminPanelPage = () => {
         </TabsList>
 
         {visibleTabs.map((tab) => (
-          <TabsContent key={tab.value} value={tab.value} className="mt-6">
+          <TabsContent key={tab.value} value={tab.value} className="mt-4">
             {tab.content}
           </TabsContent>
         ))}

@@ -1,3 +1,4 @@
+import { Can, useCan } from "@/auth";
 import React, { useMemo, useState } from "react";
 import {
   AlertTriangle,
@@ -143,6 +144,7 @@ const emptyEntryItemForm = {
 };
 
 const InventarioPage: React.FC = () => {
+  const { can } = useCan();
   const {
     products,
     productsLoading,
@@ -380,6 +382,7 @@ const InventarioPage: React.FC = () => {
   const needsDoubleAuthorization = isClassifiedWithdrawal && (selectedClassification === "alto_costo" || selectedClassification === "equipo_especial");
 
   const openProductDialog = (product?: InventoryProduct) => {
+    if (!can(product ? "inventory.update" : "inventory.create")) return;
     if (product) {
       setEditingProductId(product.id);
       setProductForm({
@@ -407,6 +410,7 @@ const InventarioPage: React.FC = () => {
   };
 
   const openCategoryDialog = (category?: InventoryCategoryRecord) => {
+    if (!can("inventory.categories.manage")) return;
     if (category) {
       setEditingCategoryId(category.id);
       setCategoryForm({
@@ -792,18 +796,18 @@ const InventarioPage: React.FC = () => {
               </div>
             </PopoverContent>
           </Popover>
-          <Button variant="outline" onClick={() => setIsStockEntryDialogOpen(true)}>
+          <Can permission="inventory.stock.adjust"><Button variant="outline" onClick={() => setIsStockEntryDialogOpen(true)}>
             <Truck className="mr-2 h-4 w-4" />
             Reabastecer
-          </Button>
-          <Button variant="outline" onClick={() => openCategoryDialog()}>
+          </Button></Can>
+          <Can permission="inventory.categories.manage"><Button variant="outline" onClick={() => openCategoryDialog()}>
             <Layers className="mr-2 h-4 w-4" />
             Categoria
-          </Button>
-          <Button onClick={() => openProductDialog()}>
+          </Button></Can>
+          <Can permission="inventory.create"><Button onClick={() => openProductDialog()}>
             <Plus className="mr-2 h-4 w-4" />
             Producto
-          </Button>
+          </Button></Can>
         </div>
       </div>
 
@@ -877,10 +881,10 @@ const InventarioPage: React.FC = () => {
                   <CardTitle>Productos de inventario</CardTitle>
                   <CardDescription>Catalogo editable de productos, materiales y medicamentos.</CardDescription>
                 </div>
-                <Button type="button" onClick={() => openProductDialog()}>
+                <Can permission="inventory.create"><Button type="button" onClick={() => openProductDialog()}>
                   <Plus className="mr-2 h-4 w-4" />
                   Producto
-                </Button>
+                </Button></Can>
               </div>
               <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(220px,1fr)_180px_180px_170px_auto] lg:items-end">
                 <div className="space-y-1">
@@ -1026,11 +1030,11 @@ const InventarioPage: React.FC = () => {
                           </TableCell>
                           <TableCell>
                             <div className="flex justify-end gap-2">
-                              <Button type="button" variant="outline" size="sm" onClick={() => openProductDialog(product)}>
+                              <Can permission="inventory.update"><Button type="button" variant="outline" size="sm" onClick={() => openProductDialog(product)}>
                                 <Edit className="mr-2 h-4 w-4" />
                                 Editar
-                              </Button>
-                              <Button
+                              </Button></Can>
+                              <Can permission={product.estado === "activo" ? "inventory.delete" : "inventory.update"}><Button
                                 type="button"
                                 variant={product.estado === "activo" ? "destructive" : "outline"}
                                 size="sm"
@@ -1042,7 +1046,7 @@ const InventarioPage: React.FC = () => {
                                   <RotateCcw className="mr-2 h-4 w-4" />
                                 )}
                                 {product.estado === "activo" ? "Desactivar" : "Activar"}
-                              </Button>
+                              </Button></Can>
                             </div>
                           </TableCell>
                         </TableRow>
@@ -1078,10 +1082,10 @@ const InventarioPage: React.FC = () => {
                   <CardTitle>Reabastecer</CardTitle>
                   <CardDescription>Selecciona productos registrados y suma stock por lote.</CardDescription>
                 </div>
-                <Button onClick={() => setIsStockEntryDialogOpen(true)}>
+                <Can permission="inventory.stock.adjust"><Button onClick={() => setIsStockEntryDialogOpen(true)}>
                   <Truck className="mr-2 h-4 w-4" />
                   Reabastecer
-                </Button>
+                </Button></Can>
               </div>
               <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(220px,1fr)_180px_180px_170px_auto] lg:items-end">
                 <div className="space-y-1">
@@ -1210,7 +1214,7 @@ const InventarioPage: React.FC = () => {
                             <TableCell>{shortage > 0 ? `${shortage} ${product.unidad}` : "Al minimo"}</TableCell>
                             <TableCell>{product.proveedor || "Sin proveedor"}</TableCell>
                             <TableCell className="text-right">
-                              <Button
+                              <Can permission="inventory.stock.adjust"><Button
                                 type="button"
                                 size="sm"
                                 variant="outline"
@@ -1220,7 +1224,7 @@ const InventarioPage: React.FC = () => {
                                 }}
                               >
                                 Reabastecer
-                              </Button>
+                              </Button></Can>
                             </TableCell>
                           </TableRow>
                         );
@@ -1256,10 +1260,10 @@ const InventarioPage: React.FC = () => {
                   <CardTitle>Categorias de inventario</CardTitle>
                   <CardDescription>Organiza productos y evita eliminar categorias que ya tienen productos.</CardDescription>
                 </div>
-                <Button onClick={() => openCategoryDialog()}>
+                <Can permission="inventory.categories.manage"><Button onClick={() => openCategoryDialog()}>
                   <Plus className="mr-2 h-4 w-4" />
                   Categoria
-                </Button>
+                </Button></Can>
               </div>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -1304,7 +1308,7 @@ const InventarioPage: React.FC = () => {
                             </TableCell>
                             <TableCell>
                               <div className="flex justify-end gap-2">
-                                <Button
+                                <Can permission="inventory.categories.manage"><Button
                                   type="button"
                                   variant="outline"
                                   size="sm"
@@ -1313,8 +1317,8 @@ const InventarioPage: React.FC = () => {
                                 >
                                   <Edit className="mr-2 h-4 w-4" />
                                   Editar
-                                </Button>
-                                <Button
+                                </Button></Can>
+                                <Can permission="inventory.categories.manage"><Button
                                   type="button"
                                   variant="destructive"
                                   size="sm"
@@ -1323,7 +1327,7 @@ const InventarioPage: React.FC = () => {
                                 >
                                   <Trash2 className="mr-2 h-4 w-4" />
                                   Eliminar
-                                </Button>
+                                </Button></Can>
                               </div>
                             </TableCell>
                           </TableRow>
@@ -1345,10 +1349,10 @@ const InventarioPage: React.FC = () => {
                   <CardTitle>Movimientos de inventario</CardTitle>
                   <CardDescription>Historial de entradas, ventas y salidas reales del stock.</CardDescription>
                 </div>
-                <Button onClick={() => setIsMovementDialogOpen(true)}>
+                <Can permission="inventory.stock.adjust"><Button onClick={() => setIsMovementDialogOpen(true)}>
                   <PackageMinus className="mr-2 h-4 w-4" />
                   Salida o ajuste
-                </Button>
+                </Button></Can>
               </div>
               <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                 <div className="flex items-start gap-2">
@@ -1590,7 +1594,7 @@ const InventarioPage: React.FC = () => {
         </TabsContent>
       </Tabs>
 
-      <Dialog open={isProductDialogOpen} onOpenChange={setIsProductDialogOpen}>
+      <Dialog open={isProductDialogOpen && can(editingProductId ? "inventory.update" : "inventory.create")} onOpenChange={setIsProductDialogOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>{editingProductId ? "Editar producto" : "Nuevo producto"}</DialogTitle>
@@ -1707,7 +1711,7 @@ const InventarioPage: React.FC = () => {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isCategoryDialogOpen} onOpenChange={setIsCategoryDialogOpen}>
+      <Dialog open={isCategoryDialogOpen && can("inventory.categories.manage")} onOpenChange={setIsCategoryDialogOpen}>
         <DialogContent className="max-w-xl">
           <DialogHeader>
             <DialogTitle>{editingCategoryId ? "Editar categoria" : "Nueva categoria"}</DialogTitle>
@@ -1734,7 +1738,7 @@ const InventarioPage: React.FC = () => {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isStockEntryDialogOpen} onOpenChange={setIsStockEntryDialogOpen}>
+      <Dialog open={isStockEntryDialogOpen && (can("inventory.stock.adjust") || can("inventory.purchaseList.manage"))} onOpenChange={setIsStockEntryDialogOpen}>
         <DialogContent className="max-w-4xl">
           <DialogHeader>
             <DialogTitle>Reabastecer stock por lote</DialogTitle>
@@ -1853,7 +1857,7 @@ const InventarioPage: React.FC = () => {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isMovementDialogOpen} onOpenChange={setIsMovementDialogOpen}>
+      <Dialog open={isMovementDialogOpen && can("inventory.stock.adjust")} onOpenChange={setIsMovementDialogOpen}>
         <DialogContent className="max-w-xl">
           <DialogHeader>
             <DialogTitle>Salida o ajuste de inventario</DialogTitle>

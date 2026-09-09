@@ -2,5 +2,5 @@ import { permissionCatalog, permissionKeys } from "../constants/permissionCatalo
 
 export const permissionService = {
   listPermissions: () => permissionCatalog,
-  isKnownPermission: (permission: string) => permissionKeys.includes(permission),
+  isKnownPermission: (permission: string) => permissionKeys.some((key) => key === permission),
 };

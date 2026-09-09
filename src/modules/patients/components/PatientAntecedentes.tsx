@@ -1,5 +1,6 @@
 // (Archivo MODIFICADO) src/components/PatientAntecedentes.tsx
 import React, { useState, useEffect } from 'react';
+import { Can } from '@/auth';
 import { useParams } from 'react-router-dom';
 import { IHistoriaClinicaCompleta, initialState } from '@/modules/patients';
 import { Button } from '@/shared/components/ui/button';
@@ -21,7 +22,7 @@ import InitialHistoryModal from '@/modules/patients/components/InitialHistoryMod
 const DataViewer: React.FC<{ data: Record<string, any>, title: string }> = ({ data, title }) => {
   // ¡CORREGIDO! El filtro ahora solo oculta 'null' o 'undefined',
   // pero SÍ permite 'false' (para los checkbox) y '""' (para texto vacío).
-  const entries = Object.entries(data).filter(([_, value]) => value !== null && value !== undefined);
+  const entries = Object.entries(data ?? {}).filter(([_, value]) => value !== null && value !== undefined);
 
   if (entries.length === 0) {
     return (
@@ -37,7 +38,7 @@ const DataViewer: React.FC<{ data: Record<string, any>, title: string }> = ({ da
       return value ? 'Sí' : 'No';
     }
     if (value === '') {
-      return 'N/A'; // Mostramos N/A para campos de texto vacíos
+      return 'Sin información';
     }
     return value.toString();
   };
@@ -157,10 +158,10 @@ const PatientAntecedentes: React.FC = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-semibold">Antecedentes y Ficha Clínica</h3>
-        <Button onClick={() => setIsModalOpen(true)}>
+        <Can permission="patients.clinicalHistory.update"><Button onClick={() => setIsModalOpen(true)}>
           <Edit className="h-4 w-4 mr-2" />
-          Editar Antecedentes
-        </Button>
+          Editar
+        </Button></Can>
       </div>
 
       <Accordion type="multiple" className="w-full">

@@ -1,5 +1,5 @@
-import React, { useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   AlertTriangle,
   Banknote,
@@ -62,6 +62,7 @@ import { usePagination } from "@/shared/hooks/usePagination";
 import { useCashRegister } from "../hooks/useCashRegister";
 import { generateSaleReceiptPDF, type SaleReceiptData } from "../services/saleReceiptPdfService";
 import type { DirectSaleProductItem, DirectSaleServiceItem, PaymentMethod } from "../types/cash.types";
+import { useCan } from "@/auth";
 
 const today = () => {
   const now = new Date();
@@ -92,6 +93,8 @@ const inventoryProductName = (product: { nombre: string; marca?: string }) => {
 };
 
 const VentasPage: React.FC = () => {
+  const { can, loading: permissionsLoading } = useCan();
+  const [searchParams, setSearchParams] = useSearchParams();
   const {
     payments,
     paymentsLoading,
@@ -122,6 +125,26 @@ const VentasPage: React.FC = () => {
   const [isConfirmSaleOpen, setIsConfirmSaleOpen] = useState(false);
   const [isSummaryHighlighted, setIsSummaryHighlighted] = useState(false);
   const [lastReceipt, setLastReceipt] = useState<SaleReceiptData | null>(null);
+  const [isNewSaleHighlighted, setIsNewSaleHighlighted] = useState(false);
+  const newSaleCardRef = useRef<HTMLDivElement>(null);
+  const canCreateSale = can("sales.create");
+
+  useEffect(() => {
+    if (searchParams.get("action") !== "newSale") return;
+    if (permissionsLoading) return;
+
+    const nextSearchParams = new URLSearchParams(searchParams);
+    nextSearchParams.delete("action");
+    setSearchParams(nextSearchParams, { replace: true });
+
+    if (!canCreateSale) return;
+
+    window.requestAnimationFrame(() => {
+      newSaleCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      setIsNewSaleHighlighted(true);
+      window.setTimeout(() => setIsNewSaleHighlighted(false), 1800);
+    });
+  }, [canCreateSale, permissionsLoading, searchParams, setSearchParams]);
 
   const openCashClosure = useMemo(
     () => cashClosures.find((closure) => closure.estado === "abierto"),
@@ -324,11 +347,13 @@ const VentasPage: React.FC = () => {
 
   const handleRequestSaleConfirmation = (event?: React.SyntheticEvent) => {
     event?.preventDefault();
+    if (!canCreateSale) return;
     if (!validateSaleBeforeCheckout()) return;
     setIsConfirmSaleOpen(true);
   };
 
   const handleConfirmSale = async () => {
+    if (!canCreateSale) return;
     if (isSavingRef.current) return;
     if (!validateSaleBeforeCheckout()) return;
 
@@ -435,7 +460,7 @@ const VentasPage: React.FC = () => {
               </p>
             </div>
           </div>
-          {!hasOpenCashForSelectedDate && (
+          {!hasOpenCashForSelectedDate && can("sales.cashShift.open") && (
             <Button asChild>
               <Link to="/caja">Abrir o revisar caja</Link>
             </Button>
@@ -487,7 +512,13 @@ const VentasPage: React.FC = () => {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[1fr_420px]">
-        <Card>
+        <Card
+          ref={newSaleCardRef}
+          className={cn(
+            "scroll-mt-20 transition-shadow duration-300",
+            isNewSaleHighlighted && "ring-2 ring-primary/40 shadow-md",
+          )}
+        >
           <CardHeader>
             <CardTitle>Nueva venta</CardTitle>
             <CardDescription>Usa este resumen para tratamientos, productos o una venta mixta.</CardDescription>
@@ -962,7 +993,7 @@ const VentasPage: React.FC = () => {
         )}
       </Card>
 
-      <Dialog open={isConfirmSaleOpen} onOpenChange={setIsConfirmSaleOpen}>
+      <Dialog open={isConfirmSaleOpen && canCreateSale} onOpenChange={setIsConfirmSaleOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Confirmar venta</DialogTitle>

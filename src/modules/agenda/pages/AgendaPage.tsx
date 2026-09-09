@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   CalendarDays,
+  ChevronDown,
   RefreshCw,
+  Search,
   Stethoscope,
   UserRoundCheck,
   UserRoundX,
@@ -23,6 +25,11 @@ import {
 } from "@/shared/components/ui/card";
 import { Checkbox } from "@/shared/components/ui/checkbox";
 import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/shared/components/ui/collapsible";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -39,6 +46,7 @@ import {
   TabsTrigger,
 } from "@/shared/components/ui/tabs";
 import { Textarea } from "@/shared/components/ui/textarea";
+import { useConfirmAction } from "@/shared/hooks/useConfirmAction";
 
 import { assistantService } from "../services/assistantService";
 import { doctorService } from "../services/doctorService";
@@ -95,6 +103,10 @@ const AgendaPage = () => {
   const [selectedTab, setSelectedTab] = useState("calendario");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [assistantDoctorSearch, setAssistantDoctorSearch] = useState("");
+  const [assignedDoctorsOpen, setAssignedDoctorsOpen] = useState(false);
+  const { confirm, confirmationDialog } = useConfirmAction();
 
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [assistants, setAssistants] = useState<Assistant[]>([]);
@@ -112,11 +124,7 @@ const AgendaPage = () => {
 
   const canManageDoctors = can("agenda.doctors.manage");
   const canManageAssistants = can("agenda.assistants.manage");
-  const canManageAvailability =
-  canManageDoctors ||
-  canManageAssistants ||
-  can("agenda.blocks.create") ||
-  can("agenda.blocks.delete");
+  const canManageAvailability = can("agenda.availability.view");
 
   const canViewAgendaHistory =
     can("agenda.view") ||
@@ -137,6 +145,18 @@ const AgendaPage = () => {
     return doctors.filter((doctor) => doctor.status === "active");
   }, [doctors]);
 
+  const filteredActiveDoctors = useMemo(() => {
+    const term = assistantDoctorSearch.trim().toLocaleLowerCase("es-MX");
+    if (!term) return activeDoctors;
+    return activeDoctors.filter((doctor) =>
+      [doctor.nombre, doctor.especialidad, doctor.email]
+        .filter(Boolean)
+        .join(" ")
+        .toLocaleLowerCase("es-MX")
+        .includes(term),
+    );
+  }, [activeDoctors, assistantDoctorSearch]);
+
   const visibleTabs = useMemo(() => {
     return [
       {
@@ -149,13 +169,13 @@ const AgendaPage = () => {
         value: "doctores",
         label: "Doctores",
         icon: Stethoscope,
-        visible: canManageDoctors,
+        visible: can("agenda.doctors.view"),
       },
       {
         value: "asistentes",
         label: "Asistentes",
         icon: UsersRound,
-        visible: canManageAssistants,
+        visible: can("agenda.assistants.view"),
       },
       {
         value: "disponibilidad",
@@ -201,17 +221,24 @@ const AgendaPage = () => {
     }
   };
 
+  const refreshAgenda = async () => {
+    await loadData();
+    setRefreshKey((current) => current + 1);
+  };
+
   useEffect(() => {
     loadData();
   }, []);
 
   const openCreateDoctorDialog = () => {
+    if (!canManageDoctors) return;
     setEditingDoctor(null);
     setDoctorForm(emptyDoctorForm);
     setDoctorDialogOpen(true);
   };
 
   const openEditDoctorDialog = (doctor: Doctor) => {
+    if (!canManageDoctors) return;
     setEditingDoctor(doctor);
     setDoctorForm({
       nombre: doctor.nombre,
@@ -295,11 +322,15 @@ const AgendaPage = () => {
 
     const nextStatus = doctor.status === "active" ? "inactive" : "active";
 
-    const confirmed = window.confirm(
-      nextStatus === "inactive"
-        ? `¿Seguro que deseas desactivar a ${doctor.nombre}? Ya no aparecerá como disponible en agenda.`
-        : `¿Deseas activar nuevamente a ${doctor.nombre}?`,
-    );
+    const confirmed = await confirm({
+      title: nextStatus === "inactive" ? "Desactivar doctor" : "Activar doctor",
+      description:
+        nextStatus === "inactive"
+          ? `${doctor.nombre} dejará de aparecer como disponible en la agenda.`
+          : `${doctor.nombre} volverá a estar disponible en la agenda.`,
+      confirmLabel: nextStatus === "inactive" ? "Desactivar" : "Activar",
+      destructive: nextStatus === "inactive",
+    });
 
     if (!confirmed) return;
 
@@ -325,12 +356,16 @@ const AgendaPage = () => {
   };
 
   const openCreateAssistantDialog = () => {
+    if (!canManageAssistants) return;
     setEditingAssistant(null);
     setAssistantForm(emptyAssistantForm);
+    setAssistantDoctorSearch("");
+    setAssignedDoctorsOpen(false);
     setAssistantDialogOpen(true);
   };
 
   const openEditAssistantDialog = (assistant: Assistant) => {
+    if (!canManageAssistants) return;
     setEditingAssistant(assistant);
     setAssistantForm({
       nombre: assistant.nombre,
@@ -340,6 +375,8 @@ const AgendaPage = () => {
       doctorIdsAsignados: assistant.doctorIdsAsignados ?? [],
       visibleEnAgenda: assistant.visibleEnAgenda,
     });
+    setAssistantDoctorSearch("");
+    setAssignedDoctorsOpen(false);
     setAssistantDialogOpen(true);
   };
 
@@ -427,11 +464,15 @@ const AgendaPage = () => {
 
     const nextStatus = assistant.status === "active" ? "inactive" : "active";
 
-    const confirmed = window.confirm(
-      nextStatus === "inactive"
-        ? `¿Seguro que deseas desactivar a ${assistant.nombre}?`
-        : `¿Deseas activar nuevamente a ${assistant.nombre}?`,
-    );
+    const confirmed = await confirm({
+      title: nextStatus === "inactive" ? "Desactivar asistente" : "Activar asistente",
+      description:
+        nextStatus === "inactive"
+          ? `${assistant.nombre} dejará de aparecer como disponible en la agenda.`
+          : `${assistant.nombre} volverá a estar disponible en la agenda.`,
+      confirmLabel: nextStatus === "inactive" ? "Desactivar" : "Activar",
+      destructive: nextStatus === "inactive",
+    });
 
     if (!confirmed) return;
 
@@ -474,7 +515,7 @@ const AgendaPage = () => {
 
 
   return (
-    <main className="space-y-6">
+    <main className="space-y-4">
       <section className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <div className="flex items-center gap-2">
@@ -487,21 +528,28 @@ const AgendaPage = () => {
                 También permite configurar doctores, asistentes, disponibilidad y consultar el historial de movimientos de agenda.
               </p>
             </SectionHelp>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={() => void refreshAgenda()}
+              disabled={loading}
+              aria-label="Actualizar agenda"
+              title="Actualizar agenda"
+            >
+              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+            </Button>
           </div>
         </div>
 
         <div className="flex flex-wrap gap-2">
           <AgendaNotificationsButton doctors={activeDoctors} />
 
-          <Button variant="outline" onClick={loadData} disabled={loading}>
-            <RefreshCw className="mr-2 h-4 w-4" />
-            Actualizar
-          </Button>
         </div>
       </section>
 
       <Tabs value={activeTab} onValueChange={setSelectedTab}>
-        <TabsList className="h-auto flex-wrap justify-start">
+        <TabsList className="h-auto w-full flex-nowrap justify-start overflow-x-auto p-1">
           {visibleTabs.map((tab) => {
             const Icon = tab.icon;
 
@@ -514,11 +562,11 @@ const AgendaPage = () => {
           })}
         </TabsList>
 
-        <TabsContent value="calendario" className="mt-6">
-          <AppointmentManager doctors={doctors} assistants={assistants} />
+        <TabsContent value="calendario" className="relative isolate z-0 mt-4">
+          <AppointmentManager doctors={doctors} assistants={assistants} refreshKey={refreshKey} />
         </TabsContent>
 
-        <TabsContent value="doctores" className="mt-6">
+        <TabsContent value="doctores" className="mt-4">
           <Card>
             <CardHeader className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
               <div>
@@ -546,11 +594,11 @@ const AgendaPage = () => {
                   No hay doctores registrados.
                 </div>
               ) : (
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-3 md:grid-cols-2">
                   {doctors.map((doctor) => (
                     <div
                       key={doctor.id}
-                      className="rounded-xl border bg-background p-4"
+                      className="rounded-lg border bg-muted/20 p-3"
                     >
                       <div className="flex items-start justify-between gap-4">
                         <div className="space-y-2">
@@ -601,15 +649,15 @@ const AgendaPage = () => {
                       </div>
 
                       <div className="mt-4 flex flex-wrap gap-2">
-                        <Button
+                        {canManageDoctors && (<Button
                           variant="outline"
                           size="sm"
                           onClick={() => openEditDoctorDialog(doctor)}
                         >
                           Editar
-                        </Button>
+                        </Button>)}
 
-                        <Button
+                        {canManageDoctors && (<Button
                           variant={
                             doctor.status === "active"
                               ? "destructive"
@@ -626,7 +674,7 @@ const AgendaPage = () => {
                           {doctor.status === "active"
                             ? "Desactivar"
                             : "Activar"}
-                        </Button>
+                        </Button>)}
                       </div>
                     </div>
                   ))}
@@ -636,7 +684,7 @@ const AgendaPage = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="asistentes" className="mt-6">
+        <TabsContent value="asistentes" className="mt-4">
           <Card>
             <CardHeader className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
               <div>
@@ -664,7 +712,7 @@ const AgendaPage = () => {
                   No hay asistentes registrados.
                 </div>
               ) : (
-                <div className="grid gap-4 md:grid-cols-2">
+                <div className="grid gap-3 md:grid-cols-2">
                   {assistants.map((assistant) => {
                     const assignedDoctorNames = assistant.doctorIdsAsignados
                       .map(
@@ -677,7 +725,7 @@ const AgendaPage = () => {
                     return (
                       <div
                         key={assistant.id}
-                        className="rounded-xl border bg-background p-4"
+                        className="rounded-lg border bg-muted/20 p-3"
                       >
                         <div className="space-y-2">
                           <div className="flex flex-wrap items-center gap-2">
@@ -728,15 +776,15 @@ const AgendaPage = () => {
                         </div>
 
                         <div className="mt-4 flex flex-wrap gap-2">
-                          <Button
+                          {canManageAssistants && (<Button
                             variant="outline"
                             size="sm"
                             onClick={() => openEditAssistantDialog(assistant)}
                           >
                             Editar
-                          </Button>
+                          </Button>)}
 
-                          <Button
+                          {canManageAssistants && (<Button
                             variant={
                               assistant.status === "active"
                                 ? "destructive"
@@ -755,7 +803,7 @@ const AgendaPage = () => {
                             {assistant.status === "active"
                               ? "Desactivar"
                               : "Activar"}
-                          </Button>
+                          </Button>)}
                         </div>
                       </div>
                     );
@@ -766,18 +814,21 @@ const AgendaPage = () => {
           </Card>
         </TabsContent>
 
-        <TabsContent value="disponibilidad" className="mt-6">
-          <AvailabilityManager doctors={doctors} assistants={assistants} />
+        <TabsContent value="disponibilidad" className="mt-4">
+          <AvailabilityManager doctors={doctors} assistants={assistants} refreshKey={refreshKey} />
         </TabsContent>
 
-        <TabsContent value="historial" className="mt-6">
+        <TabsContent value="historial" className="mt-4">
           <AgendaHistoryPanel
             doctors={doctors}
             canViewAllDoctors={canViewAllHistory}
+            refreshKey={refreshKey}
           />
         </TabsContent>
 
       </Tabs>
+
+      {confirmationDialog}
 
       <Dialog open={doctorDialogOpen} onOpenChange={setDoctorDialogOpen}>
         <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
@@ -807,7 +858,7 @@ const AgendaPage = () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="doctor-specialty">Especialidad</Label>
+              <Label htmlFor="doctor-specialty">Especialidad (Opcional)</Label>
               <Input
                 id="doctor-specialty"
                 value={doctorForm.especialidad}
@@ -822,7 +873,7 @@ const AgendaPage = () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="doctor-email">Correo</Label>
+              <Label htmlFor="doctor-email">Correo (Opcional)</Label>
               <Input
                 id="doctor-email"
                 type="email"
@@ -838,7 +889,7 @@ const AgendaPage = () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="doctor-phone">Teléfono</Label>
+              <Label htmlFor="doctor-phone">Teléfono (Opcional)</Label>
               <Input
                 id="doctor-phone"
                 value={doctorForm.telefono}
@@ -853,7 +904,7 @@ const AgendaPage = () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="doctor-color">Color en agenda</Label>
+              <Label htmlFor="doctor-color">Color en agenda (Opcional)</Label>
               <Input
                 id="doctor-color"
                 type="color"
@@ -929,7 +980,7 @@ const AgendaPage = () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="assistant-email">Correo</Label>
+              <Label htmlFor="assistant-email">Correo (Opcional)</Label>
               <Input
                 id="assistant-email"
                 type="email"
@@ -945,7 +996,7 @@ const AgendaPage = () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="assistant-phone">Teléfono</Label>
+              <Label htmlFor="assistant-phone">Teléfono (Opcional)</Label>
               <Input
                 id="assistant-phone"
                 value={assistantForm.telefono}
@@ -973,7 +1024,7 @@ const AgendaPage = () => {
             </label>
 
             <div className="space-y-2 md:col-span-2">
-              <Label htmlFor="assistant-notes">Notas</Label>
+              <Label htmlFor="assistant-notes">Notas (Opcional)</Label>
               <Textarea
                 id="assistant-notes"
                 value={assistantForm.notas}
@@ -987,41 +1038,63 @@ const AgendaPage = () => {
               />
             </div>
 
-            <div className="space-y-3 md:col-span-2">
-              <Label>Doctores asignados</Label>
-
-              {activeDoctors.length === 0 ? (
-                <p className="rounded-lg border border-dashed p-3 text-sm text-muted-foreground">
-                  Primero registra doctores activos.
-                </p>
-              ) : (
-                <div className="grid gap-2">
-                  {activeDoctors.map((doctor) => (
-                    <label
-                      key={doctor.id}
-                      className="flex cursor-pointer items-center gap-3 rounded-lg border p-3"
-                    >
-                      <Checkbox
-                        checked={assistantForm.doctorIdsAsignados.includes(
-                          doctor.id,
-                        )}
-                        onCheckedChange={() => toggleAssistantDoctor(doctor.id)}
+            <Collapsible
+              open={assignedDoctorsOpen}
+              onOpenChange={setAssignedDoctorsOpen}
+              className="space-y-2 md:col-span-2"
+            >
+              <CollapsibleTrigger asChild>
+                <Button type="button" variant="outline" className="w-full justify-between">
+                  <span>
+                    Doctores asignados
+                    {assistantForm.doctorIdsAsignados.length > 0 &&
+                      ` (${assistantForm.doctorIdsAsignados.length})`}
+                  </span>
+                  <ChevronDown className={`h-4 w-4 transition-transform ${assignedDoctorsOpen ? "rotate-180" : ""}`} />
+                </Button>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="space-y-2 rounded-lg border bg-muted/20 p-3">
+                {activeDoctors.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Primero registra doctores activos.</p>
+                ) : (
+                  <>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        type="search"
+                        value={assistantDoctorSearch}
+                        onChange={(event) => setAssistantDoctorSearch(event.target.value)}
+                        placeholder="Buscar doctor..."
+                        className="h-9 pl-9"
                       />
-
-                      <span
-                        className="h-4 w-4 rounded-full border"
-                        style={{
-                          backgroundColor:
-                            doctor.color || DEFAULT_DOCTOR_COLOR,
-                        }}
-                      />
-
-                      <span className="text-sm">{doctor.nombre}</span>
-                    </label>
-                  ))}
-                </div>
-              )}
-            </div>
+                    </div>
+                    <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
+                      {filteredActiveDoctors.map((doctor) => (
+                        <label
+                          key={doctor.id}
+                          className="flex cursor-pointer items-center gap-3 rounded-md border bg-card p-2"
+                        >
+                          <Checkbox
+                            checked={assistantForm.doctorIdsAsignados.includes(doctor.id)}
+                            onCheckedChange={() => toggleAssistantDoctor(doctor.id)}
+                          />
+                          <span
+                            className="h-3.5 w-3.5 rounded-full border"
+                            style={{ backgroundColor: doctor.color || DEFAULT_DOCTOR_COLOR }}
+                          />
+                          <span className="min-w-0 truncate text-sm">{doctor.nombre}</span>
+                        </label>
+                      ))}
+                      {filteredActiveDoctors.length === 0 && (
+                        <p className="py-3 text-center text-sm text-muted-foreground">
+                          No se encontraron doctores.
+                        </p>
+                      )}
+                    </div>
+                  </>
+                )}
+              </CollapsibleContent>
+            </Collapsible>
           </div>
 
           <DialogFooter>

@@ -20,8 +20,17 @@ import {
   type PaymentMethod,
   type PaymentOrigin,
 } from "@/modules/ventas";
+import { useCan } from "@/auth";
+import { useOptionalCash } from "@/modules/ventas/store/CashProvider";
+import { cashService } from "@/modules/ventas/services/cashService";
 import { generateSaleReceiptPDF, type SaleReceiptKind } from "@/modules/ventas/services/saleReceiptPdfService";
 import { Badge } from "@/shared/components/ui/badge";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/shared/components/ui/accordion";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import {
@@ -134,7 +143,7 @@ const getReceiptKind = (payment: Payment): SaleReceiptKind => {
 
 const getCurrentTime = () => new Date().toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" });
 
-const normalizeName = (value: string) => value.trim().toLowerCase().replace(/\s+/g, " ");
+const normalizeName = (value: string) => (value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 
 const parseMoneyInput = (value: string) => Number(value || 0);
 
@@ -171,7 +180,20 @@ const PaymentSummaryCard = ({
 );
 
 const PatientPayments: React.FC<PatientPaymentsProps> = ({ patientId, patientName }) => {
-  const { payments, paymentsLoading } = useCashRegister();
+  const { can } = useCan();
+  const cash = useOptionalCash();
+  const [scopedPayments, setScopedPayments] = useState<Payment[]>([]);
+  const [scopedLoading, setScopedLoading] = useState(true);
+  const [unavailable, setUnavailable] = useState(false);
+  const payments = cash?.payments ?? scopedPayments;
+  const paymentsLoading = cash?.paymentsLoading ?? scopedLoading;
+  const canCreateAccount = can("sales.create") || can("sales.payments.manage");
+  const canRegisterPayment = can("sales.payments.manage");
+  useEffect(() => {
+    if (cash) return;
+    setScopedLoading(true);
+    return cashService.listenPatientPayments(patientId, (data) => { setScopedPayments(data); setScopedLoading(false); }, () => { setScopedPayments([]); setUnavailable(true); setScopedLoading(false); });
+  }, [patientId, Boolean(cash)]);
   const [accounts, setAccounts] = useState<AccountReceivable[]>([]);
   const [accountsLoading, setAccountsLoading] = useState(true);
   const [isAccountDialogOpen, setIsAccountDialogOpen] = useState(false);
@@ -186,7 +208,7 @@ const PatientPayments: React.FC<PatientPaymentsProps> = ({ patientId, patientNam
     const unsubscribe = accountsReceivableService.listenPatientAccounts(patientId, (nextAccounts) => {
       setAccounts(nextAccounts);
       setAccountsLoading(false);
-    });
+    }, () => { setAccounts([]); setUnavailable(true); setAccountsLoading(false); });
 
     return unsubscribe;
   }, [patientId]);
@@ -255,6 +277,7 @@ const PatientPayments: React.FC<PatientPaymentsProps> = ({ patientId, patientNam
   };
 
   const handleCreateAccount = async () => {
+    if (!canCreateAccount) return;
     if (isSavingAccountRef.current) return;
     const total = parseMoneyInput(accountForm.total);
     const abonoInicial = parseMoneyInput(accountForm.abonoInicial);
@@ -276,7 +299,7 @@ const PatientPayments: React.FC<PatientPaymentsProps> = ({ patientId, patientNam
     setIsSavingAccount(true);
     try {
       await accountsReceivableService.createAccount({
-        pacienteId,
+        pacienteId: patientId,
         pacienteNombre: patientName,
         concepto: accountForm.concepto.trim(),
         total,
@@ -299,6 +322,7 @@ const PatientPayments: React.FC<PatientPaymentsProps> = ({ patientId, patientNam
   };
 
   const handleRegisterInstallment = async () => {
+    if (!canRegisterPayment) return;
     if (isSavingAccountRef.current) return;
     if (!selectedAccount) return;
     const amount = parseMoneyInput(installmentForm.monto);
@@ -331,6 +355,8 @@ const PatientPayments: React.FC<PatientPaymentsProps> = ({ patientId, patientNam
       setIsSavingAccount(false);
     }
   };
+
+  if (unavailable || cash?.paymentsUnavailable) return <p className="py-8 text-center text-muted-foreground">Información no disponible</p>;
 
   if (paymentsLoading || accountsLoading) {
     return (
@@ -390,10 +416,10 @@ const PatientPayments: React.FC<PatientPaymentsProps> = ({ patientId, patientNam
               </p>
             )}
           </div>
-          <Button onClick={() => setIsAccountDialogOpen(true)}>
+          {canCreateAccount && (<Button onClick={() => setIsAccountDialogOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
             Nueva cuenta
-          </Button>
+          </Button>)}
         </CardHeader>
         <CardContent className="p-0">
           {patientAccounts.length === 0 ? (
@@ -430,7 +456,7 @@ const PatientPayments: React.FC<PatientPaymentsProps> = ({ patientId, patientNam
                     )}
                   </div>
                   <div className="flex justify-start lg:justify-end">
-                    {account.saldoPendiente > 0 && account.estado !== "cancelada" && (
+                    {canRegisterPayment && account.saldoPendiente > 0 && account.estado !== "cancelada" && (
                       <Button variant="outline" size="sm" onClick={() => setSelectedAccount(account)}>
                         <HandCoins className="mr-2 h-4 w-4" />
                         Agregar abono
@@ -444,74 +470,83 @@ const PatientPayments: React.FC<PatientPaymentsProps> = ({ patientId, patientNam
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader className="border-b">
-          <CardTitle className="flex items-center gap-2 text-lg">
-            <CreditCard className="h-5 w-5 text-primary" />
-            Historial de pagos
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          {patientPayments.length === 0 ? (
-            <div className="p-8 text-center text-sm text-muted-foreground">
-              Este paciente aun no tiene pagos registrados.
-            </div>
-          ) : (
-            <div className="divide-y">
-              {patientPayments.map((payment) => (
-                <div key={payment.id} className="grid gap-3 p-4 md:grid-cols-[1fr_auto] md:items-center">
-                  <div className="min-w-0 space-y-2">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-semibold">{payment.concepto || paymentSearchLabel(payment)}</p>
-                      <Badge variant={payment.estado === "activo" ? "default" : "secondary"}>
-                        {payment.estado === "activo" ? "Pagado" : "Cancelado"}
-                      </Badge>
-                      <Badge variant="outline">{paymentSearchLabel(payment)}</Badge>
-                    </div>
-
-                    <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                      <span>{formatDate(payment.fecha)}</span>
-                      <span>{methodLabel[payment.metodo]}</span>
-                      {payment.citaId && <span>Cita vinculada</span>}
-                      {payment.tratamientoId && <span>Tratamiento vinculado</span>}
-                      {payment.cotizacionId && <span>Cotizacion vinculada</span>}
-                      {!payment.pacienteId && <span>Coincidencia por nombre</span>}
-                    </div>
-
-                    {payment.notas && (
-                      <p className="flex items-start gap-2 text-sm text-muted-foreground">
-                        <FileText className="mt-0.5 h-4 w-4 shrink-0" />
-                        <span>{payment.notas}</span>
-                      </p>
-                    )}
-                  </div>
-
-                  <div className="flex flex-col items-start gap-2 md:items-end">
-                    <p className={cn("text-lg font-semibold", payment.estado === "cancelado" && "text-muted-foreground line-through")}>
-                      {formatCurrency(payment.monto)}
-                    </p>
-                    <p className="text-xs text-muted-foreground">Folio {payment.id.slice(0, 8)}</p>
-                    {payment.estado === "activo" && (
-                      <Button variant="outline" size="sm" onClick={() => handleDownloadReceipt(payment)}>
-                        <Download className="mr-2 h-4 w-4" />
-                        Recibo
-                      </Button>
-                    )}
-                  </div>
+      <Accordion type="single" collapsible>
+        <AccordionItem value="payment-history" className="overflow-hidden rounded-lg border bg-card">
+          <AccordionTrigger className="px-4 py-4 hover:no-underline sm:px-6">
+            <span className="flex min-w-0 flex-1 items-center justify-between gap-3 pr-3 text-left">
+              <span className="flex min-w-0 items-center gap-2 text-base font-semibold sm:text-lg">
+                <CreditCard className="h-5 w-5 shrink-0 text-primary" />
+                <span className="truncate">Historial de pagos</span>
+              </span>
+              <Badge variant="secondary" className="shrink-0 tabular-nums">
+                {patientPayments.length}
+              </Badge>
+            </span>
+          </AccordionTrigger>
+          <AccordionContent className="p-0">
+            <div className="border-t">
+              {patientPayments.length === 0 ? (
+                <div className="p-8 text-center text-sm text-muted-foreground">
+                  Este paciente aun no tiene pagos registrados.
                 </div>
-              ))}
+              ) : (
+                <div className="divide-y">
+                  {patientPayments.map((payment) => (
+                    <div key={payment.id} className="grid gap-3 p-4 md:grid-cols-[1fr_auto] md:items-center">
+                      <div className="min-w-0 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="font-semibold">{payment.concepto || paymentSearchLabel(payment)}</p>
+                          <Badge variant={payment.estado === "activo" ? "default" : "secondary"}>
+                            {payment.estado === "activo" ? "Pagado" : "Cancelado"}
+                          </Badge>
+                          <Badge variant="outline">{paymentSearchLabel(payment)}</Badge>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+                          <span>{formatDate(payment.fecha)}</span>
+                          <span>{methodLabel[payment.metodo]}</span>
+                          {payment.citaId && <span>Cita vinculada</span>}
+                          {payment.tratamientoId && <span>Tratamiento vinculado</span>}
+                          {payment.cotizacionId && <span>Cotizacion vinculada</span>}
+                          {!payment.pacienteId && <span>Coincidencia por nombre</span>}
+                        </div>
+
+                        {payment.notas && (
+                          <p className="flex items-start gap-2 text-sm text-muted-foreground">
+                            <FileText className="mt-0.5 h-4 w-4 shrink-0" />
+                            <span>{payment.notas}</span>
+                          </p>
+                        )}
+                      </div>
+
+                      <div className="flex flex-col items-start gap-2 md:items-end">
+                        <p className={cn("text-lg font-semibold", payment.estado === "cancelado" && "text-muted-foreground line-through")}>
+                          {formatCurrency(payment.monto)}
+                        </p>
+                        <p className="text-xs text-muted-foreground">Folio {payment.id.slice(0, 8)}</p>
+                        {payment.estado === "activo" && (
+                          <Button variant="outline" size="sm" onClick={() => handleDownloadReceipt(payment)}>
+                            <Download className="mr-2 h-4 w-4" />
+                            Recibo
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {canceledPayments.length > 0 && (
+                <p className="border-t px-4 py-3 text-xs text-muted-foreground">
+                  Los pagos cancelados se conservan para trazabilidad y no suman al total pagado.
+                </p>
+              )}
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
 
-      {canceledPayments.length > 0 && (
-        <p className="text-xs text-muted-foreground">
-          Los pagos cancelados se conservan para trazabilidad y no suman al total pagado.
-        </p>
-      )}
-
-      <Dialog open={isAccountDialogOpen} onOpenChange={(open) => (open ? setIsAccountDialogOpen(true) : resetAccountDialog())}>
+      <Dialog open={isAccountDialogOpen && canCreateAccount} onOpenChange={(open) => (open ? setIsAccountDialogOpen(true) : resetAccountDialog())}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>Nueva cuenta por cobrar</DialogTitle>
@@ -618,7 +653,7 @@ const PatientPayments: React.FC<PatientPaymentsProps> = ({ patientId, patientNam
         </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(selectedAccount)} onOpenChange={(open) => !open && resetInstallmentDialog()}>
+      <Dialog open={Boolean(selectedAccount) && canRegisterPayment} onOpenChange={(open) => !open && resetInstallmentDialog()}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Registrar abono</DialogTitle>

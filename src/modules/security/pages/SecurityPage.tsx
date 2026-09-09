@@ -5,7 +5,6 @@ import {
   CalendarClock,
   CheckCircle2,
   Clock,
-  Fingerprint,
   Globe2,
   Laptop,
   LogOut,
@@ -38,6 +37,13 @@ import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { SectionHelp } from "@/shared/components/SectionHelp";
 import { Input } from "@/shared/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/components/ui/select";
 import { cn } from "@/shared/utils/utils";
 
 type SessionWithUser = UserSession & {
@@ -48,11 +54,14 @@ type SessionWithUser = UserSession & {
   roleIds?: string[];
 };
 
+type UserStatusFilter = "all" | "active" | "inactive" | "blocked" | "other";
+type SessionSort = "recent" | "oldest" | "user";
+
 const getRoleLabels = (roleIds: string[] | undefined, rolesById: Map<string, Role>) => {
   if (!roleIds || roleIds.length === 0) return "sin rol";
 
   return roleIds
-    .map((roleId) => rolesById.get(roleId)?.name || roleId)
+    .map((roleId) => rolesById.get(roleId)?.name || "Rol no disponible")
     .join(", ");
 };
 
@@ -106,11 +115,6 @@ const isStaleSession = (session: SessionWithUser) => {
   return Date.now() - date.getTime() > 24 * 60 * 60 * 1000;
 };
 
-const shortSessionId = (sessionId: string) => {
-  if (!sessionId) return "sin id";
-  return sessionId.length <= 12 ? sessionId : `${sessionId.slice(0, 6)}...${sessionId.slice(-4)}`;
-};
-
 const getDeviceIcon = (type: string) => {
   if (type === "Celular") return Smartphone;
   if (type === "Tablet") return Tablet;
@@ -132,6 +136,13 @@ const sessionSearchText = (session: SessionWithUser) => [
   session.roleIds?.join(" "),
 ].filter(Boolean).join(" ").toLowerCase();
 
+const formatUserStatus = (status?: string) => {
+  if (status === "active") return "Activo";
+  if (status === "inactive") return "Inactivo";
+  if (status === "blocked") return "Bloqueado";
+  return "Sin estado";
+};
+
 const SecurityPage: React.FC = () => {
   const { currentUser, sessions, revokeSession, closeAllOtherSessions } = useAuth();
   const { hasPermission } = usePermissions();
@@ -143,6 +154,8 @@ const SecurityPage: React.FC = () => {
   const [globalSessionsByUser, setGlobalSessionsByUser] = useState<Record<string, SessionWithUser[]>>({});
   const [isLoadingGlobalSessions, setIsLoadingGlobalSessions] = useState(false);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<UserStatusFilter>("all");
+  const [sortOrder, setSortOrder] = useState<SessionSort>("recent");
   const [sessionToRevoke, setSessionToRevoke] = useState<SessionWithUser | null>(null);
   const [isBulkRevokeOpen, setIsBulkRevokeOpen] = useState(false);
   const [isRevoking, setIsRevoking] = useState(false);
@@ -300,9 +313,24 @@ const SecurityPage: React.FC = () => {
 
   const filteredSessions = useMemo(() => {
     const term = search.trim().toLowerCase();
-    if (!term) return enrichedSessions;
-    return enrichedSessions.filter((session) => sessionSearchText(session).includes(term));
-  }, [enrichedSessions, search]);
+    const matches = enrichedSessions.filter((session) => {
+      const userStatus = session.userStatus?.toLowerCase() ?? "other";
+      const matchesSearch = !term || sessionSearchText(session).includes(term);
+      const matchesStatus =
+        statusFilter === "all" ||
+        (statusFilter === "other"
+          ? !["active", "inactive", "blocked"].includes(userStatus)
+          : userStatus === statusFilter);
+      return matchesSearch && matchesStatus;
+    });
+
+    return [...matches].sort((a, b) => {
+      if (sortOrder === "user") return a.userName.localeCompare(b.userName, "es-MX");
+      const dateA = toDate(a.lastActive)?.getTime() ?? 0;
+      const dateB = toDate(b.lastActive)?.getTime() ?? 0;
+      return sortOrder === "oldest" ? dateA - dateB : dateB - dateA;
+    });
+  }, [enrichedSessions, search, sortOrder, statusFilter]);
 
   const activeNowCount = enrichedSessions.filter(isRecentlyActive).length;
   const uniqueUserCount = new Set(enrichedSessions.map((session) => session.userId)).size;
@@ -338,7 +366,7 @@ const SecurityPage: React.FC = () => {
     if (session.isCurrent) return;
 
     if (!canRevokeAnySession && session.userId !== currentUser?.uid) {
-      toast.error("Necesitas security.sessions.revoke para cerrar sesiones de otros usuarios");
+      toast.error("No tienes autorización para cerrar sesiones de otros usuarios.");
       return;
     }
 
@@ -376,7 +404,7 @@ const SecurityPage: React.FC = () => {
     if (sessionsToClose.length === 0) return;
 
     if (canViewAllSessions && !canRevokeAnySession) {
-      toast.error("Necesitas security.sessions.revoke para cerrar sesiones de otros usuarios");
+      toast.error("No tienes autorización para cerrar sesiones de otros usuarios.");
       return;
     }
 
@@ -408,7 +436,7 @@ const SecurityPage: React.FC = () => {
   };
 
   return (
-    <div className="space-y-6 pb-24 lg:pb-6">
+    <div className="space-y-4 pb-20 lg:pb-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div>
           <div className="flex items-center gap-2">
@@ -435,14 +463,14 @@ const SecurityPage: React.FC = () => {
         )}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm text-muted-foreground">Sesiones activas</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{enrichedSessions.length}</div>
-            <p className="text-xs text-muted-foreground">Documentos abiertos de sesion</p>
+            <p className="text-xs text-muted-foreground">Conexiones registradas</p>
           </CardContent>
         </Card>
         <Card>
@@ -469,7 +497,7 @@ const SecurityPage: React.FC = () => {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{staleSessionCount}</div>
-            <p className="text-xs text-muted-foreground">Sin pulso en mas de 24 horas</p>
+            <p className="text-xs text-muted-foreground">Sin actividad en más de 24 horas</p>
           </CardContent>
         </Card>
       </div>
@@ -485,14 +513,35 @@ const SecurityPage: React.FC = () => {
                   : "Vista de tus sesiones activas."}
               </CardDescription>
             </div>
-            <div className="relative w-full lg:max-w-sm">
-              <Search className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-              <Input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Buscar usuario, correo, navegador..."
-                className="pl-9"
-              />
+            <div className="grid w-full gap-2 lg:max-w-2xl sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_160px_190px]">
+              <div className="relative sm:col-span-2 xl:col-span-1">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  type="search"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Buscar usuario o dispositivo..."
+                  className="h-9 pl-9"
+                />
+              </div>
+              <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as UserStatusFilter)}>
+                <SelectTrigger className="h-9"><SelectValue placeholder="Estado" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los estados</SelectItem>
+                  <SelectItem value="active">Activos</SelectItem>
+                  <SelectItem value="inactive">Inactivos</SelectItem>
+                  <SelectItem value="blocked">Bloqueados</SelectItem>
+                  <SelectItem value="other">Otros</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={sortOrder} onValueChange={(value) => setSortOrder(value as SessionSort)}>
+                <SelectTrigger className="h-9"><SelectValue placeholder="Ordenar" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="recent">Actividad reciente</SelectItem>
+                  <SelectItem value="oldest">Actividad más antigua</SelectItem>
+                  <SelectItem value="user">Usuario A–Z</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </CardHeader>
@@ -519,7 +568,7 @@ const SecurityPage: React.FC = () => {
               <div
                 key={`${session.userId}-${session.id}`}
                 className={cn(
-                  "rounded-lg border p-4 transition-colors",
+                  "rounded-lg border p-3 transition-colors",
                   session.isCurrent ? "border-primary/40 bg-primary/5" : "bg-card hover:bg-muted/30",
                 )}
               >
@@ -534,7 +583,7 @@ const SecurityPage: React.FC = () => {
                           <p className="font-semibold">{session.userName}</p>
                           {session.isCurrent && <Badge>Este navegador</Badge>}
                           {recent ? (
-                            <Badge className="bg-emerald-50 text-emerald-700 hover:bg-emerald-50">
+                            <Badge className="border border-success/30 bg-success/20 text-foreground hover:bg-success/20">
                               <CheckCircle2 className="mr-1 h-3 w-3" />
                               Activa
                             </Badge>
@@ -551,14 +600,7 @@ const SecurityPage: React.FC = () => {
                       </div>
                     </div>
 
-                    <div className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-4">
-                      <div>
-                        <p className="text-xs uppercase text-muted-foreground">ID de sesion</p>
-                        <p className="flex items-center gap-1 font-medium" title={session.id}>
-                          <Fingerprint className="h-3.5 w-3.5 text-primary" />
-                          {shortSessionId(session.id)}
-                        </p>
-                      </div>
+                    <div className="grid gap-3 text-sm md:grid-cols-2 xl:grid-cols-3">
                       <div>
                         <p className="text-xs uppercase text-muted-foreground">Dispositivo</p>
                         <p className="font-medium">{session.deviceLabel || session.deviceType}</p>
@@ -613,7 +655,7 @@ const SecurityPage: React.FC = () => {
                         <UserRound className="h-3.5 w-3.5" />
                         Usuario
                       </p>
-                      <p className="mt-1 text-muted-foreground">Estado: {session.userStatus || "sin perfil"}</p>
+                        <p className="mt-1 text-muted-foreground">Estado: {formatUserStatus(session.userStatus)}</p>
                       <p className="text-muted-foreground">
                         Roles: {getRoleLabels(session.roleIds, rolesById)}
                       </p>
@@ -624,7 +666,7 @@ const SecurityPage: React.FC = () => {
                         variant="outline"
                         onClick={() => setSessionToRevoke(session)}
                         disabled={!canCloseSession}
-                        title={canCloseSession ? "Cerrar esta sesion" : "Necesitas security.sessions.revoke"}
+                        title={canCloseSession ? "Cerrar esta sesión" : "No tienes autorización para cerrar esta sesión"}
                       >
                         <LogOut className="mr-2 h-4 w-4" />
                         Cerrar sesion
@@ -635,13 +677,6 @@ const SecurityPage: React.FC = () => {
               </div>
             );
           })}
-        </CardContent>
-      </Card>
-
-      <Card className="border-amber-200 bg-amber-50">
-        <CardContent className="p-4 text-sm text-amber-900">
-          Este panel permite detectar sesiones activas, sesiones viejas y dispositivos usados. El navegador no expone IP publica confiable,
-          direccion fisica ni ubicacion exacta; para esos datos se necesita backend o Cloud Functions.
         </CardContent>
       </Card>
 

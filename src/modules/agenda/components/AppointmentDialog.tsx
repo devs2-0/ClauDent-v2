@@ -357,7 +357,7 @@ const AppointmentDialog = ({
                 <p className="text-sm font-medium">{selectedDoctor.nombre}</p>
               )}
 
-              {isWalkIn && <Badge variant="secondary">Walk-in</Badge>}
+              {isWalkIn && <Badge variant="secondary">Sin cita</Badge>}
             </div>
 
             <p className="text-xs text-muted-foreground">
@@ -409,7 +409,7 @@ const AppointmentDialog = ({
               >
                 <div className="flex items-center gap-2 font-medium">
                   <UserPlus className="h-4 w-4" />
-                  Walk-in
+                  Sin cita
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
                   Para pacientes que llegan sin cita previa.
@@ -570,7 +570,7 @@ const AppointmentDialog = ({
                 onChange={(event) => handleStartTimeChange(event.target.value)}
               />
               <p className="text-xs text-muted-foreground">
-                El walk-in se registra para {form.startDate}. La duración se
+                La atención sin cita se registra para {form.startDate}. La duración se
                 aparta automáticamente por 30 minutos.
               </p>
             </div>

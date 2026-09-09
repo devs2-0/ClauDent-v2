@@ -1,5 +1,6 @@
 // (Archivo MODIFICADO) src/components/ServiciosIndividuales.tsx
 import React, { useState, useMemo } from 'react';
+import { Can, useCan } from '@/auth';
 import { Plus, Search, Edit, Trash2 } from 'lucide-react';
 import { useDentalServices } from '@/modules/services';
 import { formatCurrency } from '@/shared/utils/utils';
@@ -32,6 +33,7 @@ import { Skeleton } from '@/shared/components/ui/skeleton';
 const ServiciosIndividuales: React.FC = () => {
   const { services, addService, updateService, deleteService, servicesLoading } = useDentalServices();
   
+  const { can } = useCan();
   const [searchQuery, setSearchQuery] = useState('');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingService, setEditingService] = useState<string | null>(null);
@@ -62,6 +64,7 @@ const ServiciosIndividuales: React.FC = () => {
   }, [services, searchQuery]);
 
   const handleOpenDialog = (serviceId?: string) => {
+    if (!can(serviceId ? 'services.update' : 'services.create')) return;
     if (serviceId) {
       const service = services.find((s) => s.id === serviceId);
       if (service) {
@@ -91,6 +94,7 @@ const ServiciosIndividuales: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!can(editingService ? 'services.update' : 'services.create')) return;
     setIsFormLoading(true);
     
     const finalPrice = formData.precio === '' ? 0 : Number(formData.precio);
@@ -119,6 +123,7 @@ const ServiciosIndividuales: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
+    if (!can('services.delete')) return;
     if (confirm('¿Está seguro de eliminar este servicio?')) {
       try {
         await deleteService(id);
@@ -149,8 +154,8 @@ const ServiciosIndividuales: React.FC = () => {
   );
 
   return (
-    <div className="space-y-6 h-[calc(100vh-10rem)] flex flex-col">
-      <div className="flex items-center justify-between shrink-0">
+    <div className="flex h-[max(22rem,calc(100dvh-16rem))] min-h-0 flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3 shrink-0">
         <div className="relative w-full max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -161,18 +166,18 @@ const ServiciosIndividuales: React.FC = () => {
             className="pl-10"
           />
         </div>
-        <Button onClick={() => handleOpenDialog()}>
+        <Can permission="services.create"><Button onClick={() => handleOpenDialog()}>
           <Plus className="h-4 w-4 mr-2" />
           Nuevo Servicio
-        </Button>
+        </Button></Can>
       </div>
 
-      <Card className="flex-1 flex flex-col overflow-hidden">
-        <CardContent className="p-0 flex-1 overflow-hidden">
+      <Card className="relative isolate z-0 min-h-0 flex-1 flex flex-col overflow-hidden">
+        <CardContent className="p-0 min-h-0 flex-1 overflow-hidden">
           {/* ¡ALTURA DINÁMICA! */}
-          <div className="h-full overflow-auto">
+          <div className="relative isolate z-0 h-full min-h-0 overflow-y-auto overscroll-contain [&>div]:overflow-visible">
             <Table>
-              <TableHeader className="sticky top-0 bg-background z-10 shadow-sm">
+              <TableHeader className="sticky top-0 z-[1] bg-card shadow-sm">
                 <TableRow>
                   <TableHead className="whitespace-nowrap">Código</TableHead>
                   <TableHead className="whitespace-nowrap">Servicio</TableHead>
@@ -210,7 +215,7 @@ const ServiciosIndividuales: React.FC = () => {
                       </TableCell>
                       <TableCell className="text-right whitespace-nowrap">
                         <div className="flex justify-end gap-2">
-                          <Button
+                          <Can permission="services.update"><Button
                             variant="ghost"
                             size="icon"
                             onClick={() => handleOpenDialog(service.id)}
@@ -218,8 +223,8 @@ const ServiciosIndividuales: React.FC = () => {
                             disabled={isFormLoading}
                           >
                             <Edit className="h-4 w-4" />
-                          </Button>
-                          <Button
+                          </Button></Can>
+                          <Can permission="services.delete"><Button
                             variant="ghost"
                             size="icon"
                             onClick={() => handleDelete(service.id)}
@@ -227,7 +232,7 @@ const ServiciosIndividuales: React.FC = () => {
                             disabled={isFormLoading}
                           >
                             <Trash2 className="h-4 w-4 text-destructive" />
-                          </Button>
+                          </Button></Can>
                         </div>
                       </TableCell>
                     </TableRow>
@@ -239,7 +244,7 @@ const ServiciosIndividuales: React.FC = () => {
         </CardContent>
       </Card>
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <Dialog open={isDialogOpen && can(editingService ? 'services.update' : 'services.create')} onOpenChange={setIsDialogOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>{editingService ? 'Editar Servicio' : 'Nuevo Servicio'}</DialogTitle>

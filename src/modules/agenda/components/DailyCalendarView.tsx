@@ -274,7 +274,7 @@ const DailyCalendarView = ({
               gridTemplateColumns: `82px repeat(${visibleDoctors.length}, minmax(230px, 1fr))`,
             }}
           >
-            <div className="sticky left-0 z-20 border-b bg-background/95 p-3 text-xs font-medium text-muted-foreground backdrop-blur">
+            <div className="sticky left-0 z-[2] border-b bg-background/95 p-3 text-xs font-medium text-muted-foreground backdrop-blur">
               Hora
             </div>
 
@@ -313,7 +313,7 @@ const DailyCalendarView = ({
 
             {timeSlots.map((slot) => (
               <div key={slot.startTime} className="contents">
-                <div className="sticky left-0 z-10 border-b bg-background/95 p-3 text-xs text-muted-foreground backdrop-blur">
+                <div className="sticky left-0 z-[1] border-b bg-background/95 p-3 text-xs text-muted-foreground backdrop-blur">
                   <div className="flex items-center gap-1">
                     <Clock className="h-3.5 w-3.5" />
                     {slot.startTime}
@@ -386,7 +386,7 @@ const DailyCalendarView = ({
                             {appointment.appointmentType === "walk_in" && (
                               <Badge variant="secondary" className="gap-1">
                                 <UserPlus className="h-3 w-3" />
-                                Walk-in
+                                Sin cita
                               </Badge>
                             )}
 

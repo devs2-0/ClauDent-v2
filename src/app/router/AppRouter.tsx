@@ -73,7 +73,7 @@ export const AppRouter = () => {
               key={route.path}
               path={route.path}
               element={
-                <ProtectedRouteByPermission permission={route.permission}>
+                <ProtectedRouteByPermission permission={route.permission} anyPermission={route.anyPermission}>
                   {route.element}
                 </ProtectedRouteByPermission>
               }
