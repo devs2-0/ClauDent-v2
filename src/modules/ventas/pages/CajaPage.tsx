@@ -942,7 +942,9 @@ const CajaPage: React.FC = () => {
       ),
       "",
       `Subtotal: ${formatCurrency(selectedPaymentSubtotal)}`,
-      selectedPayment.descuento ? `Descuento: -${formatCurrency(selectedPayment.descuento)}` : "",
+      selectedPayment.descuento
+        ? `Descuento${selectedPayment.descuentoPorcentaje === undefined ? "" : ` (${selectedPayment.descuentoPorcentaje}%)`}: -${formatCurrency(selectedPayment.descuento)}`
+        : "",
       `Total pagado: ${formatCurrency(selectedPayment.monto)}`,
       selectedPayment.saldoPendiente ? `Saldo pendiente: ${formatCurrency(selectedPayment.saldoPendiente)}` : "",
       selectedPayment.notas ? `Observaciones: ${selectedPayment.notas}` : "",
@@ -3029,7 +3031,9 @@ const CajaPage: React.FC = () => {
                         <span>{formatCurrency(selectedPaymentSubtotal)}</span>
                       </div>
                       <div className="flex min-w-[240px] justify-between">
-                        <span className="text-muted-foreground">Descuento</span>
+                        <span className="text-muted-foreground">
+                          Descuento{selectedPayment.descuentoPorcentaje === undefined ? "" : ` (${selectedPayment.descuentoPorcentaje}%)`}
+                        </span>
                         <span>-{formatCurrency(selectedPayment.descuento)}</span>
                       </div>
                     </>

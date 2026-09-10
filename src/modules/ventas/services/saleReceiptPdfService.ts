@@ -23,6 +23,7 @@ export interface SaleReceiptData {
   subtotalServicios: number;
   subtotalProductos: number;
   descuento: number;
+  descuentoPorcentaje?: number;
   total: number;
   tipoRecibo?: SaleReceiptKind;
   tipoIngreso?: PaymentIncomeType | null;
@@ -128,7 +129,10 @@ export const generateSaleReceiptPDF = (receipt: SaleReceiptData) => {
     body: [
       ["Subtotal tratamientos", currency(receipt.subtotalServicios)],
       ["Subtotal productos", currency(receipt.subtotalProductos)],
-      ["Descuento", `-${currency(receipt.descuento)}`],
+      [
+        receipt.descuentoPorcentaje === undefined ? "Descuento" : `Descuento (${receipt.descuentoPorcentaje}%)`,
+        `-${currency(receipt.descuento)}`,
+      ],
       [kind === "abono" ? "Abono registrado" : "Total pagado", currency(receipt.total)],
     ],
     styles: { fontSize: 10 },

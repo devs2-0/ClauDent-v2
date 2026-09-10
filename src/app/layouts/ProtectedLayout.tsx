@@ -158,9 +158,9 @@ const AppHeader = () => {
 export const ProtectedLayout: React.FC = () => (
   <SidebarProvider defaultOpen={false}>
     <AppSidebar />
-    <SidebarInset className="flex min-h-screen w-full flex-col overflow-x-hidden bg-background transition-all">
+    <SidebarInset className="flex min-h-screen min-w-0 w-full flex-col overflow-x-hidden bg-background transition-all">
       <AppHeader />
-      <main className="app-module-content flex-1 overflow-y-auto p-3 pb-20 sm:p-4 lg:p-5 lg:pb-5">
+      <main className="app-module-content min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-3 pb-20 sm:p-4 lg:p-5 lg:pb-5">
         <Outlet />
       </main>
       <div className="block lg:hidden">

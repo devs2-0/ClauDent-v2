@@ -1,0 +1,41 @@
+.inventory-table-scrollbar {
+  appearance: none;
+  height: 2.75rem;
+  background: transparent;
+  cursor: ew-resize;
+  border-radius: 4px;
+}
+
+.inventory-table-scrollbar:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+.inventory-table-scrollbar::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: 4px;
+  background: hsl(var(--border));
+}
+
+.inventory-table-scrollbar::-moz-range-track {
+  height: 8px;
+  border-radius: 4px;
+  background: hsl(var(--border));
+}
+
+.inventory-table-scrollbar::-webkit-slider-thumb {
+  appearance: none;
+  width: max(32px, var(--inventory-scroll-thumb-width));
+  height: 12px;
+  margin-top: -2px;
+  border-radius: 4px;
+  background: hsl(var(--primary));
+}
+
+.inventory-table-scrollbar::-moz-range-thumb {
+  width: max(32px, var(--inventory-scroll-thumb-width));
+  height: 12px;
+  border: 0;
+  border-radius: 4px;
+  background: hsl(var(--primary));
+}

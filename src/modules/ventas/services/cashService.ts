@@ -23,6 +23,7 @@ import {
 } from "@/modules/inventario/services/inventoryService";
 import { cleanData, safeDate } from "@/shared/utils/firestoreData";
 import { getCurrentUserIdentity, type CurrentUserIdentity } from "@/shared/services/currentUserIdentity";
+import { calculatePercentageDiscount, normalizeDiscountPercentage, roundCurrency } from "../utils/discounts";
 import type {
   CashClosure,
   CashClosureTotals,
@@ -133,6 +134,9 @@ const mapPayment = (id: string, data: any): Payment => ({
   subtotalServicios: Number(data.subtotalServicios) || 0,
   subtotalProductos: Number(data.subtotalProductos) || 0,
   descuento: Number(data.descuento) || 0,
+  descuentoPorcentaje: data.descuentoPorcentaje === undefined || data.descuentoPorcentaje === null
+    ? undefined
+    : normalizeDiscountPercentage(data.descuentoPorcentaje),
   servicios: Array.isArray(data.servicios) ? data.servicios : [],
   productos: Array.isArray(data.productos) ? data.productos : [],
   motivoCancelacion: data.motivoCancelacion ?? "",
@@ -341,6 +345,25 @@ const calculateDirectSaleSubtotal = (items: Array<{ cantidad: number; precioUnit
   return items.reduce((total, item) => total + (Number(item.cantidad) || 0) * (Number(item.precioUnitario) || 0), 0);
 };
 
+const calculateDirectSaleDiscount = (input: RegisterDirectSaleInput, subtotal: number) => {
+  if (input.descuentoPorcentaje === undefined) {
+    return {
+      amount: Math.max(0, roundCurrency(input.descuento)),
+      percentage: undefined,
+    };
+  }
+
+  const percentage = normalizeDiscountPercentage(input.descuentoPorcentaje);
+  if (percentage >= 100) {
+    throw new Error("El descuento no puede dejar el total en cero.");
+  }
+
+  return {
+    amount: calculatePercentageDiscount(subtotal, percentage),
+    percentage,
+  };
+};
+
 const buildDirectSaleConcept = (input: RegisterDirectSaleInput) => {
   const serviceNames = (input.servicios ?? []).map((item) => item.nombre).filter(Boolean);
   const productNames = (input.productos ?? []).map((item) => item.nombre).filter(Boolean);
@@ -546,7 +569,10 @@ export const cashService = {
 
     const subtotalServicios = calculateDirectSaleSubtotal(servicios);
     const subtotalProductos = calculateDirectSaleSubtotal(productos);
-    const descuento = Math.max(0, Number(input.descuento) || 0);
+    const { amount: descuento, percentage: descuentoPorcentaje } = calculateDirectSaleDiscount(
+      input,
+      subtotalServicios + subtotalProductos,
+    );
     const total = subtotalServicios + subtotalProductos - descuento;
     const montoPagado = input.montoPagado === undefined
       ? total
@@ -621,6 +647,7 @@ export const cashService = {
         subtotalServicios,
         subtotalProductos,
         descuento,
+        descuentoPorcentaje,
         costoProductos,
         servicios,
         productos,
@@ -752,7 +779,10 @@ export const cashService = {
     const productos = (input.productos ?? []).filter((item) => Number(item.cantidad) > 0);
     const subtotalServicios = calculateDirectSaleSubtotal(servicios);
     const subtotalProductos = calculateDirectSaleSubtotal(productos);
-    const descuento = Math.max(0, Number(input.descuento) || 0);
+    const { amount: descuento, percentage: descuentoPorcentaje } = calculateDirectSaleDiscount(
+      input,
+      subtotalServicios + subtotalProductos,
+    );
     const total = Math.round((subtotalServicios + subtotalProductos - descuento) * 100) / 100;
     const montoPagado = Math.round((Number(input.montoPagado) || 0) * 100) / 100;
     const saldoPendiente = Math.max(0, Math.round((total - montoPagado) * 100) / 100);
@@ -855,6 +885,7 @@ export const cashService = {
         subtotalServicios,
         subtotalProductos,
         descuento,
+        descuentoPorcentaje,
         servicios,
         productos,
         ...movementUser,

@@ -21,6 +21,7 @@ import { Button } from "@/shared/components/ui/button";
 import { Card } from "@/shared/components/ui/card";
 import { SectionHelp } from "@/shared/components/SectionHelp";
 import { Input } from "@/shared/components/ui/input";
+import { Label } from "@/shared/components/ui/label";
 import {
   Select,
   SelectContent,
@@ -184,7 +185,7 @@ const Bitacora: React.FC = () => {
   const selectedAmount = extractMoneyAmount(selectedLog?.detalle);
 
   return (
-    <div className="p-4 md:p-8 space-y-6 animate-in fade-in duration-500 pb-24 lg:pb-6">
+    <div className="w-full min-w-0 space-y-5 p-3 pb-24 animate-in fade-in duration-500 sm:p-4 md:space-y-6 lg:pb-6 xl:p-8">
       <div className="flex flex-col gap-4">
         <div>
           <div className="flex items-center gap-2">
@@ -202,9 +203,9 @@ const Bitacora: React.FC = () => {
           </div>
         </div>
 
-        <Card className="p-4 border-border bg-card">
-          <div className="grid grid-cols-1 md:grid-cols-[minmax(220px,1.5fr)_180px_170px_150px_150px_auto] gap-3">
-            <div className="relative">
+        <Card className="w-full min-w-0 border-border bg-card p-4">
+          <div className="grid grid-cols-1 items-end gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[minmax(220px,1.5fr)_minmax(160px,180px)_minmax(160px,170px)_minmax(140px,150px)_minmax(140px,150px)_auto]">
+            <div className="relative min-w-0">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 placeholder="Buscar usuario, detalle o modulo..."
@@ -215,7 +216,7 @@ const Bitacora: React.FC = () => {
             </div>
 
             <Select value={moduleFilter} onValueChange={setModuleFilter}>
-              <SelectTrigger>
+              <SelectTrigger className="h-10 w-full">
                 <SelectValue placeholder="Modulo" />
               </SelectTrigger>
               <SelectContent>
@@ -229,7 +230,7 @@ const Bitacora: React.FC = () => {
             </Select>
 
             <Select value={actionFilter} onValueChange={setActionFilter}>
-              <SelectTrigger>
+              <SelectTrigger className="h-10 w-full">
                 <SelectValue placeholder="Accion" />
               </SelectTrigger>
               <SelectContent>
@@ -242,19 +243,25 @@ const Bitacora: React.FC = () => {
               </SelectContent>
             </Select>
 
-            <Input type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
-            <Input type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
+            <div className="grid min-w-0 gap-1.5">
+              <Label htmlFor="audit-date-from" className="text-xs text-muted-foreground">Fecha inicio</Label>
+              <Input id="audit-date-from" className="h-10 w-full min-w-0" type="date" value={dateFrom} onChange={(event) => setDateFrom(event.target.value)} />
+            </div>
+            <div className="grid min-w-0 gap-1.5">
+              <Label htmlFor="audit-date-to" className="text-xs text-muted-foreground">Fecha fin</Label>
+              <Input id="audit-date-to" className="h-10 w-full min-w-0" type="date" value={dateTo} onChange={(event) => setDateTo(event.target.value)} />
+            </div>
 
-            <Button variant="outline" onClick={clearFilters} disabled={!hasFilters}>
+            <Button className="h-10 w-full xl:w-auto" variant="outline" onClick={clearFilters} disabled={!hasFilters}>
               Limpiar
             </Button>
           </div>
 
-          <div className="mt-3 flex items-center justify-between gap-2">
-            <p className="text-xs text-muted-foreground">
+          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="min-w-0 text-xs text-muted-foreground">
               Mostrando los ultimos {AUDIT_LIMIT} eventos registrados.
             </p>
-            <div className="flex items-center gap-2">
+            <div className="flex shrink-0 items-center justify-end gap-2">
               <span className="text-xs text-muted-foreground font-medium whitespace-nowrap">{rangeText}</span>
               <Button variant="ghost" size="icon" onClick={goPrev} disabled={!canPrev} className="h-9 w-9" aria-label="Anterior">
                 <ChevronLeft className="h-5 w-5" />
@@ -267,7 +274,7 @@ const Bitacora: React.FC = () => {
         </Card>
       </div>
 
-      <div className="md:hidden space-y-3">
+      <div className="space-y-3 xl:hidden">
         {visibleLogs.map((log) => (
           <Card key={log.id} className="p-4 border-border shadow-sm bg-card">
             <div className="flex items-start justify-between gap-3">
@@ -278,7 +285,7 @@ const Bitacora: React.FC = () => {
                 </div>
                 <div className="flex items-center gap-2 text-xs">
                   <Mail className="h-4 w-4 text-muted-foreground shrink-0" />
-                  <span className="truncate max-w-[220px] font-medium">{log.usuarioEmail || "-"}</span>
+                  <span className="max-w-[220px] truncate font-medium sm:max-w-[420px] lg:max-w-[560px]">{log.usuarioEmail || "-"}</span>
                 </div>
                 <div className="flex items-center gap-2 text-xs">
                   <Layers className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -308,9 +315,9 @@ const Bitacora: React.FC = () => {
         )}
       </div>
 
-      <Card className="hidden md:block border-border shadow-md overflow-hidden bg-card">
+      <Card className="hidden min-w-0 border-border bg-card shadow-md xl:block">
         <div className="overflow-x-auto">
-          <Table>
+          <Table className="min-w-[1080px]">
             <TableHeader className="bg-muted/50">
                 <TableRow>
                   <TableHead className="font-bold py-4">Fecha y hora</TableHead>
