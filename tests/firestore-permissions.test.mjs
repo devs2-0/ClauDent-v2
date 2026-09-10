@@ -70,6 +70,8 @@ try {
       await assertSucceeds(updateDoc(doc(editor,collectionName,'created'),{nombre:'Edited'}));
       await assertFails(deleteDoc(doc(editor,collectionName,'created')));
       const remover=await user([`${module}.view`,`${module}.delete`]);
+      await assertSucceeds(updateDoc(doc(remover,collectionName,'created'),{estado:'inactivo'}));
+      await assertFails(updateDoc(doc(remover,collectionName,'created'),{nombre:'Denied'}));
       await assertSucceeds(deleteDoc(doc(remover,collectionName,'created')));
     });
   }

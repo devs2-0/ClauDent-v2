@@ -165,6 +165,10 @@ export const userService = {
     status: AppUserStatus,
     actorUid?: string | null,
   ): Promise<void> => {
+    if (actorUid && uid === actorUid && status !== "active") {
+      throw new Error("No puedes desactivar o bloquear tu propia cuenta.");
+    }
+
     const user = await userService.getUser(uid);
 
     if (!user) {

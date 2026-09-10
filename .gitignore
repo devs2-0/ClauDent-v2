@@ -6,3 +6,5 @@ dist/
 functions/
 firebase-debug.log
 vite-*.log
+
+.tmp/

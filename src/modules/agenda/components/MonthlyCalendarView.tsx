@@ -1,4 +1,5 @@
 import { CalendarDays, Clock, UserPlus } from "lucide-react";
+import { formatTime } from "@/shared/utils/time";
 
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
@@ -91,6 +92,7 @@ const MonthlyCalendarView = ({
 
   const appointmentsByDate = appointments.reduce<Record<string, Appointment[]>>(
     (accumulator, appointment) => {
+      if (!appointment?.startDate) return accumulator;
       if (!accumulator[appointment.startDate]) {
         accumulator[appointment.startDate] = [];
       }
@@ -102,10 +104,10 @@ const MonthlyCalendarView = ({
     {},
   );
 
-  const activeBlocks = blocks.filter((block) => block.status === "active");
+  const activeBlocks = blocks.filter((block) => block?.status === "active");
 
   return (
-    <Card className="overflow-hidden border-muted/70 shadow-sm">
+    <Card className="rounded-none border-0 shadow-none">
       <CardHeader className="border-b bg-muted/20 px-4 py-3">
         <CardTitle className="flex items-center gap-2 text-sm font-semibold">
           <CalendarDays className="h-4 w-4" />
@@ -229,7 +231,7 @@ const MonthlyCalendarView = ({
                             ) : (
                               <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
                                 <Clock className="h-3 w-3" />
-                                {block.startTime}
+                                {formatTime(block?.startTime)}
                               </span>
                             )}
                           </div>
@@ -285,7 +287,7 @@ const MonthlyCalendarView = ({
                           </div>
 
                           <p className="mt-1 truncate font-semibold">
-                            {appointment.startTime} · {appointment.patientName}
+                            {formatTime(appointment?.startTime)} · {appointment.patientName}
                           </p>
 
                           <div className="mt-1 flex items-center gap-1.5 text-muted-foreground">

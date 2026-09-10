@@ -1,4 +1,5 @@
 import { Can, useCan } from "@/auth";
+import { canRegisterStockEntry } from "../utils/inventoryPermissions";
 import React, { useMemo, useState } from "react";
 import {
   AlertTriangle,
@@ -145,6 +146,7 @@ const emptyEntryItemForm = {
 
 const InventarioPage: React.FC = () => {
   const { can } = useCan();
+  const canRestock = canRegisterStockEntry(can);
   const {
     products,
     productsLoading,
@@ -564,6 +566,7 @@ const InventarioPage: React.FC = () => {
 
   const handleRegisterStockEntry = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (!canRestock) return;
 
     if (!stockEntryForm.proveedor.trim() || !stockEntryForm.documentoCompra.trim()) {
       toast.error("Escribe proveedor y documento de compra");
@@ -796,10 +799,10 @@ const InventarioPage: React.FC = () => {
               </div>
             </PopoverContent>
           </Popover>
-          <Can permission="inventory.stock.adjust"><Button variant="outline" onClick={() => setIsStockEntryDialogOpen(true)}>
+          {canRestock && <Button variant="outline" onClick={() => setIsStockEntryDialogOpen(true)}>
             <Truck className="mr-2 h-4 w-4" />
             Reabastecer
-          </Button></Can>
+          </Button>}
           <Can permission="inventory.categories.manage"><Button variant="outline" onClick={() => openCategoryDialog()}>
             <Layers className="mr-2 h-4 w-4" />
             Categoria
@@ -1082,10 +1085,10 @@ const InventarioPage: React.FC = () => {
                   <CardTitle>Reabastecer</CardTitle>
                   <CardDescription>Selecciona productos registrados y suma stock por lote.</CardDescription>
                 </div>
-                <Can permission="inventory.stock.adjust"><Button onClick={() => setIsStockEntryDialogOpen(true)}>
+                {canRestock && <Button onClick={() => setIsStockEntryDialogOpen(true)}>
                   <Truck className="mr-2 h-4 w-4" />
                   Reabastecer
-                </Button></Can>
+                </Button>}
               </div>
               <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(220px,1fr)_180px_180px_170px_auto] lg:items-end">
                 <div className="space-y-1">
@@ -1214,7 +1217,7 @@ const InventarioPage: React.FC = () => {
                             <TableCell>{shortage > 0 ? `${shortage} ${product.unidad}` : "Al minimo"}</TableCell>
                             <TableCell>{product.proveedor || "Sin proveedor"}</TableCell>
                             <TableCell className="text-right">
-                              <Can permission="inventory.stock.adjust"><Button
+                              {canRestock && <Button
                                 type="button"
                                 size="sm"
                                 variant="outline"
@@ -1224,7 +1227,7 @@ const InventarioPage: React.FC = () => {
                                 }}
                               >
                                 Reabastecer
-                              </Button></Can>
+                              </Button>}
                             </TableCell>
                           </TableRow>
                         );
@@ -1738,7 +1741,7 @@ const InventarioPage: React.FC = () => {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={isStockEntryDialogOpen && (can("inventory.stock.adjust") || can("inventory.purchaseList.manage"))} onOpenChange={setIsStockEntryDialogOpen}>
+      <Dialog open={isStockEntryDialogOpen && canRestock} onOpenChange={setIsStockEntryDialogOpen}>
         <DialogContent className="max-w-4xl">
           <DialogHeader>
             <DialogTitle>Reabastecer stock por lote</DialogTitle>

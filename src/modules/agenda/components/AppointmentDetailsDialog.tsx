@@ -1,3 +1,4 @@
+import { formatTimeRange } from "@/shared/utils/time";
 import {
   CalendarCheck,
   CheckCircle2,
@@ -104,8 +105,7 @@ const AppointmentDetailsDialog = ({
 
               <span className="inline-flex items-center gap-1 text-sm text-muted-foreground">
                 <Clock className="h-4 w-4" />
-                {appointment.startDate} · {appointment.startTime} -{" "}
-                {appointment.endTime}
+                {appointment.startDate} · {formatTimeRange(appointment.startTime, appointment.endTime)}
               </span>
             </div>
 

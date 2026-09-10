@@ -2,6 +2,7 @@ import React, { createContext, ReactNode, useContext, useEffect, useState } from
 import { toast } from "sonner";
 import { useAuth, useCan } from "@/auth";
 import { inventoryService } from "../services/inventoryService";
+import { canRegisterStockEntry } from "../utils/inventoryPermissions";
 import type {
   CreateInventoryCategoryInput,
   CreateInventoryProductInput,
@@ -148,7 +149,7 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
   };
 
   const registerStockEntry = async (input: RegisterStockEntryInput) => {
-    if (!can("inventory.stock.adjust") && !can("inventory.purchaseList.manage")) throw new Error("No tienes permiso para registrar reabastecimientos.");
+    if (!canRegisterStockEntry(can)) throw new Error("No tienes permiso para registrar reabastecimientos.");
     const id = await inventoryService.registerStockEntry(input);
     toast.success("Reabastecimiento registrado");
     return id;

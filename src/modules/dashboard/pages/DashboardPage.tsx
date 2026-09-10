@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { compareTimes, formatTime, normalizeTime, timeToMinutes } from "@/shared/utils/time";
 import { Link } from "react-router-dom";
 import {
   CalendarCheck,
@@ -83,14 +84,6 @@ const getLocalDateValue = () => {
   const month = String(now.getMonth() + 1).padStart(2, "0");
   const day = String(now.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
-};
-
-const timeToMinutes = (value: string) => {
-  const [hours, minutes] = value.split(":").map(Number);
-  return (
-    (Number.isFinite(hours) ? hours : 0) * 60 +
-    (Number.isFinite(minutes) ? minutes : 0)
-  );
 };
 
 const ActiveShiftIncomeCard: React.FC = () => {
@@ -185,7 +178,7 @@ const DailyAgendaCard: React.FC<DailyAgendaCardProps> = ({
   today,
 }) => {
   const todayAppointments = useMemo(
-    () => appointments.filter((appointment) => appointment.startDate === today),
+    () => (appointments ?? []).filter((appointment) => appointment?.startDate === today),
     [appointments, today],
   );
 
@@ -253,11 +246,11 @@ const DailyAgendaCard: React.FC<DailyAgendaCardProps> = ({
           appointment.appointmentType !== "walk_in" &&
           (appointment.status === "scheduled" ||
             appointment.status === "confirmed") &&
-          timeToMinutes(appointment.startTime) >= currentMinutes,
+          (!normalizeTime(appointment?.startTime) || timeToMinutes(appointment?.startTime) >= currentMinutes),
       )
       .sort(
         (first, second) =>
-          timeToMinutes(first.startTime) - timeToMinutes(second.startTime),
+          compareTimes(first?.startTime, second?.startTime),
       );
   }, [todayAppointments]);
 
@@ -331,7 +324,7 @@ const DailyAgendaCard: React.FC<DailyAgendaCardProps> = ({
                         className="flex min-w-0 items-center gap-3 rounded-lg border bg-background/40 px-3 py-2"
                       >
                         <span className="w-12 shrink-0 font-semibold tabular-nums text-primary">
-                          {appointment.startTime}
+                          {formatTime(appointment?.startTime)}
                         </span>
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-medium">

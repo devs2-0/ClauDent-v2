@@ -714,7 +714,7 @@ const CajaPage: React.FC = () => {
         description: `El corte del ${formatDate(dateFilter)} esta activo y listo para recibir cobros.`,
         nextAction: "Al final del dia cierra manual o automatico.",
         Icon: Unlock,
-        cardClass: "border-emerald-300 bg-emerald-50",
+        cardClass: "border-emerald-500/40 bg-card text-card-foreground",
         iconClass: "bg-emerald-600 text-white",
         badgeClass: "bg-emerald-600 text-white hover:bg-emerald-600",
       };
@@ -727,7 +727,7 @@ const CajaPage: React.FC = () => {
         description: `Hay una caja abierta del ${formatDate(openCashClosure.fecha)}. Cierra ese corte antes de operar el ${formatDate(dateFilter)}.`,
         nextAction: "Ve al corte pendiente y cierralo.",
         Icon: AlertTriangle,
-        cardClass: "border-amber-300 bg-amber-50",
+        cardClass: "border-amber-500/50 bg-card text-card-foreground",
         iconClass: "bg-amber-500 text-white",
         badgeClass: "bg-amber-500 text-white hover:bg-amber-500",
       };
@@ -740,7 +740,7 @@ const CajaPage: React.FC = () => {
         description: `Hay ${closedClosuresForDate.length} corte${closedClosuresForDate.length === 1 ? "" : "s"} cerrado${closedClosuresForDate.length === 1 ? "" : "s"} para el ${formatDate(dateFilter)}.`,
         nextAction: canOpenSelectedDate ? "Puedes abrir caja nuevamente para este dia." : "Consulta el resumen o selecciona el dia actual.",
         Icon: Lock,
-        cardClass: "border-slate-300 bg-slate-50",
+        cardClass: "border-border bg-card text-card-foreground",
         iconClass: "bg-slate-700 text-white",
         badgeClass: "bg-slate-700 text-white hover:bg-slate-700",
       };
@@ -752,7 +752,7 @@ const CajaPage: React.FC = () => {
       description: `Todavia no hay corte para el ${formatDate(dateFilter)}.`,
       nextAction: isSelectedDateToday ? "Abre caja para empezar a cobrar." : "Solo se puede abrir caja en el dia actual.",
       Icon: Power,
-      cardClass: "border-red-200 bg-red-50",
+      cardClass: "border-destructive/40 bg-card text-card-foreground",
       iconClass: "bg-red-600 text-white",
       badgeClass: "bg-red-600 text-white hover:bg-red-600",
     };
@@ -2576,7 +2576,7 @@ const CajaPage: React.FC = () => {
                       </SectionHelp>
                     </div>
                   </div>
-                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
+                  <div className="rounded-lg border border-amber-500/40 bg-card p-4 text-card-foreground">
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
                         <AlertTriangle className="h-4 w-4 text-amber-600" />
@@ -3219,7 +3219,7 @@ const CajaPage: React.FC = () => {
               </div>
             </div>
 
-            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-muted-foreground">
+            <div className="rounded-lg border border-amber-500/40 bg-card p-3 text-sm text-muted-foreground">
               El cierre por cambio de dia sigue activo: cualquier caja abierta de un dia anterior se cerrara automaticamente.
             </div>
           </div>

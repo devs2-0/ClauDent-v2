@@ -1,4 +1,5 @@
 import { CalendarClock, Clock, Stethoscope, UserPlus } from "lucide-react";
+import { formatTimeRange, normalizeTime, timeToMinutes } from "@/shared/utils/time";
 
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
@@ -38,12 +39,6 @@ const statusLabels: Record<AppointmentStatus, string> = {
 };
 
 const DEFAULT_DOCTOR_COLOR = "#2563EB";
-
-const timeToMinutes = (time: string) => {
-  const [hours = "0", minutes = "0"] = time.split(":");
-
-  return Number(hours) * 60 + Number(minutes);
-};
 
 const minutesToTime = (totalMinutes: number) => {
   const hours = Math.floor(totalMinutes / 60);
@@ -137,11 +132,17 @@ const DailyCalendarView = ({
   });
 
   const selectedDayOfWeek = getDayOfWeek(selectedDate);
+  const appointmentsWithoutTime = appointments.filter((appointment) =>
+    appointment?.startDate === selectedDate &&
+    !normalizeTime(appointment?.startTime) &&
+    visibleDoctors.some((doctor) => doctor.id === appointment.doctorId),
+  );
 
   const getDoctorSchedulesForDate = (doctorId: string) => {
     const doctorSchedules = schedules.filter((schedule) => {
       return (
-        schedule.status === "active" &&
+        schedule?.status === "active" &&
+        normalizeTime(schedule.startTime) && normalizeTime(schedule.endTime) &&
         schedule.staffType === "doctor" &&
         schedule.staffId === doctorId
       );
@@ -184,7 +185,7 @@ const DailyCalendarView = ({
     endTime: string,
   ) => {
     return blocks.find((block) => {
-      if (block.status !== "active") return false;
+      if (block?.status !== "active") return false;
       if (block.staffType !== "doctor") return false;
       if (block.staffId !== doctorId) return false;
       if (!isDateWithinRange(selectedDate, block.startDate, block.endDate)) {
@@ -203,6 +204,7 @@ const DailyCalendarView = ({
     endTime: string,
   ) => {
     return appointments.find((appointment) => {
+      if (!appointment || !normalizeTime(appointment.startTime)) return false;
       if (appointment.doctorId !== doctorId) return false;
       if (appointment.startDate !== selectedDate) return false;
 
@@ -218,6 +220,7 @@ const DailyCalendarView = ({
     endTime: string,
   ) => {
     return appointments.some((appointment) => {
+      if (!appointment) return false;
       if (appointment.status === "cancelled") return false;
       if (appointment.status === "no_show") return false;
       if (appointment.doctorId !== doctorId) return false;
@@ -247,7 +250,7 @@ const DailyCalendarView = ({
 
   if (visibleDoctors.length === 0) {
     return (
-      <Card>
+      <Card className="rounded-none border-0 shadow-none">
         <CardContent className="p-6">
           <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
             No hay doctores activos para mostrar.
@@ -258,8 +261,21 @@ const DailyCalendarView = ({
   }
 
   return (
-    <Card className="overflow-hidden border bg-background shadow-sm">
+    <Card className="rounded-none border-0 bg-background shadow-none">
       <CardContent className="p-0">
+        {appointmentsWithoutTime.length > 0 && (
+          <div className="space-y-2 border-b bg-muted/40 p-3">
+            <p className="text-sm font-medium">Horario no definido</p>
+            <div className="flex flex-wrap gap-2">
+              {appointmentsWithoutTime.map((appointment) => (
+                <Button key={appointment.id} variant="outline" size="sm"
+                  onClick={() => onSelectAppointment?.(appointment)}>
+                  {appointment.patientName} · Sin hora
+                </Button>
+              ))}
+            </div>
+          </div>
+        )}
         <div className="border-b bg-muted/20 px-4 py-3">
           <div className="flex items-center gap-2">
             <CalendarClock className="h-4 w-4 text-muted-foreground" />
@@ -391,7 +407,7 @@ const DailyCalendarView = ({
                             )}
 
                             <span className="text-xs text-muted-foreground">
-                              {appointment.startTime} - {appointment.endTime}
+                              {formatTimeRange(appointment?.startTime, appointment?.endTime)}
                             </span>
                           </div>
 
@@ -423,7 +439,7 @@ const DailyCalendarView = ({
                           <p className="mt-1 text-xs text-muted-foreground">
                             {block.allDay
                               ? "Todo el día"
-                              : `${block.startTime} - ${block.endTime}`}
+                              : formatTimeRange(block?.startTime, block?.endTime)}
                           </p>
                         </div>
                       ) : !schedule ? (

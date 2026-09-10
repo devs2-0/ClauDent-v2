@@ -11,6 +11,7 @@ import {
 } from "firebase/firestore";
 
 import { db } from "@/lib/firebase";
+import { normalizeTime, compareTimes } from "@/shared/utils/time";
 import type {
   Appointment,
   AppointmentStatus,
@@ -76,8 +77,8 @@ const toAppointment = (
         )
       : [],
     startDate: typeof data.startDate === "string" ? data.startDate : "",
-    startTime: typeof data.startTime === "string" ? data.startTime : "09:00",
-    endTime: typeof data.endTime === "string" ? data.endTime : "09:30",
+    startTime: normalizeTime(data.startTime),
+    endTime: normalizeTime(data.endTime),
     startAt: data.startAt ?? null,
     endAt: data.endAt ?? null,
     reason: typeof data.reason === "string" ? data.reason : "",
@@ -109,7 +110,7 @@ export const appointmentService = {
           return a.startDate.localeCompare(b.startDate);
         }
 
-        return a.startTime.localeCompare(b.startTime);
+        return compareTimes(a?.startTime, b?.startTime);
       });
   },
 

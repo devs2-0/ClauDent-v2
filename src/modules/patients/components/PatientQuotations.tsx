@@ -1,8 +1,8 @@
 // Patient quotations list (ACTUALIZADO A NUEVOS ESTADOS)
 import { Can, useCan } from '@/auth';
-import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { Plus, FileText, Printer } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Edit, FileText, Plus, Printer } from 'lucide-react';
 import { usePatients } from '@/modules/patients';
 import { Quotation, useQuotations } from '@/modules/quotations';
 import { formatCurrency, formatDate } from '@/shared/utils/utils';
@@ -10,11 +10,6 @@ import { Button } from '@/shared/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/shared/components/ui/card';
 import { Badge } from '@/shared/components/ui/badge';
 import { Skeleton } from '@/shared/components/ui/skeleton';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/shared/components/ui/dialog';
-import { Label } from '@/shared/components/ui/label';
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/shared/components/ui/select';
-import { Textarea } from '@/shared/components/ui/textarea';
-import { toast } from 'sonner';
 import { generateQuotationPDF } from '@/modules/quotations/services/quotationPdfService';
 
 interface PatientQuotationsProps {
@@ -23,20 +18,10 @@ interface PatientQuotationsProps {
 
 const PatientQuotations: React.FC<PatientQuotationsProps> = ({ patientId }) => {
   const { can } = useCan();
+  const navigate = useNavigate();
   const { patients } = usePatients();
-  const { quotations, quotationsLoading, updateQuotation } = useQuotations();
+  const { quotations, quotationsLoading } = useQuotations();
   const [patientQuotations, setPatientQuotations] = useState<Quotation[]>([]);
-  
-  const [editingQuotation, setEditingQuotation] = useState<Quotation | null>(null);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-
-  const [formData, setFormData] = useState({
-     fecha: '',
-     estado: '',
-     notas: '',
-     descuento: '' as string | number
-  });
 
   useEffect(() => {
     if (patientId && quotations.length > 0) {
@@ -48,36 +33,13 @@ const PatientQuotations: React.FC<PatientQuotationsProps> = ({ patientId }) => {
   }, [patientId, quotations]);
 
   const handleEditClick = (quotation: Quotation) => {
-      if (!can("quotations.update")) return;
-      setEditingQuotation(quotation);
-      setFormData({
-          fecha: quotation.fecha,
-          estado: quotation.estado,
-          notas: quotation.notas || '',
-          descuento: quotation.descuento
-      });
-      setIsDialogOpen(true);
-  };
-  
-  const handleSave = async () => {
-      if (!can("quotations.update")) return;
-      if(!editingQuotation) return;
-      setIsSaving(true);
-      try {
-          await updateQuotation(editingQuotation.id, {
-              fecha: formData.fecha,
-              estado: formData.estado as any,
-              notas: formData.notas,
-              descuento: Number(formData.descuento)
-          });
-          toast.success("Cotización actualizada");
-          setIsDialogOpen(false);
-      } catch(e) {
-          console.error(e);
-          toast.error("Error al actualizar");
-      } finally {
-          setIsSaving(false);
-      }
+    if (!can("quotations.update")) return;
+    navigate("/cotizaciones", {
+      state: {
+        editQuotationId: quotation.id,
+        returnTo: `/pacientes/${patientId}`,
+      },
+    });
   };
 
   const handlePrint = (q: Quotation) => {
@@ -144,7 +106,7 @@ const PatientQuotations: React.FC<PatientQuotationsProps> = ({ patientId }) => {
           {patientQuotations.map((quotation) => (
             <Card 
                 key={quotation.id} 
-                className="hover:shadow-md transition-shadow cursor-pointer"
+                className={can("quotations.update") ? "cursor-pointer transition-shadow hover:shadow-md" : undefined}
                 onClick={can("quotations.update") ? () => handleEditClick(quotation) : undefined}
             >
               <CardHeader>
@@ -152,7 +114,7 @@ const PatientQuotations: React.FC<PatientQuotationsProps> = ({ patientId }) => {
                   <div>
                     <CardTitle className="text-base flex items-center gap-2">
                       <FileText className="h-4 w-4" />
-                      Cotización #{quotation.id.substring(0, 6)}...
+                      Cotización
                     </CardTitle>
                     <CardDescription>{formatDate(quotation.fecha)}</CardDescription>
                   </div>
@@ -174,6 +136,17 @@ const PatientQuotations: React.FC<PatientQuotationsProps> = ({ patientId }) => {
                     <Can permission="quotations.pdf.generate"><Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handlePrint(quotation); }}>
                         <Printer className="h-4 w-4 text-muted-foreground" />
                     </Button></Can>
+                    <Can permission="quotations.update"><Button
+                      variant="ghost"
+                      size="icon"
+                      aria-label="Editar"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        handleEditClick(quotation);
+                      }}
+                    >
+                      <Edit className="h-4 w-4" />
+                    </Button></Can>
                   </div>
                 </div>
               </CardContent>
@@ -182,39 +155,6 @@ const PatientQuotations: React.FC<PatientQuotationsProps> = ({ patientId }) => {
         </div>
       )}
 
-      {/* Mini Dialogo de Edición Rápida */}
-      <Dialog open={isDialogOpen && can("quotations.update")} onOpenChange={setIsDialogOpen}>
-        <DialogContent>
-            <DialogHeader>
-                <DialogTitle>Editar Estado / Notas</DialogTitle>
-                <DialogDescription>Para editar items, ve al módulo de Cotizaciones.</DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4 py-2">
-                <div className="space-y-2">
-                    <Label>Estado</Label>
-                    <Select value={formData.estado} onValueChange={(v) => setFormData({...formData, estado: v})}>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                        <SelectItem value="borrador">Borrador</SelectItem>
-                        <SelectItem value="activo">Activo</SelectItem>
-                        <SelectItem value="inactivo">Inactivo</SelectItem>
-                        </SelectContent>
-                    </Select>
-                </div>
-                <div className="space-y-2">
-                    <Label>Notas</Label>
-                    <Textarea 
-                        value={formData.notas} 
-                        onChange={(e) => setFormData({...formData, notas: e.target.value})} 
-                    />
-                </div>
-            </div>
-            <DialogFooter>
-                <Button variant="outline" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
-                <Button onClick={handleSave} disabled={isSaving}>Guardar</Button>
-            </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };

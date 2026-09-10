@@ -1,4 +1,4 @@
-import { permissionKeys } from "./permissionCatalog";
+import { rolePermissionKeys } from "./permissionCatalog";
 import type { DefaultRoleDefinition } from "../types/role.types";
 
 export const defaultRoles: DefaultRoleDefinition[] = [
@@ -6,7 +6,7 @@ export const defaultRoles: DefaultRoleDefinition[] = [
     id: "admin",
     name: "Administrador",
     description: "Acceso completo al sistema",
-    permissions: permissionKeys,
+    permissions: rolePermissionKeys,
     isSystem: true,
     isAdmin: true,
   },

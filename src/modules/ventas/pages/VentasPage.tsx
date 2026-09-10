@@ -441,14 +441,14 @@ const VentasPage: React.FC = () => {
         </div>
       </div>
 
-      <Card className={hasOpenCashForSelectedDate ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}>
+      <Card className={hasOpenCashForSelectedDate ? "border-emerald-500/40 bg-card text-card-foreground" : "border-amber-500/50 bg-card text-card-foreground"}>
         <CardContent className="flex flex-col gap-3 p-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="flex items-start gap-3">
             <div className={`mt-0.5 flex h-10 w-10 items-center justify-center rounded-md ${hasOpenCashForSelectedDate ? "bg-emerald-600" : "bg-amber-500"} text-white`}>
               {hasOpenCashForSelectedDate ? <CheckCircle2 className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
             </div>
             <div>
-              <p className="font-semibold">
+              <p className="font-semibold text-foreground">
                 {hasOpenCashForSelectedDate
                   ? `Las ventas entran al corte del ${formatDate(dateFilter)}`
                   : hasOpenCashForAnotherDate && openCashClosure

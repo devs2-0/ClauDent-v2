@@ -1,4 +1,5 @@
 import { CalendarRange, Clock, Stethoscope, UserPlus } from "lucide-react";
+import { formatTime } from "@/shared/utils/time";
 
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
@@ -85,6 +86,7 @@ const WeeklyCalendarView = ({
 
   const appointmentsByDate = appointments.reduce<Record<string, Appointment[]>>(
     (accumulator, appointment) => {
+      if (!appointment?.startDate) return accumulator;
       if (!accumulator[appointment.startDate]) {
         accumulator[appointment.startDate] = [];
       }
@@ -96,10 +98,10 @@ const WeeklyCalendarView = ({
     {},
   );
 
-  const activeBlocks = blocks.filter((block) => block.status === "active");
+  const activeBlocks = blocks.filter((block) => block?.status === "active");
 
   return (
-    <Card className="overflow-hidden border-muted/70 shadow-sm">
+    <Card className="rounded-none border-0 shadow-none">
       <CardHeader className="border-b bg-muted/20 px-4 py-3">
         <CardTitle className="flex items-center gap-2 text-sm font-semibold">
           <CalendarRange className="h-4 w-4" />
@@ -205,7 +207,7 @@ const WeeklyCalendarView = ({
                             ) : (
                               <span className="inline-flex items-center gap-1 text-muted-foreground">
                                 <Clock className="h-3 w-3" />
-                                {block.startTime}
+                                {formatTime(block?.startTime)}
                               </span>
                             )}
                           </div>
@@ -259,7 +261,7 @@ const WeeklyCalendarView = ({
 
                             <span className="inline-flex items-center gap-1 text-muted-foreground">
                               <Clock className="h-3 w-3" />
-                              {appointment.startTime}
+                              {formatTime(appointment?.startTime)}
                             </span>
                           </div>
 

@@ -244,6 +244,27 @@ export const userInvitationService = {
   },
 
   softDeleteUserAccess: async (uid: string, actorUid?: string | null) => {
+    if (actorUid && uid === actorUid) {
+      throw new Error("No puedes quitar el acceso de tu propia cuenta.");
+    }
+
+    const userSnap = await getDoc(doc(db, "usuarios", uid));
+    if (!userSnap.exists()) throw new Error("El usuario no existe.");
+
+    const userData = userSnap.data();
+    if (userData.isAdmin === true && userData.status === "active") {
+      const activeAdmins = await getDocs(
+        query(
+          collection(db, "usuarios"),
+          where("isAdmin", "==", true),
+          where("status", "==", "active"),
+        ),
+      );
+      if (activeAdmins.size <= 1) {
+        throw new Error("No se puede quitar el acceso del último administrador activo.");
+      }
+    }
+
     await updateDoc(doc(db, "usuarios", uid), {
       status: "blocked",
       roleIds: [],
