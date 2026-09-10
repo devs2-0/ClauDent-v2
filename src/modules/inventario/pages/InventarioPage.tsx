@@ -4,8 +4,11 @@ import React, { useMemo, useState } from "react";
 import {
   AlertTriangle,
   Bell,
+  Check,
+  ChevronsUpDown,
   ClipboardList,
   Edit,
+  EllipsisVertical,
   Layers,
   Package,
   PackageMinus,
@@ -25,6 +28,14 @@ import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+} from "@/shared/components/ui/command";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -33,6 +44,12 @@ import {
   DialogTitle,
 } from "@/shared/components/ui/dialog";
 import { Input } from "@/shared/components/ui/input";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/shared/components/ui/dropdown-menu";
 import { Label } from "@/shared/components/ui/label";
 import { Popover, PopoverContent, PopoverTrigger } from "@/shared/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/components/ui/select";
@@ -48,7 +65,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/shared/components/ui
 import { Textarea } from "@/shared/components/ui/textarea";
 import { formatCurrency, formatDate } from "@/shared/utils/utils";
 import { usePagination } from "@/shared/hooks/usePagination";
+import { useConfirmAction } from "@/shared/hooks/useConfirmAction";
 import { useInventory } from "../hooks/useInventory";
+import { InventoryTable } from "../components/InventoryTable";
 import type {
   InventoryCategory,
   InventoryCategoryRecord,
@@ -146,6 +165,7 @@ const emptyEntryItemForm = {
 
 const InventarioPage: React.FC = () => {
   const { can } = useCan();
+  const { confirm, confirmationDialog } = useConfirmAction();
   const canRestock = canRegisterStockEntry(can);
   const {
     products,
@@ -185,6 +205,7 @@ const InventarioPage: React.FC = () => {
   const [isCategoryDialogOpen, setIsCategoryDialogOpen] = useState(false);
   const [isMovementDialogOpen, setIsMovementDialogOpen] = useState(false);
   const [isStockEntryDialogOpen, setIsStockEntryDialogOpen] = useState(false);
+  const [isStockEntryProductSearchOpen, setIsStockEntryProductSearchOpen] = useState(false);
 
   const [editingProductId, setEditingProductId] = useState<string | null>(null);
   const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
@@ -508,7 +529,13 @@ const InventarioPage: React.FC = () => {
       return;
     }
 
-    if (!window.confirm(`Eliminar la categoria "${category.nombre}"?`)) return;
+    const confirmed = await confirm({
+      title: "Eliminar categoria",
+      description: `"${category.nombre}" se eliminara de la configuracion. Esta accion solo esta disponible cuando la categoria no tiene productos.`,
+      confirmLabel: "Eliminar",
+      destructive: true,
+    });
+    if (!confirmed) return;
 
     try {
       await deleteCategory(category.id);
@@ -518,6 +545,17 @@ const InventarioPage: React.FC = () => {
   };
 
   const handleToggleProductStatus = async (product: InventoryProduct) => {
+    const isActivating = product.estado !== "activo";
+    const confirmed = await confirm({
+      title: isActivating ? "Activar producto" : "Desactivar producto",
+      description: isActivating
+        ? `"${getProductDisplayName(product)}" volvera a estar disponible para nuevas ventas y movimientos.`
+        : `"${getProductDisplayName(product)}" dejara de estar disponible para nuevas ventas y movimientos. Su historial se conservara.`,
+      confirmLabel: isActivating ? "Activar" : "Desactivar",
+      destructive: !isActivating,
+    });
+    if (!confirmed) return;
+
     try {
       if (product.estado === "activo") {
         await deleteProduct(product.id);
@@ -578,6 +616,13 @@ const InventarioPage: React.FC = () => {
       return;
     }
 
+    const confirmed = await confirm({
+      title: "Registrar reabastecimiento",
+      description: `Se sumara stock a ${entryItems.length} ${entryItems.length === 1 ? "producto" : "productos"} y el movimiento quedara registrado con el proveedor y documento indicados.`,
+      confirmLabel: "Registrar reabastecimiento",
+    });
+    if (!confirmed) return;
+
     setIsSavingStockEntry(true);
     try {
       await registerStockEntry({
@@ -618,13 +663,27 @@ const InventarioPage: React.FC = () => {
       return;
     }
 
+    const quantity = Number(movementForm.cantidad) || 0;
+    const isWithdrawal = ["uso_clinico", "merma", "caducidad"].includes(movementForm.tipo)
+      || (movementForm.tipo === "ajuste" && quantity < 0);
+    const productName = selectedMovementProduct
+      ? getProductDisplayName(selectedMovementProduct)
+      : "el producto seleccionado";
+    const confirmed = await confirm({
+      title: `Registrar ${movementLabel[movementForm.tipo].toLowerCase()}`,
+      description: `Se registrara un movimiento de ${quantity} ${selectedMovementProduct?.unidad ?? "unidades"} para ${productName}. Este cambio modificara el stock y quedara registrado.`,
+      confirmLabel: "Registrar movimiento",
+      destructive: isWithdrawal,
+    });
+    if (!confirmed) return;
+
     setIsSavingMovement(true);
     try {
       await registerMovement({
         productoId: movementForm.productoId,
         fecha: dateFilter || today(),
         tipo: movementForm.tipo,
-        cantidad: Number(movementForm.cantidad) || 0,
+        cantidad: quantity,
         motivo: movementNote,
         referenciaTipo: "manual",
         autorizadoPorNombre: movementForm.autorizadoPorNombre.trim(),
@@ -969,11 +1028,10 @@ const InventarioPage: React.FC = () => {
               </div>
             </CardHeader>
             <CardContent className="p-0">
-              <div className="overflow-auto">
-                <Table>
+              <InventoryTable label="Productos de inventario" className="min-w-[1050px]">
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Producto</TableHead>
+                      <TableHead className="min-w-[200px]">Producto</TableHead>
                       <TableHead>Categoria</TableHead>
                       <TableHead>Clasificacion</TableHead>
                       <TableHead>Stock</TableHead>
@@ -981,7 +1039,7 @@ const InventarioPage: React.FC = () => {
                       <TableHead>Venta</TableHead>
                       <TableHead>Proveedor</TableHead>
                       <TableHead>Estado</TableHead>
-                      <TableHead className="text-right">Acciones</TableHead>
+                      <TableHead data-pinned-actions className="sticky right-0 z-10 w-24 min-w-24 bg-card text-center before:absolute before:inset-y-0 before:left-0 before:w-px before:bg-border xl:text-right">Acciones</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -1031,8 +1089,33 @@ const InventarioPage: React.FC = () => {
                               <Badge variant="outline">Activo</Badge>
                             )}
                           </TableCell>
-                          <TableCell>
-                            <div className="flex justify-end gap-2">
+                          <TableCell className="sticky right-0 z-10 bg-card before:absolute before:inset-y-0 before:left-0 before:w-px before:bg-border">
+                            <div className="flex justify-center xl:hidden">
+                              <Can some={product.estado === "activo" ? ["inventory.update", "inventory.delete"] : ["inventory.update"]}>
+                                <DropdownMenu>
+                                  <DropdownMenuTrigger asChild>
+                                    <Button type="button" variant="outline" size="icon" className="h-11 w-11" aria-label={`Acciones de ${getProductDisplayName(product)}`} title="Acciones del producto">
+                                      <EllipsisVertical className="h-4 w-4" />
+                                    </Button>
+                                  </DropdownMenuTrigger>
+                                  <DropdownMenuContent align="end">
+                                    <Can permission="inventory.update">
+                                      <DropdownMenuItem className="min-h-11" onSelect={() => openProductDialog(product)}>
+                                        <Edit className="mr-2 h-4 w-4" />
+                                        Editar
+                                      </DropdownMenuItem>
+                                    </Can>
+                                    <Can permission={product.estado === "activo" ? "inventory.delete" : "inventory.update"}>
+                                      <DropdownMenuItem className="min-h-11" onSelect={() => handleToggleProductStatus(product)}>
+                                        {product.estado === "activo" ? <Trash2 className="mr-2 h-4 w-4" /> : <RotateCcw className="mr-2 h-4 w-4" />}
+                                        {product.estado === "activo" ? "Desactivar" : "Activar"}
+                                      </DropdownMenuItem>
+                                    </Can>
+                                  </DropdownMenuContent>
+                                </DropdownMenu>
+                              </Can>
+                            </div>
+                            <div className="hidden justify-end gap-2 xl:flex">
                               <Can permission="inventory.update"><Button type="button" variant="outline" size="sm" onClick={() => openProductDialog(product)}>
                                 <Edit className="mr-2 h-4 w-4" />
                                 Editar
@@ -1056,8 +1139,7 @@ const InventarioPage: React.FC = () => {
                       ))
                     )}
                   </TableBody>
-                </Table>
-              </div>
+              </InventoryTable>
             </CardContent>
             {!productsLoading && filteredProducts.length > 0 && (
               <DataPagination
@@ -1765,18 +1847,69 @@ const InventarioPage: React.FC = () => {
 
             <div className="rounded-lg border p-4">
               <div className="grid gap-3 lg:grid-cols-[1fr_110px_140px_170px_auto]">
-                <Select value={entryItemForm.productoId} onValueChange={(value) => setEntryItemForm({ ...entryItemForm, productoId: value })}>
-                  <SelectTrigger>
-                    <SelectValue placeholder={activeProducts.length ? "Producto" : "No hay productos activos"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {activeProducts.map((product) => (
-                      <SelectItem key={product.id} value={product.id}>
-                        {getProductDisplayName(product)} - stock {product.stock}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <Popover open={isStockEntryProductSearchOpen} onOpenChange={setIsStockEntryProductSearchOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={isStockEntryProductSearchOpen}
+                      className="h-10 justify-between overflow-hidden px-3 font-normal"
+                      disabled={isSavingStockEntry || activeProducts.length === 0}
+                    >
+                      <span className="truncate">
+                        {selectedEntryProduct
+                          ? `${getProductDisplayName(selectedEntryProduct)} - stock ${selectedEntryProduct.stock} ${selectedEntryProduct.unidad}`
+                          : activeProducts.length
+                            ? "Buscar producto"
+                            : "No hay productos activos"}
+                      </span>
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Buscar por producto, marca o categoria..." />
+                      <CommandList>
+                        <CommandEmpty>No se encontraron productos.</CommandEmpty>
+                        <CommandGroup heading="Productos activos">
+                          {activeProducts.map((product) => {
+                            const productLabel = getProductDisplayName(product);
+                            const searchValue = [
+                              productLabel,
+                              product.nombre,
+                              product.marca,
+                              getCategoryLabel(product.categoria),
+                              product.proveedor,
+                            ]
+                              .filter(Boolean)
+                              .join(" ");
+
+                            return (
+                              <CommandItem
+                                key={product.id}
+                                value={searchValue}
+                                onSelect={() => {
+                                  setEntryItemForm((current) => ({ ...current, productoId: product.id }));
+                                  setIsStockEntryProductSearchOpen(false);
+                                }}
+                              >
+                                <Check className={`mr-2 h-4 w-4 shrink-0 ${entryItemForm.productoId === product.id ? "opacity-100" : "opacity-0"}`} />
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate font-medium">{productLabel}</p>
+                                  <p className="truncate text-xs text-muted-foreground">
+                                    {getCategoryLabel(product.categoria)} - stock {product.stock} {product.unidad}
+                                    {product.proveedor ? ` - ${product.proveedor}` : ""}
+                                  </p>
+                                </div>
+                              </CommandItem>
+                            );
+                          })}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
                 <Input
                   type="number"
                   min="1"
@@ -1969,6 +2102,7 @@ const InventarioPage: React.FC = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {confirmationDialog}
     </div>
   );
 };

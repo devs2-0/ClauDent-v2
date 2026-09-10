@@ -31,6 +31,7 @@ import {
   deleteObject,
 } from 'firebase/storage';
 import { Skeleton } from '@/shared/components/ui/skeleton';
+import { useConfirmAction } from '@/shared/hooks/useConfirmAction';
 
 interface PatientAttachmentsProps {
   patientId: string;
@@ -44,6 +45,7 @@ const PatientAttachments: React.FC<PatientAttachmentsProps> = ({ patientId }) =>
   const [isLoading, setIsLoading] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const { confirm, confirmationDialog } = useConfirmAction();
 
   // ¡NUEVO! Efecto para cargar adjuntos
   useEffect(() => {
@@ -117,9 +119,13 @@ const PatientAttachments: React.FC<PatientAttachmentsProps> = ({ patientId }) =>
   const handleDelete = async (attachment: Attachment) => {
     if (deletingId) return; // Evitar doble click
     
-    if (!confirm(`¿Eliminar ${attachment.nombre}? Esta acción no se puede deshacer.`)) {
-      return;
-    }
+    const confirmed = await confirm({
+      title: 'Eliminar archivo adjunto',
+      description: `"${attachment.nombre}" se eliminara de forma permanente y no se podra recuperar.`,
+      confirmLabel: 'Eliminar',
+      destructive: true,
+    });
+    if (!confirmed) return;
 
     setDeletingId(attachment.id);
     const deleteToast = toast.loading('Eliminando archivo...');
@@ -252,7 +258,7 @@ const PatientAttachments: React.FC<PatientAttachmentsProps> = ({ patientId }) =>
         </div>
       )}
 
-      {/* Eliminamos la nota de "simulación" */}
+      {confirmationDialog}
     </div>
   );
 };

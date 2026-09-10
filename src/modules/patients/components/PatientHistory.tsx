@@ -18,6 +18,7 @@ import { toast } from 'sonner';
 import { collection, query, onSnapshot, orderBy, QuerySnapshot, DocumentData } from 'firebase/firestore';
 import { db } from '@/lib/firebase';
 import { Skeleton } from '@/shared/components/ui/skeleton';
+import { useConfirmAction } from '@/shared/hooks/useConfirmAction';
 import { ScrollArea } from '@/shared/components/ui/scroll-area';
 import {
   Command,
@@ -45,6 +46,7 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
   const products = inventory?.products ?? [];
   const registerMovement = inventory?.registerMovement;
   const { hasPermission } = usePermissions();
+  const { confirm, confirmationDialog } = useConfirmAction();
   const canRegisterClinicalMaterials = hasPermission('inventory.usage.create') && hasPermission('patients.procedures.update') && Boolean(registerMovement);
   
   const [historial, setHistorial] = useState<HistoryEntry[]>([]);
@@ -321,9 +323,12 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
       }
 
       if (belowMinimumWarnings.length > 0) {
-        const shouldContinue = window.confirm(
-          `Esta salida dejara material por debajo del stock minimo:\n\n${belowMinimumWarnings.join('\n')}\n\nDeseas registrar la salida clinica de todos modos?`,
-        );
+        const shouldContinue = await confirm({
+          title: 'Confirmar salida clinica',
+          description: `Esta salida dejara material por debajo del stock minimo: ${belowMinimumWarnings.join(' ')} El movimiento quedara registrado.`,
+          confirmLabel: 'Registrar salida',
+          destructive: true,
+        });
         if (!shouldContinue) return;
       }
     }
@@ -389,14 +394,20 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
 
   const handleDelete = async (entryId: string) => {
     if (!hasPermission("patients.procedures.delete")) return;
-    if (confirm('¿Eliminar esta entrada del historial?')) {
-        try {
-            await deleteHistoryEntry(patientId, entryId);
-            toast.success('Entrada eliminada');
-        } catch (error) {
-            console.error(error);
-            toast.error('Error al eliminar');
-        }
+    const confirmed = await confirm({
+      title: 'Eliminar entrada del historial',
+      description: 'La entrada clinica se eliminara. Los movimientos de inventario ya registrados se conservaran.',
+      confirmLabel: 'Eliminar',
+      destructive: true,
+    });
+    if (!confirmed) return;
+
+    try {
+      await deleteHistoryEntry(patientId, entryId);
+      toast.success('Entrada eliminada');
+    } catch (error) {
+      console.error(error);
+      toast.error('Error al eliminar');
     }
   };
 
@@ -811,6 +822,7 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {confirmationDialog}
     </div>
   );
 };

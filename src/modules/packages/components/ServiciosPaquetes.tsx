@@ -1,7 +1,7 @@
 // src/components/ServiciosPaquetes.tsx (CANTIDADES Y SUMA/RESTA)
 import React, { useState, useMemo } from 'react';
 import { Can, useCan } from '@/auth';
-import { Plus, Search, Edit, Trash2, X, Check, History, ChevronsUpDown, Minus } from 'lucide-react';
+import { Plus, Search, Edit, Trash2, Check, History, ChevronsUpDown, Minus } from 'lucide-react';
 import { Paquete, usePackages } from '@/modules/packages';
 import { Service, useDentalServices } from '@/modules/services';
 import { formatCurrency, formatDate } from '@/shared/utils/utils';
@@ -29,7 +29,6 @@ import { Label } from '@/shared/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/components/ui/select';
 import { toast } from 'sonner';
 import { Skeleton } from '@/shared/components/ui/skeleton';
-import { Checkbox } from '@/shared/components/ui/checkbox';
 import { Switch } from '@/shared/components/ui/switch';
 import { useConfirmAction } from '@/shared/hooks/useConfirmAction';
 import { ScrollArea } from '@/shared/components/ui/scroll-area';
@@ -71,12 +70,9 @@ const ServiciosPaquetes: React.FC = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingPaquete, setEditingPaquete] = useState<Paquete | null>(null);
   const [isFormLoading, setIsFormLoading] = useState(false);
-  const [selectedPackageIds, setSelectedPackageIds] = useState<string[]>([]);
-  const [isBulkLoading, setIsBulkLoading] = useState(false);
   const { confirm, confirmationDialog } = useConfirmAction();
   const canUpdatePackages = can('packages.update');
   const canSafelyDeletePackages = can('packages.delete');
-  const canSelectPackages = canUpdatePackages || canSafelyDeletePackages;
   
   const [openCombobox, setOpenCombobox] = useState(false);
   const [serviceSearch, setServiceSearch] = useState('');
@@ -117,25 +113,6 @@ const ServiciosPaquetes: React.FC = () => {
       .map((paquete) => paquete.codigo ?? '')
       .filter(Boolean),
   ), [editingPaquete?.id, formData.fechaFin, formData.fechaInicio, formData.nombre, paquetes]);
-
-  const visiblePackageIds = filteredPaquetes.map((paquete) => paquete.id);
-  const selectedVisibleIds = selectedPackageIds.filter((id) => visiblePackageIds.includes(id));
-  const allVisibleSelected = visiblePackageIds.length > 0 && selectedVisibleIds.length === visiblePackageIds.length;
-
-  const togglePackageSelection = (packageId: string) => {
-    setSelectedPackageIds((current) =>
-      current.includes(packageId)
-        ? current.filter((id) => id !== packageId)
-        : [...current, packageId],
-    );
-  };
-
-  const toggleAllVisible = () => {
-    setSelectedPackageIds((current) => {
-      if (allVisibleSelected) return current.filter((id) => !visiblePackageIds.includes(id));
-      return Array.from(new Set([...current, ...visiblePackageIds]));
-    });
-  };
 
   const modalFilteredServices = useMemo(() => {
      if (!serviceSearch.trim()) {
@@ -303,10 +280,21 @@ const ServiciosPaquetes: React.FC = () => {
     }
   };
 
-  const handleStatusChange = async (id: string, active: boolean) => {
+  const handleStatusChange = async (paquete: Paquete, active: boolean) => {
     if (!canUpdatePackages) return;
+
+    const confirmed = await confirm({
+      title: active ? 'Activar paquete' : 'Desactivar paquete',
+      description: active
+        ? `"${paquete.nombre}" volvera a estar disponible para nuevas cotizaciones y ventas.`
+        : `"${paquete.nombre}" dejara de estar disponible para nuevas cotizaciones y ventas. Los registros existentes se conservaran.`,
+      confirmLabel: active ? 'Activar' : 'Desactivar',
+      destructive: !active,
+    });
+    if (!confirmed) return;
+
     try {
-      await updatePaquete(id, { estado: active ? 'activo' : 'inactivo' });
+      await updatePaquete(paquete.id, { estado: active ? 'activo' : 'inactivo' });
       toast.success(active ? 'Paquete activado' : 'Paquete desactivado');
     } catch (error) {
       console.error(error);
@@ -314,39 +302,9 @@ const ServiciosPaquetes: React.FC = () => {
     }
   };
 
-  const handleBulkAction = async (action: 'activate' | 'deactivate' | 'delete') => {
-    const targetIds = selectedVisibleIds;
-    if (targetIds.length === 0) return;
-    if (action === 'delete' ? !canSafelyDeletePackages : !canUpdatePackages) return;
-
-    const labels = {
-      activate: { title: 'Activar paquetes', description: `Se activarán ${targetIds.length} paquete(s).`, confirmLabel: 'Activar' },
-      deactivate: { title: 'Desactivar paquetes', description: `Se desactivarán ${targetIds.length} paquete(s).`, confirmLabel: 'Desactivar' },
-      delete: { title: 'Eliminar paquetes', description: `Se marcarán como inactivos ${targetIds.length} paquete(s) para conservar su historial.`, confirmLabel: 'Eliminar' },
-    }[action];
-
-    const confirmed = await confirm({ ...labels, destructive: action !== 'activate' });
-    if (!confirmed) return;
-
-    setIsBulkLoading(true);
-    try {
-      await Promise.all(targetIds.map((id) => action === 'delete'
-        ? deletePaquete(id)
-        : updatePaquete(id, { estado: action === 'activate' ? 'activo' : 'inactivo' })));
-      setSelectedPackageIds((current) => current.filter((id) => !targetIds.includes(id)));
-      toast.success(`${targetIds.length} paquete(s) actualizado(s)`);
-    } catch (error) {
-      console.error(error);
-      toast.error('No se pudo completar la acción por lote');
-    } finally {
-      setIsBulkLoading(false);
-    }
-  };
-
   const TableLoadingSkeleton = () => (
     Array(3).fill(0).map((_, index) => (
       <TableRow key={index}>
-        {canSelectPackages && <TableCell><Skeleton className="h-4 w-4" /></TableCell>}
         <TableCell><Skeleton className="h-4 w-20" /></TableCell>
         <TableCell><Skeleton className="h-4 w-32" /></TableCell>
         <TableCell><Skeleton className="h-4 w-24" /></TableCell>
@@ -405,42 +363,12 @@ const ServiciosPaquetes: React.FC = () => {
         </Button></Can>
       </div>
 
-      {canSelectPackages && filteredPaquetes.length > 0 && (
-        <div className="flex shrink-0 flex-wrap items-center gap-2 rounded-lg border bg-card p-2">
-          <div className="flex items-center gap-2 px-1 text-sm text-muted-foreground">
-            <Checkbox
-              checked={allVisibleSelected ? true : selectedVisibleIds.length > 0 ? 'indeterminate' : false}
-              onCheckedChange={toggleAllVisible}
-              aria-label="Seleccionar paquetes visibles"
-            />
-            <span>{selectedVisibleIds.length} seleccionado(s)</span>
-          </div>
-          <Button type="button" variant="ghost" size="sm" onClick={toggleAllVisible} disabled={isBulkLoading}>
-            {allVisibleSelected ? 'Quitar visibles' : 'Seleccionar visibles'}
-          </Button>
-          <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedPackageIds([])} disabled={selectedPackageIds.length === 0 || isBulkLoading}>
-            <X className="mr-2 h-4 w-4" />
-            Limpiar
-          </Button>
-          {canUpdatePackages && <Button type="button" variant="outline" size="sm" onClick={() => void handleBulkAction('activate')} disabled={selectedVisibleIds.length === 0 || isBulkLoading}>Activar</Button>}
-          {canUpdatePackages && <Button type="button" variant="outline" size="sm" onClick={() => void handleBulkAction('deactivate')} disabled={selectedVisibleIds.length === 0 || isBulkLoading}>Desactivar</Button>}
-          {canSafelyDeletePackages && <Button type="button" variant="destructive" size="sm" onClick={() => void handleBulkAction('delete')} disabled={selectedVisibleIds.length === 0 || isBulkLoading}>Eliminar</Button>}
-        </div>
-      )}
-
       <Card className="relative isolate z-0 flex min-h-0 flex-1 flex-col overflow-hidden">
         <CardContent className="min-h-0 flex-1 p-0">
           <div className="relative isolate z-0 h-full min-h-0 overflow-y-auto overscroll-contain [&>div]:overflow-visible">
             <Table>
               <TableHeader className="sticky top-0 z-[1] bg-card shadow-sm">
                 <TableRow>
-                  {canSelectPackages && <TableHead className="w-10">
-                    <Checkbox
-                      checked={allVisibleSelected ? true : selectedVisibleIds.length > 0 ? 'indeterminate' : false}
-                      onCheckedChange={toggleAllVisible}
-                      aria-label="Seleccionar todos los paquetes visibles"
-                    />
-                  </TableHead>}
                   <TableHead className="whitespace-nowrap">Código</TableHead>
                   <TableHead className="whitespace-nowrap">Nombre del Paquete</TableHead>
                   <TableHead className="whitespace-nowrap">Precio</TableHead>
@@ -455,20 +383,13 @@ const ServiciosPaquetes: React.FC = () => {
                   <TableLoadingSkeleton />
                 ) : filteredPaquetes.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={canSelectPackages ? 8 : 7} className="text-center h-24">
+                      <TableCell colSpan={7} className="text-center h-24">
                         No se encontraron paquetes.
                       </TableCell>
                     </TableRow>
                 ) : (
                   filteredPaquetes.map((paquete) => (
                     <TableRow key={paquete.id}>
-                      {canSelectPackages && <TableCell>
-                        <Checkbox
-                          checked={selectedPackageIds.includes(paquete.id)}
-                          onCheckedChange={() => togglePackageSelection(paquete.id)}
-                          aria-label={`Seleccionar ${paquete.nombre}`}
-                        />
-                      </TableCell>}
                       <TableCell className="font-mono text-sm whitespace-nowrap">{paquete.codigo || 'Sin código'}</TableCell>
                       <TableCell className="font-medium whitespace-nowrap">{paquete.nombre}</TableCell>
                       <TableCell className="whitespace-nowrap">{formatCurrency(paquete.precioTotal)}</TableCell>
@@ -482,8 +403,8 @@ const ServiciosPaquetes: React.FC = () => {
                           <div className="flex items-center gap-2">
                             <Switch
                               checked={paquete.estado === 'activo'}
-                              onCheckedChange={(checked) => void handleStatusChange(paquete.id, checked)}
-                              disabled={isFormLoading || isBulkLoading}
+                              onCheckedChange={(checked) => void handleStatusChange(paquete, checked)}
+                              disabled={isFormLoading}
                               aria-label={`${paquete.estado === 'activo' ? 'Desactivar' : 'Activar'} ${paquete.nombre}`}
                             />
                             <span className="text-sm capitalize">{paquete.estado}</span>

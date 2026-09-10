@@ -62,6 +62,7 @@ import { usePagination } from "@/shared/hooks/usePagination";
 import { useCashRegister } from "../hooks/useCashRegister";
 import { generateSaleReceiptPDF, type SaleReceiptData } from "../services/saleReceiptPdfService";
 import type { DirectSaleProductItem, DirectSaleServiceItem, PaymentMethod } from "../types/cash.types";
+import { calculatePercentageDiscount, normalizeDiscountPercentage } from "../utils/discounts";
 import { useCan } from "@/auth";
 
 const today = () => {
@@ -177,8 +178,10 @@ const VentasPage: React.FC = () => {
     [productItems],
   );
 
-  const parsedDiscount = Number(discount) || 0;
-  const saleTotal = Math.max(0, serviceSubtotal + productSubtotal - parsedDiscount);
+  const subtotal = serviceSubtotal + productSubtotal;
+  const discountPercentage = normalizeDiscountPercentage(discount);
+  const discountAmount = calculatePercentageDiscount(subtotal, discountPercentage);
+  const saleTotal = Math.max(0, subtotal - discountAmount);
   const canUseInstallments = serviceItems.length > 0 && patientId !== "mostrador";
   const effectiveSettlementMode = canUseInstallments ? settlementMode : "completo";
   const parsedInitialPayment = Number(initialPayment) || 0;
@@ -337,7 +340,7 @@ const VentasPage: React.FC = () => {
       }
     }
 
-    if (parsedDiscount >= serviceSubtotal + productSubtotal) {
+    if (discountPercentage >= 100) {
       toast.error("El descuento no puede dejar el total en cero");
       return false;
     }
@@ -369,7 +372,8 @@ const VentasPage: React.FC = () => {
         productos: productItems.map((item) => ({ ...item })),
         subtotalServicios: serviceSubtotal,
         subtotalProductos: productSubtotal,
-        descuento: parsedDiscount,
+        descuento: discountAmount,
+        descuentoPorcentaje: discountPercentage,
         total: paymentAmount,
         tipoRecibo: pendingBalance > 0 ? ("abono" as const) : undefined,
         tipoIngreso: pendingBalance > 0 ? ("abono" as const) : undefined,
@@ -385,7 +389,8 @@ const VentasPage: React.FC = () => {
         montoPagado: paymentAmount,
         servicios: serviceItems,
         productos: productItems,
-        descuento: parsedDiscount,
+        descuento: discountAmount,
+        descuentoPorcentaje: discountPercentage,
         notas: notes,
       };
       const paymentId = pendingBalance > 0
@@ -828,16 +833,23 @@ const VentasPage: React.FC = () => {
                 <span>{formatCurrency(productSubtotal)}</span>
               </div>
               <div className="space-y-2">
-                <Label>Descuento</Label>
+                <Label htmlFor="sale-discount">Descuento (%)</Label>
                 <Input
+                  id="sale-discount"
                   type="number"
                   min="0"
+                  max="99.99"
                   step="0.01"
                   value={discount}
                   onChange={(event) => setDiscount(event.target.value)}
-                  placeholder="0.00"
+                  placeholder="0"
                   disabled={isSaving}
                 />
+                <p className="text-xs text-muted-foreground">
+                  {discountPercentage > 0
+                    ? `${discountPercentage}% equivale a ${formatCurrency(discountAmount)}.`
+                    : "Captura el porcentaje que deseas descontar."}
+                </p>
               </div>
               {serviceItems.length > 0 && (
                 <div className="space-y-3 rounded-lg border bg-muted/30 p-3">
@@ -1042,8 +1054,8 @@ const VentasPage: React.FC = () => {
                 <span>{formatCurrency(serviceSubtotal + productSubtotal)}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Descuento</span>
-                <span>-{formatCurrency(parsedDiscount)}</span>
+                <span className="text-muted-foreground">Descuento ({discountPercentage}%)</span>
+                <span>-{formatCurrency(discountAmount)}</span>
               </div>
               {pendingBalance > 0 && (
                 <>
@@ -1115,7 +1127,7 @@ const VentasPage: React.FC = () => {
                   <span>{formatCurrency(lastReceipt.subtotalProductos)}</span>
                 </div>
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Descuento</span>
+                  <span className="text-muted-foreground">Descuento ({lastReceipt.descuentoPorcentaje ?? 0}%)</span>
                   <span>-{formatCurrency(lastReceipt.descuento)}</span>
                 </div>
                 <div className="flex items-center justify-between rounded-lg bg-primary p-4 text-primary-foreground">

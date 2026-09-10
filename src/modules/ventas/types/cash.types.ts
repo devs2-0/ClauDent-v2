@@ -42,6 +42,7 @@ export interface Payment extends CashUserStamp {
   subtotalServicios?: number;
   subtotalProductos?: number;
   descuento?: number;
+  descuentoPorcentaje?: number;
   servicios?: DirectSaleServiceItem[];
   productos?: DirectSaleProductItem[];
   motivoCancelacion?: string;
@@ -199,6 +200,7 @@ export interface RegisterDirectSaleInput {
   servicios?: DirectSaleServiceItem[];
   productos?: DirectSaleProductItem[];
   descuento?: number;
+  descuentoPorcentaje?: number;
   notas?: string;
 }
 
