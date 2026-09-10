@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2,
+  CheckCheck,
   Edit,
   Plus,
   Power,
@@ -8,10 +9,11 @@ import {
   Search,
   ShieldCheck,
   Trash2,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { Can, permissionCatalog, useAuth, useCan } from "@/auth";
+import { Can, permissionCatalog, rolePermissionCatalog, rolePermissionKeys, useAuth, useCan } from "@/auth";
 import { SectionHelp } from "@/shared/components/SectionHelp";
 import {
   DEFAULT_ROLE_COLOR,
@@ -69,6 +71,19 @@ const emptyForm: RoleFormState = {
   permissions: [],
 };
 
+const visibleRolePermissionKeySet = new Set<PermissionKey>(rolePermissionKeys);
+
+const sanitizeVisiblePermissions = (permissions: PermissionKey[]) => {
+  const hiddenPermissions = permissions.filter(
+    (permission) => !visibleRolePermissionKeySet.has(permission),
+  );
+  const visiblePermissions = removeOrphanPermissions(
+    permissions.filter((permission) => visibleRolePermissionKeySet.has(permission)),
+  );
+
+  return [...visiblePermissions, ...hiddenPermissions];
+};
+
 const getRoleEmoji = (icon?: string | null) => {
   if (!icon) return DEFAULT_ROLE_EMOJI;
 
@@ -91,7 +106,6 @@ const moduleLabels: Record<string, string> = {
   security: "Seguridad",
   users: "Usuarios",
   roles: "Roles",
-  reports: "Reportes",
   settings: "Configuración",
 };
 
@@ -104,6 +118,8 @@ const RolesPage = () => {
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
+  const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
+  const [bulkSaving, setBulkSaving] = useState(false);
   const { confirm, confirmationDialog } = useConfirmAction();
 
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -111,7 +127,7 @@ const RolesPage = () => {
   const [form, setForm] = useState<RoleFormState>(emptyForm);
 
   const permissionsByModule = useMemo(() => {
-    return permissionCatalog.reduce(
+    return rolePermissionCatalog.reduce(
       (acc, permission) => {
         const category = permission.module === "packages" ? "services" : ["users", "roles", "security", "audit", "settings"].includes(permission.module) ? "administration" : permission.module;
         if (!acc[category]) {
@@ -128,21 +144,39 @@ const RolesPage = () => {
   const filteredRoles = useMemo(() => {
     const term = search.trim().toLocaleLowerCase("es-MX");
 
-    return roles.filter((role) => {
-      const matchesStatus =
-        statusFilter === "all" ||
-        (statusFilter === "active" ? role.status === "active" : role.status !== "active");
-      const matchesSearch =
-        !term ||
-        [role.name, role.description]
-          .filter(Boolean)
-          .join(" ")
-          .toLocaleLowerCase("es-MX")
-          .includes(term);
+    return roles
+      .filter((role) => {
+        const matchesStatus =
+          statusFilter === "all" ||
+          (statusFilter === "active" ? role.status === "active" : role.status !== "active");
+        const matchesSearch =
+          !term ||
+          [role.name, role.description]
+            .filter(Boolean)
+            .join(" ")
+            .toLocaleLowerCase("es-MX")
+            .includes(term);
 
-      return matchesStatus && matchesSearch;
-    });
+        return matchesStatus && matchesSearch;
+      })
+      .sort((first, second) =>
+        first.name.localeCompare(second.name, "es-MX", { sensitivity: "base" }),
+      );
   }, [roles, search, statusFilter]);
+
+  const canUpdateRoles = can("roles.update");
+  const canDeleteRoles = can("roles.delete");
+  const canSelectRoles = canUpdateRoles || canDeleteRoles;
+  const isProtectedRole = (role: Role) => role.isSystem || role.isAdmin;
+  const selectableVisibleRoleIds = filteredRoles
+    .filter((role) => !isProtectedRole(role))
+    .map((role) => role.id);
+  const selectedVisibleRoleIds = selectedRoleIds.filter((id) =>
+    selectableVisibleRoleIds.includes(id),
+  );
+  const allVisibleRolesSelected =
+    selectableVisibleRoleIds.length > 0 &&
+    selectedVisibleRoleIds.length === selectableVisibleRoleIds.length;
 
   const blurActiveElement = () => {
     const activeElement = document.activeElement;
@@ -236,7 +270,7 @@ const RolesPage = () => {
 
       return {
         ...current,
-        permissions: removeOrphanPermissions(Array.from(currentPermissions)),
+        permissions: sanitizeVisiblePermissions(Array.from(currentPermissions)),
       };
     });
   };
@@ -254,7 +288,10 @@ const RolesPage = () => {
       return;
     }
 
-    if (removeOrphanPermissions(form.permissions).length !== form.permissions.length) {
+    const visiblePermissions = form.permissions.filter((permission) =>
+      visibleRolePermissionKeySet.has(permission),
+    );
+    if (removeOrphanPermissions(visiblePermissions).length !== visiblePermissions.length) {
       toast.error("Activa las vistas necesarias de los permisos seleccionados o quita los permisos dependientes antes de guardar.");
       return;
     }
@@ -270,7 +307,7 @@ const RolesPage = () => {
             description: form.description,
             color: form.color,
             icon: form.icon,
-            permissions: removeOrphanPermissions(form.permissions),
+            permissions: sanitizeVisiblePermissions(form.permissions),
           },
           currentUser?.uid,
         );
@@ -283,7 +320,7 @@ const RolesPage = () => {
             description: form.description,
             color: form.color,
             icon: form.icon,
-            permissions: removeOrphanPermissions(form.permissions),
+            permissions: sanitizeVisiblePermissions(form.permissions),
           },
           currentUser?.uid,
         );
@@ -311,8 +348,8 @@ const RolesPage = () => {
       return;
     }
 
-    if (role.isSystem) {
-      toast.error("No se recomienda desactivar roles del sistema.");
+    if (isProtectedRole(role)) {
+      toast.error("No se puede desactivar un rol protegido del sistema.");
       return;
     }
 
@@ -356,8 +393,8 @@ const RolesPage = () => {
       return;
     }
 
-    if (role.isSystem) {
-      toast.error("No se puede eliminar un rol del sistema.");
+    if (isProtectedRole(role)) {
+      toast.error("No se puede eliminar un rol protegido del sistema.");
       return;
     }
 
@@ -381,6 +418,7 @@ const RolesPage = () => {
 
     try {
       await roleService.deleteRole(role.id);
+      setSelectedRoleIds((current) => current.filter((id) => id !== role.id));
       toast.success("Rol eliminado correctamente.");
       await loadRoles();
     } catch (error) {
@@ -390,6 +428,115 @@ const RolesPage = () => {
           ? error.message
           : "No se pudo eliminar el rol.",
       );
+    }
+  };
+
+  const toggleRoleSelection = (role: Role) => {
+    if (isProtectedRole(role)) return;
+    setSelectedRoleIds((current) =>
+      current.includes(role.id)
+        ? current.filter((id) => id !== role.id)
+        : [...current, role.id],
+    );
+  };
+
+  const toggleVisibleRoles = () => {
+    setSelectedRoleIds((current) =>
+      allVisibleRolesSelected
+        ? current.filter((id) => !selectableVisibleRoleIds.includes(id))
+        : Array.from(new Set([...current, ...selectableVisibleRoleIds])),
+    );
+  };
+
+  const handleBulkRoleAction = async (
+    action: "activate" | "deactivate" | "delete",
+  ) => {
+    const hasPermission = action === "delete" ? canDeleteRoles : canUpdateRoles;
+    if (!hasPermission || selectedRoleIds.length === 0) return;
+
+    const targets = roles.filter((role) => selectedRoleIds.includes(role.id));
+    if (targets.length === 0) {
+      setSelectedRoleIds([]);
+      return;
+    }
+    if (targets.some(isProtectedRole)) {
+      toast.error("La selección incluye un rol protegido del sistema.");
+      return;
+    }
+
+    if (action === "delete") {
+      try {
+        const usage = await Promise.all(
+          targets.map(async (role) => ({
+            role,
+            count: await roleService.getRoleUsageCount(role.id),
+          })),
+        );
+        const assignedRoles = usage.filter((item) => item.count > 0);
+        if (assignedRoles.length > 0) {
+          toast.error(
+            `No se pueden eliminar roles asignados: ${assignedRoles
+              .map(({ role, count }) => `${role.name} (${count})`)
+              .join(", ")}.`,
+          );
+          return;
+        }
+      } catch (error) {
+        console.error(error);
+        toast.error("No se pudo comprobar el uso de los roles seleccionados.");
+        return;
+      }
+    }
+
+    const labels = {
+      activate: {
+        title: "Activar roles",
+        description: `Se activarán ${targets.length} rol(es) seleccionado(s).`,
+        confirmLabel: "Activar",
+      },
+      deactivate: {
+        title: "Desactivar roles",
+        description: `Se desactivarán ${targets.length} rol(es). Los usuarios asignados dejarán de recibir sus permisos.`,
+        confirmLabel: "Desactivar",
+      },
+      delete: {
+        title: "Eliminar roles",
+        description: `Se eliminarán ${targets.length} rol(es) sin usuarios asignados.`,
+        confirmLabel: "Eliminar",
+      },
+    } as const;
+    const confirmed = await confirm({
+      ...labels[action],
+      destructive: action !== "activate",
+    });
+    if (!confirmed) return;
+
+    setBulkSaving(true);
+    try {
+      for (const role of targets) {
+        if (action === "delete") {
+          await roleService.deleteRole(role.id);
+        } else {
+          await roleService.updateRole(
+            role.id,
+            { status: action === "activate" ? "active" : "archived" },
+            currentUser?.uid,
+          );
+        }
+      }
+
+      toast.success(`${targets.length} rol(es) actualizado(s).`);
+      setSelectedRoleIds([]);
+      await loadRoles();
+    } catch (error) {
+      console.error(error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "No se pudo completar la acción por lote.",
+      );
+    } finally {
+      setBulkSaving(false);
     }
   };
 
@@ -452,7 +599,41 @@ const RolesPage = () => {
           </div>
         </CardHeader>
 
-        <CardContent>
+        <CardContent className="space-y-3">
+          {canSelectRoles && (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/20 p-2">
+              <Button type="button" variant="outline" size="sm" onClick={toggleVisibleRoles} disabled={selectableVisibleRoleIds.length === 0 || bulkSaving}>
+                <CheckCheck className="mr-2 h-4 w-4" />
+                {allVisibleRolesSelected ? "Quitar visibles" : "Seleccionar visibles"}
+              </Button>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedRoleIds([])} disabled={selectedRoleIds.length === 0 || bulkSaving}>
+                <X className="mr-2 h-4 w-4" />
+                Limpiar
+              </Button>
+              <span className="mr-auto text-sm text-muted-foreground">
+                {selectedRoleIds.length} seleccionado(s)
+              </span>
+              {canUpdateRoles && (
+                <Button type="button" variant="outline" size="sm" onClick={() => void handleBulkRoleAction("activate")} disabled={selectedRoleIds.length === 0 || bulkSaving}>
+                  <Power className="mr-2 h-4 w-4" />
+                  Activar
+                </Button>
+              )}
+              {canUpdateRoles && (
+                <Button type="button" variant="outline" size="sm" onClick={() => void handleBulkRoleAction("deactivate")} disabled={selectedRoleIds.length === 0 || bulkSaving}>
+                  <Power className="mr-2 h-4 w-4" />
+                  Desactivar
+                </Button>
+              )}
+              {canDeleteRoles && (
+                <Button type="button" variant="destructive" size="sm" onClick={() => void handleBulkRoleAction("delete")} disabled={selectedRoleIds.length === 0 || bulkSaving}>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Eliminar
+                </Button>
+              )}
+            </div>
+          )}
+
           {loading ? (
             <div className="py-8 text-center text-sm text-muted-foreground">
               Cargando roles...
@@ -466,9 +647,19 @@ const RolesPage = () => {
               {filteredRoles.map((role) => (
                 <div
                   key={role.id}
-                  className="rounded-lg border bg-muted/20 p-3"
+                  className="relative rounded-lg border bg-muted/20 p-3"
                 >
-                  <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+                  {canSelectRoles && (
+                    <Checkbox
+                      checked={selectedRoleIds.includes(role.id)}
+                      disabled={isProtectedRole(role) || bulkSaving}
+                      onCheckedChange={() => toggleRoleSelection(role)}
+                      className="absolute right-3 top-3"
+                      aria-label={`Seleccionar rol ${role.name}`}
+                      title={isProtectedRole(role) ? "Rol protegido del sistema" : "Seleccionar rol"}
+                    />
+                  )}
+                  <div className="flex flex-col gap-4 pr-8 md:flex-row md:items-start md:justify-between">
                     <div className="space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
                         <div className="flex items-center gap-3">
@@ -534,7 +725,7 @@ const RolesPage = () => {
                         <Button
                           variant="outline"
                           size="sm"
-                          disabled={role.isSystem}
+                          disabled={isProtectedRole(role)}
                           onClick={() => handleToggleStatus(role)}
                         >
                           <Power className="mr-2 h-4 w-4" />
@@ -548,7 +739,7 @@ const RolesPage = () => {
                         <Button
                           variant="destructive"
                           size="sm"
-                          disabled={role.isSystem}
+                          disabled={isProtectedRole(role)}
                           onClick={() => handleDelete(role)}
                         >
                           <Trash2 className="mr-2 h-4 w-4" />
@@ -731,7 +922,7 @@ const RolesPage = () => {
               </div>
 
               <div className="grid gap-4">
-                {Object.entries(permissionsByModule).sort(([a], [b]) => ["dashboard", "patients", "agenda", "services", "quotations", "sales", "inventory", "administration", "reports"].indexOf(a) - ["dashboard", "patients", "agenda", "services", "quotations", "sales", "inventory", "administration", "reports"].indexOf(b)).map(
+                {Object.entries(permissionsByModule).sort(([a], [b]) => ["dashboard", "patients", "agenda", "services", "quotations", "sales", "inventory", "administration"].indexOf(a) - ["dashboard", "patients", "agenda", "services", "quotations", "sales", "inventory", "administration"].indexOf(b)).map(
                   ([moduleName, modulePermissions]) => {
                     const allSelected = modulePermissions.every((permission) =>
                       form.permissions.includes(permission.key),

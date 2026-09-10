@@ -276,6 +276,64 @@ service cloud.firestore {
       ]);
     }
 
+    function canRegisterStockEntry() {
+      return hasPermission("inventory.view")
+        && hasSomePermissions(["inventory.stock.adjust", "inventory.purchaseList.manage"]);
+    }
+
+    function isRestockProductUpdate() {
+      return canRegisterStockEntry()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["stock", "proveedor", "updatedAt"])
+        && resource.data.stock is number
+        && request.resource.data.stock is number
+        && request.resource.data.stock > resource.data.stock
+        && request.resource.data.stock >= 0
+        && request.resource.data.proveedor is string
+        && request.resource.data.proveedor.size() > 0
+        && request.resource.data.updatedAt == request.time;
+    }
+
+    function isValidStockEntryCreate() {
+      let data = request.resource.data;
+      return canRegisterStockEntry()
+        && data.keys().hasOnly(["fecha", "proveedor", "documentoCompra", "notas", "items", "totalProductos", "totalUnidades", "createdAt", "updatedAt"])
+        && data.fecha is timestamp
+        && data.proveedor is string && data.proveedor.size() > 0
+        && data.documentoCompra is string && data.documentoCompra.size() > 0
+        && data.notas is string
+        && data.items is list && data.items.size() > 0
+        && data.totalProductos == data.items.size()
+        && data.totalUnidades is number && data.totalUnidades > 0
+        && data.createdAt == request.time && data.updatedAt == request.time;
+    }
+
+    function isRestockMovementCreate() {
+      let data = request.resource.data;
+      let entry = /databases/$(database)/documents/inventarioEntradas/$(data.referenciaId);
+      let product = /databases/$(database)/documents/inventarioProductos/$(data.productoId);
+      return canRegisterStockEntry()
+        && data.tipo == "entrada" && data.referenciaTipo == "entrada_stock"
+        && data.cantidad > 0 && data.createdAt == request.time
+        && !exists(entry) && getAfter(entry).data.createdAt == request.time
+        && data.proveedor == getAfter(entry).data.proveedor
+        && data.documentoCompra == getAfter(entry).data.documentoCompra
+        && data.fecha == getAfter(entry).data.fecha
+        && data.lote is string && data.lote.size() > 0
+        && data.stockAnterior == get(product).data.stock
+        && data.stockNuevo == getAfter(product).data.stock
+        && data.proveedor == getAfter(product).data.proveedor
+        && getAfter(product).data.updatedAt == request.time;
+    }
+
+    function isInitialStockMovementCreate() {
+      let data = request.resource.data;
+      let product = /databases/$(database)/documents/inventarioProductos/$(data.productoId);
+      return hasModulePermission("inventory", "inventory.create")
+        && data.referenciaTipo == "manual" && data.referenciaId == data.productoId
+        && !exists(product) && data.stockAnterior == 0
+        && data.stockNuevo == getAfter(product).data.stock;
+    }
+
     function hasInventoryProductShape(data) {
       return data.nombre is string
         && data.categoria is string
@@ -910,7 +968,10 @@ service cloud.firestore {
         || hasModulePermission("agenda", "agenda.appointments.create") || hasModulePermission("agenda", "agenda.appointments.update")
         || hasPermission("quotations.view") || hasPermission("sales.view");
       allow create: if hasModulePermission("services", "services.create");
-      allow update: if hasModulePermission("services", "services.update");
+      allow update: if hasModulePermission("services", "services.update")
+        || (hasModulePermission("services", "services.delete")
+          && request.resource.data.estado == "inactivo"
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["estado"]));
       allow delete: if hasModulePermission("services", "services.delete");
     }
 
@@ -919,6 +980,9 @@ service cloud.firestore {
         || hasPatientSectionPermission("quotations", "patients.quotations.view");
       allow create: if hasModulePermission("quotations", "quotations.create");
       allow update: if hasModulePermission("quotations", "quotations.update")
+        || (hasModulePermission("quotations", "quotations.delete")
+          && request.resource.data.estado == "inactivo"
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["estado"]))
         || (isNewLinkedSalePayment(resource.data.pacienteId, request.resource.data.pagoId)
           && getAfter(paymentPath(request.resource.data.pagoId)).data.cotizacionId == cotizacionId
           && request.resource.data.pagada == true
@@ -930,7 +994,10 @@ service cloud.firestore {
     match /paquetes/{paqueteId} {
       allow read: if hasPermission("packages.view") || hasPermission("quotations.view") || hasPermission("sales.view");
       allow create: if hasModulePermission("packages", "packages.create");
-      allow update: if hasModulePermission("packages", "packages.update");
+      allow update: if hasModulePermission("packages", "packages.update")
+        || (hasModulePermission("packages", "packages.delete")
+          && request.resource.data.estado == "inactivo"
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["estado"]));
       allow delete: if hasModulePermission("packages", "packages.delete");
     }
 
@@ -1017,6 +1084,7 @@ service cloud.firestore {
       allow create: if isAdmin() || isInventoryProductCreate();
 
       allow update: if isInventoryProductCatalogUpdate()
+        || isRestockProductUpdate()
         || (hasModulePermission("inventory", "inventory.delete")
           && request.resource.data.estado == "inactivo"
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["estado", "updatedAt"]))
@@ -1047,14 +1115,16 @@ service cloud.firestore {
         || canReadFinancialReports();
 
       allow create: if isAllowedStockMovementCreate()
-        && (
+        && ((request.resource.data.tipo == "entrada"
+            && (isRestockMovementCreate() || isInitialStockMovementCreate()))
+          || (request.resource.data.tipo != "entrada" && (
           hasPermission("inventory.create")
           || hasPermission("inventory.update")
           || hasPermission("inventory.usage.create")
           || hasPermission("inventory.stock.adjust")
           || hasPermission("sales.cancel")
           || hasPermission("sales.create")
-        );
+        )));
 
       allow update, delete: if false;
     }
@@ -1062,8 +1132,8 @@ service cloud.firestore {
     match /inventarioEntradas/{entradaId} {
       allow read: if canReadInventory();
 
-      allow create, update: if hasPermission("inventory.stock.adjust")
-        || hasPermission("inventory.purchaseList.manage");
+      allow create: if isValidStockEntryCreate();
+      allow update: if false;
 
       allow delete: if isAdmin();
     }

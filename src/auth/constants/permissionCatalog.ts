@@ -403,7 +403,7 @@ export const permissionCatalog: PermissionDefinition[] = [
     module: "inventory",
     group: "Inventario",
     label: "Ver inventario",
-    description: "Permite consultar productos, existencias y categorías.",
+    description: "Permite consultar productos, existencias, categorías, entradas y movimientos. No permite modificar stock.",
     level: "read",
   },
   {
@@ -451,8 +451,8 @@ export const permissionCatalog: PermissionDefinition[] = [
     key: "inventory.stock.adjust",
     module: "inventory",
     group: "Inventario - Stock",
-    label: "Ajustar stock",
-    description: "Permite hacer ajustes manuales de existencias.",
+    label: "Ajustar stock y reabastecer",
+    description: "Permite registrar entradas y ajustes manuales de existencias. Requiere ver inventario.",
     level: "manage",
     isDangerous: true,
   },
@@ -468,8 +468,8 @@ export const permissionCatalog: PermissionDefinition[] = [
     key: "inventory.purchaseList.manage",
     module: "inventory",
     group: "Inventario - Compras",
-    label: "Gestionar lista de pedidos",
-    description: "Permite agregar, editar o marcar productos por pedir.",
+    label: "Registrar reabastecimientos",
+    description: "Permite registrar compras, aumentar stock y guardar sus movimientos de entrada. Requiere ver inventario; no permite ajustes ni editar productos.",
     level: "manage",
   },
 
@@ -705,6 +705,25 @@ export const permissionCatalog: PermissionDefinition[] = [
 ];
 
 export const permissionKeys: PermissionKey[] = permissionCatalog.map(
+  (permission) => permission.key,
+);
+
+export const hiddenRolePermissionKeys: PermissionKey[] = [
+  "patients.attachments.view",
+  "patients.attachments.upload",
+  "patients.attachments.delete",
+  "sales.reports.view",
+  "reports.view",
+  "reports.export",
+];
+
+const hiddenRolePermissionKeySet = new Set<PermissionKey>(hiddenRolePermissionKeys);
+
+export const rolePermissionCatalog = permissionCatalog.filter(
+  (permission) => !hiddenRolePermissionKeySet.has(permission.key),
+);
+
+export const rolePermissionKeys: PermissionKey[] = rolePermissionCatalog.map(
   (permission) => permission.key,
 );
 

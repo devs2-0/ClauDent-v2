@@ -1,7 +1,7 @@
 // RF09: Quotations (EDITABLE Y SIN ERRORES)
-import React, { useEffect, useState, useMemo } from 'react';
-import { useSearchParams } from 'react-router-dom';
-import { Plus, Eye, Book, ClipboardPlus, Search, Printer, Check, ChevronsUpDown, X, Trash2 } from 'lucide-react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { Plus, Pencil, Book, ClipboardPlus, Search, Printer, Check, ChevronsUpDown, X, Trash2 } from 'lucide-react';
 import { type Patient, usePatients } from '@/modules/patients';
 import { Quotation, QuotationItem, useQuotations } from '@/modules/quotations';
 import { Service, useDentalServices } from '@/modules/services';
@@ -49,6 +49,8 @@ import {
 } from "@/shared/components/ui/popover"
 import { cn } from "@/shared/utils/utils"
 import { useCan } from '@/auth';
+import { useConfirmAction } from '@/shared/hooks/useConfirmAction';
+import { Checkbox } from '@/shared/components/ui/checkbox';
 
 interface FormQuotationItem {
   servicioId: string | null;
@@ -58,10 +60,13 @@ interface FormQuotationItem {
 }
 
 type QuotationStatusFilter = 'all' | 'borrador' | 'activo' | 'inactivo';
-type QuotationSortOrder = 'date_desc' | 'patient_asc';
+type QuotationSortOrder = 'date_desc' | 'date_asc' | 'patient_asc';
 const Cotizaciones: React.FC = () => {
   const { can, loading: permissionsLoading } = useCan();
   const [searchParams, setSearchParams] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const editRequestHandled = useRef(false);
   const { patients } = usePatients();
   const { services } = useDentalServices();
   const { quotations, quotationsLoading, addQuotation, updateQuotation, deleteQuotation } = useQuotations();
@@ -82,7 +87,14 @@ const Cotizaciones: React.FC = () => {
   const [dateFilterEnd, setDateFilterEnd] = useState('');
   const [statusFilter, setStatusFilter] = useState<QuotationStatusFilter>('all');
   const [sortOrder, setSortOrder] = useState<QuotationSortOrder>('date_desc');
+  const [selectedQuotationIds, setSelectedQuotationIds] = useState<string[]>([]);
+  const [isBulkLoading, setIsBulkLoading] = useState(false);
+  const [formErrors, setFormErrors] = useState<{ pacienteId?: string; fecha?: string; items?: string }>({});
   const canCreateQuotation = can('quotations.create');
+  const canUpdateQuotations = can('quotations.update');
+  const canDeleteQuotations = can('quotations.delete');
+  const canSelectQuotations = canUpdateQuotations || canDeleteQuotations;
+  const { confirm, confirmationDialog } = useConfirmAction();
 
   const [formData, setFormData] = useState({
     pacienteId: '',
@@ -126,6 +138,7 @@ const Cotizaciones: React.FC = () => {
 
   const handleSelectPatient = (patient: Patient) => {
       setFormData({ ...formData, pacienteId: patient.id });
+      setFormErrors((current) => ({ ...current, pacienteId: undefined }));
       setRecentPatients(prev => {
           const filtered = prev.filter(p => p.id !== patient.id);
           return [patient, ...filtered].slice(0, 5);
@@ -175,11 +188,30 @@ const Cotizaciones: React.FC = () => {
           return firstName.localeCompare(secondName, 'es', { sensitivity: 'base' });
         }
 
-        return second.fecha.localeCompare(first.fecha);
+        return sortOrder === 'date_asc'
+          ? first.fecha.localeCompare(second.fecha)
+          : second.fecha.localeCompare(first.fecha);
     });
   }, [quotations, patients, mainSearch, dateFilterStart, dateFilterEnd, statusFilter, sortOrder]);
+
+  const visibleQuotationIds = filteredQuotations.map((quotation) => quotation.id);
+  const selectedVisibleIds = selectedQuotationIds.filter((id) => visibleQuotationIds.includes(id));
+  const allVisibleSelected = visibleQuotationIds.length > 0 && selectedVisibleIds.length === visibleQuotationIds.length;
+
+  const toggleQuotationSelection = (quotationId: string) => {
+    setSelectedQuotationIds((current) => current.includes(quotationId)
+      ? current.filter((id) => id !== quotationId)
+      : [...current, quotationId]);
+  };
+
+  const toggleAllVisible = () => {
+    setSelectedQuotationIds((current) => allVisibleSelected
+      ? current.filter((id) => !visibleQuotationIds.includes(id))
+      : Array.from(new Set([...current, ...visibleQuotationIds])));
+  };
   const handleOpenDialog = (quotation?: Quotation) => {
     if (!can(quotation ? "quotations.update" : "quotations.create")) return;
+    setFormErrors({});
     if (quotation) {
         setEditingQuotationId(quotation.id);
         setFormData({
@@ -226,7 +258,38 @@ const Cotizaciones: React.FC = () => {
     setIsDialogOpen(true);
   }, [canCreateQuotation, permissionsLoading, searchParams, setSearchParams]);
 
+  useEffect(() => {
+    const requestedQuotationId = (location.state as { editQuotationId?: string } | null)?.editQuotationId;
+    if (!requestedQuotationId || editRequestHandled.current || permissionsLoading || quotationsLoading) return;
+
+    editRequestHandled.current = true;
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+
+    if (!can("quotations.update")) {
+      toast.error("No tienes permiso para editar cotizaciones.");
+      return;
+    }
+
+    const requestedQuotation = quotations.find((quotation) => quotation.id === requestedQuotationId);
+    if (!requestedQuotation) {
+      toast.error("No se encontró la cotización.");
+      return;
+    }
+
+    setEditingQuotationId(requestedQuotation.id);
+    setFormData({
+      pacienteId: requestedQuotation.pacienteId,
+      fecha: requestedQuotation.fecha,
+      items: requestedQuotation.items,
+      descuento: requestedQuotation.descuento.toString(),
+      estado: requestedQuotation.estado,
+      notas: requestedQuotation.notas || '',
+    });
+    setIsDialogOpen(true);
+  }, [can, location.pathname, location.search, location.state, navigate, permissionsLoading, quotations, quotationsLoading]);
+
   const handleAddCatalogoItem = () => {
+    setFormErrors((current) => ({ ...current, items: undefined }));
     setFormData({
       ...formData,
       items: [
@@ -237,6 +300,7 @@ const Cotizaciones: React.FC = () => {
   };
 
   const handleAddPersonalizadoItem = () => {
+    setFormErrors((current) => ({ ...current, items: undefined }));
     setFormData({
       ...formData,
       items: [
@@ -273,8 +337,18 @@ const Cotizaciones: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!can(editingQuotationId ? "quotations.update" : "quotations.create")) return;
-    if (!formData.pacienteId || !formData.fecha || formData.items.length === 0) {
+    const nextErrors = {
+      pacienteId: formData.pacienteId ? undefined : 'Selecciona un paciente.',
+      fecha: formData.fecha ? undefined : 'La fecha es obligatoria.',
+      items: formData.items.length > 0 ? undefined : 'Agrega al menos un servicio.',
+    };
+    setFormErrors(nextErrors);
+    if (nextErrors.pacienteId || nextErrors.fecha || nextErrors.items) {
       toast.error('Selecciona paciente, fecha y al menos un servicio');
+      return;
+    }
+    if (formData.items.some((item) => !item.nombre.trim() || Number(item.cantidad) <= 0)) {
+      toast.error('Completa el nombre y la cantidad de cada servicio');
       return;
     }
     
@@ -317,14 +391,48 @@ const Cotizaciones: React.FC = () => {
 
   const handleDelete = async (id: string) => {
     if (!can("quotations.delete")) return;
-    if (confirm('¿Está seguro de eliminar esta cotización?')) {
-      try {
-        await deleteQuotation(id);
-        toast.success('Cotización eliminada');
-      } catch (error) {
-        console.error(error);
-        toast.error('Error al eliminar la cotización');
-      }
+    const confirmed = await confirm({
+      title: "Eliminar cotización",
+      description: "La cotización quedará inactiva para conservar ventas, pagos e historial.",
+      confirmLabel: "Eliminar",
+      destructive: true,
+    });
+    if (!confirmed) return;
+
+    try {
+      await deleteQuotation(id);
+      toast.success('Cotización desactivada');
+    } catch (error) {
+      console.error(error);
+      toast.error('Error al eliminar la cotización');
+    }
+  };
+
+  const handleBulkAction = async (action: 'activate' | 'deactivate' | 'delete') => {
+    const targetIds = selectedVisibleIds;
+    if (targetIds.length === 0) return;
+    if (action === 'delete' ? !canDeleteQuotations : !canUpdateQuotations) return;
+
+    const labels = {
+      activate: { title: 'Activar cotizaciones', description: `Se activarán ${targetIds.length} cotización(es).`, confirmLabel: 'Activar' },
+      deactivate: { title: 'Desactivar cotizaciones', description: `Se desactivarán ${targetIds.length} cotización(es).`, confirmLabel: 'Desactivar' },
+      delete: { title: 'Eliminar cotizaciones', description: `${targetIds.length} cotización(es) quedarán inactivas para conservar su historial.`, confirmLabel: 'Eliminar' },
+    }[action];
+    const confirmed = await confirm({ ...labels, destructive: action !== 'activate' });
+    if (!confirmed) return;
+
+    setIsBulkLoading(true);
+    try {
+      await Promise.all(targetIds.map((id) => action === 'delete'
+        ? deleteQuotation(id)
+        : updateQuotation(id, { estado: action === 'activate' ? 'activo' : 'inactivo' })));
+      setSelectedQuotationIds((current) => current.filter((id) => !targetIds.includes(id)));
+      toast.success(`${targetIds.length} cotización(es) actualizada(s)`);
+    } catch (error) {
+      console.error(error);
+      toast.error('No se pudo completar la acción por lote');
+    } finally {
+      setIsBulkLoading(false);
     }
   };
 
@@ -356,6 +464,7 @@ const Cotizaciones: React.FC = () => {
   const TableLoadingSkeleton = () => (
     Array(3).fill(0).map((_, index) => (
       <TableRow key={index}>
+        {canSelectQuotations && <TableCell><Skeleton className="h-4 w-4" /></TableCell>}
         <TableCell><Skeleton className="h-4 w-32" /></TableCell>
         <TableCell><Skeleton className="h-4 w-24" /></TableCell>
         <TableCell><Skeleton className="h-4 w-16" /></TableCell>
@@ -372,7 +481,7 @@ const Cotizaciones: React.FC = () => {
   );
 
   return (
-    <div className="flex h-[calc(100vh-6rem)] flex-col space-y-4">
+    <div className="flex h-[calc(100dvh-7rem)] min-h-0 flex-col space-y-4">
       <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
@@ -433,7 +542,8 @@ const Cotizaciones: React.FC = () => {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="date_desc">Fecha: más reciente</SelectItem>
-              <SelectItem value="patient_asc">Paciente: A–Z</SelectItem>
+              <SelectItem value="date_asc">Fecha: más antigua</SelectItem>
+              <SelectItem value="patient_asc">Paciente: A-Z</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -478,12 +588,42 @@ const Cotizaciones: React.FC = () => {
         </Button>
       </div>
 
-      <Card className="relative isolate z-0 flex-1 flex flex-col overflow-hidden">
-        <CardContent className="p-0 flex-1 overflow-hidden">
-          <div className="relative isolate z-0 h-full overflow-auto overscroll-contain">
+      {canSelectQuotations && filteredQuotations.length > 0 && (
+        <div className="flex shrink-0 flex-wrap items-center gap-2 rounded-lg border bg-card p-2">
+          <div className="flex items-center gap-2 px-1 text-sm text-muted-foreground">
+            <Checkbox
+              checked={allVisibleSelected ? true : selectedVisibleIds.length > 0 ? 'indeterminate' : false}
+              onCheckedChange={toggleAllVisible}
+              aria-label="Seleccionar cotizaciones visibles"
+            />
+            <span>{selectedVisibleIds.length} seleccionada(s)</span>
+          </div>
+          <Button type="button" variant="ghost" size="sm" onClick={toggleAllVisible} disabled={isBulkLoading}>
+            {allVisibleSelected ? 'Quitar visibles' : 'Seleccionar visibles'}
+          </Button>
+          <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedQuotationIds([])} disabled={selectedQuotationIds.length === 0 || isBulkLoading}>
+            <X className="mr-2 h-4 w-4" />
+            Limpiar
+          </Button>
+          {canUpdateQuotations && <Button type="button" variant="outline" size="sm" onClick={() => void handleBulkAction('activate')} disabled={selectedVisibleIds.length === 0 || isBulkLoading}>Activar</Button>}
+          {canUpdateQuotations && <Button type="button" variant="outline" size="sm" onClick={() => void handleBulkAction('deactivate')} disabled={selectedVisibleIds.length === 0 || isBulkLoading}>Desactivar</Button>}
+          {canDeleteQuotations && <Button type="button" variant="destructive" size="sm" onClick={() => void handleBulkAction('delete')} disabled={selectedVisibleIds.length === 0 || isBulkLoading}>Eliminar</Button>}
+        </div>
+      )}
+
+      <Card className="relative isolate z-0 flex min-h-0 flex-1 flex-col overflow-hidden">
+        <CardContent className="min-h-0 flex-1 overflow-hidden p-0">
+          <div className="relative isolate z-0 h-full min-h-0 overflow-auto overscroll-contain">
             <Table>
               <TableHeader className="sticky top-0 z-[1] bg-card shadow-sm">
                 <TableRow>
+                  {canSelectQuotations && <TableHead className="w-10">
+                    <Checkbox
+                      checked={allVisibleSelected ? true : selectedVisibleIds.length > 0 ? 'indeterminate' : false}
+                      onCheckedChange={toggleAllVisible}
+                      aria-label="Seleccionar todas las cotizaciones visibles"
+                    />
+                  </TableHead>}
                   <TableHead className="whitespace-nowrap">Paciente</TableHead>
                   <TableHead className="whitespace-nowrap">Fecha</TableHead>
                   <TableHead className="whitespace-nowrap">Servicios</TableHead>
@@ -497,7 +637,7 @@ const Cotizaciones: React.FC = () => {
                   <TableLoadingSkeleton />
                 ) : filteredQuotations.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
+                    <TableCell colSpan={canSelectQuotations ? 7 : 6} className="text-center py-12 text-muted-foreground">
                       No hay cotizaciones encontradas.
                     </TableCell>
                   </TableRow>
@@ -506,6 +646,13 @@ const Cotizaciones: React.FC = () => {
                     const patient = patients.find((p) => p.id === quotation.pacienteId);
                     return (
                       <TableRow key={quotation.id}>
+                        {canSelectQuotations && <TableCell>
+                          <Checkbox
+                            checked={selectedQuotationIds.includes(quotation.id)}
+                            onCheckedChange={() => toggleQuotationSelection(quotation.id)}
+                            aria-label={`Seleccionar cotización de ${patient ? `${patient.nombres} ${patient.apellidos}` : 'paciente eliminado'}`}
+                          />
+                        </TableCell>}
                         <TableCell className="whitespace-nowrap">
                           {patient ? `${patient.nombres} ${patient.apellidos}` : 'Paciente eliminado'}
                         </TableCell>
@@ -522,10 +669,10 @@ const Cotizaciones: React.FC = () => {
                             {can("quotations.update") && (<Button
                                 variant="ghost" 
                                 size="icon" 
-                                aria-label="Ver/Editar detalle"
+                                aria-label="Editar"
                                 onClick={() => handleOpenDialog(quotation)}
                             >
-                              <Eye className="h-4 w-4" />
+                                <Pencil className="h-4 w-4" />
                             </Button>)}
                             {can("quotations.pdf.generate") && (<Button
                               variant="ghost"
@@ -579,7 +726,11 @@ const Cotizaciones: React.FC = () => {
                             variant="outline"
                             role="combobox"
                             aria-expanded={openPatientCombobox}
-                            className="h-10 w-full justify-between px-3 font-normal"
+                            aria-invalid={Boolean(formErrors.pacienteId)}
+                            className={cn(
+                              "h-10 w-full justify-between px-3 font-normal",
+                              formErrors.pacienteId && "border-destructive",
+                            )}
                           >
                             {formData.pacienteId
                               ? (() => {
@@ -628,6 +779,7 @@ const Cotizaciones: React.FC = () => {
                           </Command>
                         </PopoverContent>
                       </Popover>
+                      {formErrors.pacienteId && <p className="text-xs text-destructive">{formErrors.pacienteId}</p>}
                     </div>
 
                     <div className="grid gap-2">
@@ -635,11 +787,15 @@ const Cotizaciones: React.FC = () => {
                       <Input
                         id="fecha"
                         type="date"
-                        required
+                        aria-invalid={Boolean(formErrors.fecha)}
                         value={formData.fecha}
-                        onChange={(e) => setFormData({ ...formData, fecha: e.target.value })}
-                        className="h-10"
+                        onChange={(e) => {
+                          setFormData({ ...formData, fecha: e.target.value });
+                          setFormErrors((current) => ({ ...current, fecha: undefined }));
+                        }}
+                        className={cn("h-10", formErrors.fecha && "border-destructive")}
                       />
+                      {formErrors.fecha && <p className="text-xs text-destructive">{formErrors.fecha}</p>}
                     </div>
                 </div>
 
@@ -664,7 +820,10 @@ const Cotizaciones: React.FC = () => {
                   <p className="text-xs text-muted-foreground">No hay pacientes registrados.</p>
                 )}
 
-                <div className="space-y-3 rounded-xl border bg-muted/20 p-3 sm:p-4" aria-required="true">
+                <div className={cn(
+                  "space-y-3 rounded-xl border bg-muted/20 p-3 sm:p-4",
+                  formErrors.items && "border-destructive",
+                )} aria-required="true">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <Label>Servicios *</Label>
@@ -786,6 +945,7 @@ const Cotizaciones: React.FC = () => {
                         Aún no hay servicios agregados.
                       </p>
                     )}
+                    {formErrors.items && <p className="text-xs text-destructive">{formErrors.items}</p>}
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
@@ -858,6 +1018,7 @@ const Cotizaciones: React.FC = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      {confirmationDialog}
     </div>
   );
 };

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   Ban,
+  CheckCheck,
   MailPlus,
   RefreshCw,
   Search,
@@ -48,6 +49,13 @@ import {
 } from "@/shared/components/ui/dialog";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/components/ui/select";
 import { useConfirmAction } from "@/shared/hooks/useConfirmAction";
 
 type InviteStaffType = "administrative" | "doctor" | "assistant";
@@ -99,6 +107,11 @@ const UsersPage = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
+  const [roleFilter, setRoleFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | AppUserStatus>("all");
+  const [sortOrder, setSortOrder] = useState<"name_asc" | "name_desc">("name_asc");
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+  const [bulkSaving, setBulkSaving] = useState(false);
   const { confirm, confirmationDialog } = useConfirmAction();
 
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
@@ -260,10 +273,9 @@ const UsersPage = () => {
 
   const filteredUsers = useMemo(() => {
     const term = search.trim().toLocaleLowerCase("es-MX");
-    if (!term) return visibleUsers;
-
-    return visibleUsers.filter((user) => {
-      const roleNames = user.roleIds
+    const matchingUsers = visibleUsers.filter((user) => {
+      const userRoleIds = user.roleIds ?? [];
+      const roleNames = userRoleIds
         .map((roleId) => rolesById.get(roleId)?.name ?? "")
         .join(" ");
       const staffLabel = user.doctorId
@@ -272,13 +284,37 @@ const UsersPage = () => {
           ? assistantsById.get(user.assistantId)?.nombre ?? "Asistente"
           : "";
 
-      return [user.displayName, user.email, roleNames, staffLabel, statusLabels[user.status]]
+      const matchesSearch = !term || [user.displayName, user.email, roleNames, staffLabel, statusLabels[user.status]]
         .filter(Boolean)
         .join(" ")
         .toLocaleLowerCase("es-MX")
         .includes(term);
+      const matchesRole = roleFilter === "all" || userRoleIds.includes(roleFilter);
+      const matchesStatus = statusFilter === "all" || user.status === statusFilter;
+
+      return matchesSearch && matchesRole && matchesStatus;
     });
-  }, [assistantsById, doctorsById, rolesById, search, visibleUsers]);
+
+    return matchingUsers.sort((first, second) => {
+      const firstName = first.displayName || first.email;
+      const secondName = second.displayName || second.email;
+      const comparison = firstName.localeCompare(secondName, "es-MX", { sensitivity: "base" });
+      return sortOrder === "name_desc" ? -comparison : comparison;
+    });
+  }, [assistantsById, doctorsById, roleFilter, rolesById, search, sortOrder, statusFilter, visibleUsers]);
+
+  const canUpdateUsers = can("users.update");
+  const canDeleteUsers = can("users.delete");
+  const canSelectUsers = canUpdateUsers || canDeleteUsers;
+  const selectableVisibleUserIds = filteredUsers
+    .filter((user) => !isProtectedUser(user))
+    .map((user) => user.uid);
+  const selectedVisibleUserIds = selectedUserIds.filter((id) =>
+    selectableVisibleUserIds.includes(id),
+  );
+  const allVisibleUsersSelected =
+    selectableVisibleUserIds.length > 0 &&
+    selectedVisibleUserIds.length === selectableVisibleUserIds.length;
 
   const loadData = async () => {
     setLoading(true);
@@ -506,6 +542,12 @@ const UsersPage = () => {
       return;
     }
 
+    const protectedMessage = getProtectedUserMessage(user);
+    if (protectedMessage) {
+      toast.error(protectedMessage);
+      return;
+    }
+
     const confirmed = await confirm({
       title: "Cambiar estado del usuario",
       description: `${user.displayName || user.email} cambiará a estado ${statusLabels[status].toLowerCase()}.`,
@@ -535,6 +577,12 @@ const UsersPage = () => {
       return;
     }
 
+    const protectedMessage = getProtectedUserMessage(user);
+    if (protectedMessage) {
+      toast.error(protectedMessage);
+      return;
+    }
+
     const confirmed = await confirm({
       title: "Quitar acceso",
       description: `${user.displayName || user.email} ya no podrá ingresar a ClauDent y dejará de aparecer en este listado.`,
@@ -550,6 +598,7 @@ const UsersPage = () => {
         currentUser?.uid,
       );
 
+      setSelectedUserIds((current) => current.filter((id) => id !== user.uid));
       toast.success("Usuario bloqueado y ocultado correctamente.");
       await loadData();
     } catch (error) {
@@ -559,6 +608,103 @@ const UsersPage = () => {
           ? error.message
           : "No se pudo eliminar visualmente al usuario.",
       );
+    }
+  };
+
+  const toggleUserSelection = (user: AppUser) => {
+    if (isProtectedUser(user)) return;
+    setSelectedUserIds((current) =>
+      current.includes(user.uid)
+        ? current.filter((id) => id !== user.uid)
+        : [...current, user.uid],
+    );
+  };
+
+  const toggleVisibleUsers = () => {
+    setSelectedUserIds((current) =>
+      allVisibleUsersSelected
+        ? current.filter((id) => !selectableVisibleUserIds.includes(id))
+        : Array.from(new Set([...current, ...selectableVisibleUserIds])),
+    );
+  };
+
+  const handleBulkUserAction = async (
+    action: "activate" | "deactivate" | "delete",
+  ) => {
+    const hasPermission = action === "delete" ? canDeleteUsers : canUpdateUsers;
+    if (!hasPermission || selectedUserIds.length === 0) return;
+
+    const targets = visibleUsers.filter((user) => selectedUserIds.includes(user.uid));
+    if (targets.length === 0) {
+      setSelectedUserIds([]);
+      return;
+    }
+
+    if (targets.some(isCurrentSessionUser)) {
+      toast.error("La selección incluye tu cuenta actual. Quítala para continuar.");
+      return;
+    }
+
+    const selectedActiveAdmins = targets.filter(
+      (user) => user.isAdmin && user.status === "active",
+    ).length;
+    if (action !== "activate" && activeAdminCount - selectedActiveAdmins < 1) {
+      toast.error("La acción dejaría al sistema sin un administrador activo.");
+      return;
+    }
+
+    const labels = {
+      activate: {
+        title: "Activar usuarios",
+        description: `Se activarán ${targets.length} usuario(s) seleccionado(s).`,
+        confirmLabel: "Activar",
+      },
+      deactivate: {
+        title: "Desactivar usuarios",
+        description: `Se desactivarán ${targets.length} usuario(s) seleccionado(s).`,
+        confirmLabel: "Desactivar",
+      },
+      delete: {
+        title: "Quitar acceso a usuarios",
+        description: `Se bloquearán y ocultarán ${targets.length} usuario(s), conservando su historial.`,
+        confirmLabel: "Quitar acceso",
+      },
+    } as const;
+    const confirmed = await confirm({
+      ...labels[action],
+      destructive: action !== "activate",
+    });
+    if (!confirmed) return;
+
+    setBulkSaving(true);
+    try {
+      for (const user of targets) {
+        if (action === "delete") {
+          await userInvitationService.softDeleteUserAccess(
+            user.uid,
+            currentUser?.uid,
+          );
+        } else {
+          await userService.updateUserStatus(
+            user.uid,
+            action === "activate" ? "active" : "inactive",
+            currentUser?.uid,
+          );
+        }
+      }
+
+      toast.success(`${targets.length} usuario(s) actualizado(s).`);
+      setSelectedUserIds([]);
+      await loadData();
+    } catch (error) {
+      console.error(error);
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "No se pudo completar la acción por lote.",
+      );
+    } finally {
+      setBulkSaving(false);
     }
   };
 
@@ -721,27 +867,90 @@ const UsersPage = () => {
               <CardTitle>Usuarios del sistema</CardTitle>
               <CardDescription>Consulta y administra el acceso del equipo.</CardDescription>
             </div>
-            <div className="relative w-full sm:max-w-sm">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                type="search"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Buscar usuario, correo o rol..."
-                className="h-9 pl-9"
-              />
+            <div className="grid w-full gap-2 sm:grid-cols-2 lg:max-w-4xl xl:grid-cols-4">
+              <div className="relative sm:col-span-2 xl:col-span-1">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  type="search"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder="Buscar usuario..."
+                  className="h-9 pl-9"
+                />
+              </div>
+              <Select value={roleFilter} onValueChange={setRoleFilter}>
+                <SelectTrigger className="h-9"><SelectValue placeholder="Rol" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los roles</SelectItem>
+                  {roles.map((role) => (
+                    <SelectItem key={role.id} value={role.id}>{role.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as typeof statusFilter)}>
+                <SelectTrigger className="h-9"><SelectValue placeholder="Estado" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos los estados</SelectItem>
+                  <SelectItem value="active">Activos</SelectItem>
+                  <SelectItem value="inactive">Inactivos</SelectItem>
+                  <SelectItem value="blocked">Bloqueados</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={sortOrder} onValueChange={(value) => setSortOrder(value as typeof sortOrder)}>
+                <SelectTrigger className="h-9"><SelectValue placeholder="Orden" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="name_asc">Nombre A–Z</SelectItem>
+                  <SelectItem value="name_desc">Nombre Z–A</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
         </CardHeader>
 
-        <CardContent>
+        <CardContent className="space-y-3">
+          {canSelectUsers && (
+            <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/20 p-2">
+              <Button type="button" variant="outline" size="sm" onClick={toggleVisibleUsers} disabled={selectableVisibleUserIds.length === 0 || bulkSaving}>
+                <CheckCheck className="mr-2 h-4 w-4" />
+                {allVisibleUsersSelected ? "Quitar visibles" : "Seleccionar visibles"}
+              </Button>
+              <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedUserIds([])} disabled={selectedUserIds.length === 0 || bulkSaving}>
+                <X className="mr-2 h-4 w-4" />
+                Limpiar
+              </Button>
+              <span className="mr-auto text-sm text-muted-foreground">
+                {selectedUserIds.length} seleccionado(s)
+              </span>
+              {canUpdateUsers && (
+                <Button type="button" variant="outline" size="sm" onClick={() => void handleBulkUserAction("activate")} disabled={selectedUserIds.length === 0 || bulkSaving}>
+                  <UserCheck className="mr-2 h-4 w-4" />
+                  Activar
+                </Button>
+              )}
+              {canUpdateUsers && (
+                <Button type="button" variant="outline" size="sm" onClick={() => void handleBulkUserAction("deactivate")} disabled={selectedUserIds.length === 0 || bulkSaving}>
+                  <UserX className="mr-2 h-4 w-4" />
+                  Desactivar
+                </Button>
+              )}
+              {canDeleteUsers && (
+                <Button type="button" variant="destructive" size="sm" onClick={() => void handleBulkUserAction("delete")} disabled={selectedUserIds.length === 0 || bulkSaving}>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Eliminar
+                </Button>
+              )}
+            </div>
+          )}
+
           {loading ? (
             <div className="py-8 text-center text-sm text-muted-foreground">
               Cargando usuarios...
             </div>
           ) : filteredUsers.length === 0 ? (
             <div className="py-8 text-center text-sm text-muted-foreground">
-              {search ? "No hay usuarios que coincidan con la búsqueda." : "No hay usuarios registrados."}
+              {search || roleFilter !== "all" || statusFilter !== "all"
+                ? "No hay usuarios que coincidan con los filtros."
+                : "No hay usuarios registrados."}
             </div>
           ) : (
             <div className="grid gap-3">
@@ -755,9 +964,19 @@ const UsersPage = () => {
                 return (
                   <div
                     key={user.uid}
-                    className="rounded-lg border bg-muted/20 p-3"
+                    className="relative rounded-lg border bg-muted/20 p-3"
                   >
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    {canSelectUsers && (
+                      <Checkbox
+                        checked={selectedUserIds.includes(user.uid)}
+                        disabled={isProtectedUser(user) || bulkSaving}
+                        onCheckedChange={() => toggleUserSelection(user)}
+                        className="absolute right-3 top-3"
+                        aria-label={`Seleccionar a ${user.displayName || user.email}`}
+                        title={getProtectedUserMessage(user) ?? "Seleccionar usuario"}
+                      />
+                    )}
+                    <div className="flex flex-col gap-4 pr-8 lg:flex-row lg:items-start lg:justify-between">
                       <div className="space-y-3">
                         <div>
                           <div className="flex flex-wrap items-center gap-2">

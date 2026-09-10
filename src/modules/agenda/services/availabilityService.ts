@@ -9,6 +9,7 @@ import {
 } from "firebase/firestore";
 
 import { db } from "@/lib/firebase";
+import { normalizeTime, compareTimes } from "@/shared/utils/time";
 import type {
   AgendaBlock,
   AgendaBlockStatus,
@@ -78,8 +79,8 @@ const toSchedule = (snapshot: QueryDocumentSnapshot): StaffSchedule => {
     staffType: normalizeStaffType(data.staffType),
     staffId: typeof data.staffId === "string" ? data.staffId : "",
     dayOfWeek: normalizeDayOfWeek(data.dayOfWeek),
-    startTime: typeof data.startTime === "string" ? data.startTime : "09:00",
-    endTime: typeof data.endTime === "string" ? data.endTime : "14:00",
+    startTime: normalizeTime(data.startTime),
+    endTime: normalizeTime(data.endTime),
     status: normalizeAvailabilityStatus(data.status),
 
     scheduleType,
@@ -111,8 +112,8 @@ const toBlock = (snapshot: QueryDocumentSnapshot): AgendaBlock => {
         : typeof data.startDate === "string"
           ? data.startDate
           : "",
-    startTime: typeof data.startTime === "string" ? data.startTime : "00:00",
-    endTime: typeof data.endTime === "string" ? data.endTime : "23:59",
+    startTime: normalizeTime(data.startTime),
+    endTime: normalizeTime(data.endTime),
     allDay: data.allDay === true,
     reason: typeof data.reason === "string" ? data.reason : "",
     notes: typeof data.notes === "string" ? data.notes : "",
@@ -156,7 +157,7 @@ export const availabilityService = {
           return a.dayOfWeek - b.dayOfWeek;
         }
 
-        return a.startTime.localeCompare(b.startTime);
+        return compareTimes(a?.startTime, b?.startTime);
       });
   },
 
@@ -218,7 +219,7 @@ export const availabilityService = {
           return a.startDate.localeCompare(b.startDate);
         }
 
-        return a.startTime.localeCompare(b.startTime);
+        return compareTimes(a?.startTime, b?.startTime);
       });
   },
 

@@ -149,6 +149,13 @@ export const roleService = {
     payload: Partial<RoleFormPayload> & { status?: RoleStatus },
     actorUid?: string | null,
   ): Promise<void> => {
+    if (payload.status === "archived") {
+      const role = await roleService.getRole(roleId);
+      if (role?.isSystem || role?.isAdmin) {
+        throw new Error("No se puede desactivar un rol protegido del sistema.");
+      }
+    }
+
     const updatePayload: Record<string, unknown> = {
       updatedAt: serverTimestamp(),
       updatedBy: actorUid ?? null,
@@ -190,8 +197,8 @@ export const roleService = {
       throw new Error("El rol no existe.");
     }
 
-    if (role.isSystem) {
-      throw new Error("No se puede eliminar un rol del sistema.");
+    if (role.isSystem || role.isAdmin) {
+      throw new Error("No se puede eliminar un rol protegido del sistema.");
     }
 
     const usageCount = await roleService.getRoleUsageCount(roleId);

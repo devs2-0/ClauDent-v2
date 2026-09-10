@@ -155,7 +155,7 @@ const SearchableSelect = ({
       </div>
 
       {open && !disabled && (
-        <div className="absolute z-50 mt-2 max-h-72 w-full overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md">
+        <div className="absolute z-[60] mt-2 max-h-72 w-full overflow-y-auto rounded-md border bg-popover p-1 text-popover-foreground shadow-md">
           {filteredOptions.length === 0 ? (
             <div className="px-3 py-3 text-sm text-muted-foreground">
               {emptyMessage}

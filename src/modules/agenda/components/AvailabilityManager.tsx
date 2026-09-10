@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Can, useAuth, useCan } from "@/auth";
 import { db } from "@/lib/firebase";
 import { Button } from "@/shared/components/ui/button";
+import { formatTimeRange, normalizeTime, timeToMinutes } from "@/shared/utils/time";
 import {
   Card,
   CardContent,
@@ -531,7 +532,11 @@ const AvailabilityManager = ({
       return;
     }
 
-    if (scheduleForm.startTime >= scheduleForm.endTime) {
+    if (!normalizeTime(scheduleForm.startTime) || !normalizeTime(scheduleForm.endTime)) {
+      toast.error("Selecciona una hora de inicio y fin válidas.");
+      return;
+    }
+    if (timeToMinutes(scheduleForm.startTime) >= timeToMinutes(scheduleForm.endTime)) {
       toast.error("La hora de inicio debe ser menor que la hora de fin.");
       return;
     }
@@ -633,7 +638,11 @@ const AvailabilityManager = ({
       return;
     }
 
-    if (specialScheduleForm.startTime >= specialScheduleForm.endTime) {
+    if (!normalizeTime(specialScheduleForm.startTime) || !normalizeTime(specialScheduleForm.endTime)) {
+      toast.error("Selecciona una hora de inicio y fin válidas.");
+      return;
+    }
+    if (timeToMinutes(specialScheduleForm.startTime) >= timeToMinutes(specialScheduleForm.endTime)) {
       toast.error("La hora de inicio debe ser menor que la hora de fin.");
       return;
     }
@@ -785,7 +794,11 @@ const AvailabilityManager = ({
       return;
     }
 
-    if (!blockForm.allDay && blockForm.startTime >= blockForm.endTime) {
+    if (!blockForm.allDay && (!normalizeTime(blockForm.startTime) || !normalizeTime(blockForm.endTime))) {
+      toast.error("Selecciona una hora de inicio y fin válidas.");
+      return;
+    }
+    if (!blockForm.allDay && timeToMinutes(blockForm.startTime) >= timeToMinutes(blockForm.endTime)) {
       toast.error("La hora inicial debe ser menor que la hora final.");
       return;
     }
@@ -966,7 +979,7 @@ const AvailabilityManager = ({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Clock className="h-5 w-5" />
-            Horario de atención
+            Generar horario
           </CardTitle>
         </CardHeader>
 
@@ -1148,8 +1161,7 @@ const AvailabilityManager = ({
                       </p>
 
                       <p className="mt-2 text-sm">
-                        {dayLabels[schedule.dayOfWeek]} · {schedule.startTime}{" "}
-                        - {schedule.endTime}
+                        {dayLabels[schedule.dayOfWeek]} · {formatTimeRange(schedule.startTime, schedule.endTime)}
                       </p>
                     </div>
 
@@ -1181,7 +1193,7 @@ const AvailabilityManager = ({
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Clock className="h-5 w-5" />
-              Horario de atención
+              Generar horario
             </CardTitle>
           </CardHeader>
 
@@ -1358,8 +1370,7 @@ const AvailabilityManager = ({
                         </p>
 
                         <p className="mt-2 text-sm">
-                          {schedule.date} · {schedule.startTime} -{" "}
-                          {schedule.endTime}
+                          {schedule.date} · {formatTimeRange(schedule.startTime, schedule.endTime)}
                         </p>
 
                         {schedule.notes && (
@@ -1613,7 +1624,7 @@ const AvailabilityManager = ({
                         ·{" "}
                         {block.allDay
                           ? "Todo el día"
-                          : `${block.startTime} - ${block.endTime}`}
+                          : formatTimeRange(block.startTime, block.endTime)}
                       </p>
 
                       {block.notes && (

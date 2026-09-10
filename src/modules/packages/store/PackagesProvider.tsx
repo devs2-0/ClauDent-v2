@@ -1,5 +1,5 @@
 import React, { createContext, ReactNode, useContext, useEffect, useState } from "react";
-import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, updateDoc } from "firebase/firestore";
+import { addDoc, collection, doc, onSnapshot, orderBy, query, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth, useCan } from "@/auth";
 import { addAuditLog } from "@/modules/audit/services/auditService";
@@ -72,8 +72,8 @@ export const PackagesProvider: React.FC<{ children: ReactNode }> = ({ children }
 
   const deletePaquete = async (id: string) => {
     if (!can("packages.delete")) throw new Error("No tienes permiso para realizar esta acción.");
-    await deleteDoc(doc(db, "paquetes", id));
-    await addAuditLog("DELETE", "paquetes", `Paquete eliminado: ${id}`);
+    await updateDoc(doc(db, "paquetes", id), { estado: "inactivo" });
+    await addAuditLog("DELETE", "paquetes", `Paquete desactivado: ${id}`);
   };
 
   return (

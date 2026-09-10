@@ -1,7 +1,12 @@
 export { PermissionGate } from "./components/PermissionGate";
 export { RoleBadge } from "./components/RoleBadge";
 export { defaultRoles } from "./constants/defaultRoles";
-export { permissionCatalog, permissionKeys } from "./constants/permissionCatalog";
+export {
+  permissionCatalog,
+  permissionKeys,
+  rolePermissionCatalog,
+  rolePermissionKeys,
+} from "./constants/permissionCatalog";
 export { RequireAuth } from "./guards/RequireAuth";
 export { RequirePermission } from "./guards/RequirePermission";
 export { AuthLoadingScreen } from "./components/AuthLoadingScreen";

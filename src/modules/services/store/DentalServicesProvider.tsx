@@ -1,5 +1,5 @@
 import React, { createContext, ReactNode, useContext, useEffect, useState } from "react";
-import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc } from "firebase/firestore";
+import { addDoc, collection, doc, onSnapshot, query, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth, useCan } from "@/auth";
 import { addAuditLog } from "@/modules/audit/services/auditService";
@@ -58,8 +58,8 @@ export const DentalServicesProvider: React.FC<{ children: ReactNode }> = ({ chil
 
   const deleteService = async (id: string) => {
     if (!can("services.delete")) throw new Error("No tienes permiso para realizar esta acción.");
-    await deleteDoc(doc(db, "servicios", id));
-    await addAuditLog("DELETE", "servicios", `Servicio eliminado: ${id}`);
+    await updateDoc(doc(db, "servicios", id), { estado: "inactivo" });
+    await addAuditLog("DELETE", "servicios", `Servicio desactivado: ${id}`);
   };
 
   return (

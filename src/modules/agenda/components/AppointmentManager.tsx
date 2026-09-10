@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
+import { formatTimeRange, normalizeTime, timeToMinutes } from "@/shared/utils/time";
 import {
+  ChevronLeft,
+  ChevronRight,
   Clock,
   Plus,
   Stethoscope,
@@ -82,6 +85,21 @@ import {
 
 type CalendarViewMode = "month" | "week" | "doctorDay";
 
+const AGENDA_DEFAULT_VIEW_KEY = "claudent.agenda.defaultView";
+
+const readDefaultView = (): CalendarViewMode => {
+  if (typeof window === "undefined") return "month";
+
+  try {
+    const storedView = window.localStorage.getItem(AGENDA_DEFAULT_VIEW_KEY);
+    return storedView === "doctorDay" || storedView === "week" || storedView === "month"
+      ? storedView
+      : "month";
+  } catch {
+    return "month";
+  }
+};
+
 type AgendaLinkedUser = {
   uid: string;
   email?: string | null;
@@ -125,18 +143,13 @@ const statusLabels: Record<AppointmentStatus, string> = {
   no_show: "No asistió",
 };
 
-const timeToMinutes = (time: string) => {
-  const [hours = "0", minutes = "0"] = time.split(":");
-
-  return Number(hours) * 60 + Number(minutes);
-};
-
 
 
 const getWaitMinutes = (arrivalTime: string, startTime: string) => {
   if (!arrivalTime || !startTime) return null;
 
   const diff = timeToMinutes(startTime) - timeToMinutes(arrivalTime);
+  if (!Number.isFinite(diff)) return null;
 
   return diff > 0 ? diff : 0;
 };
@@ -180,7 +193,8 @@ const AppointmentManager = ({
   const [services, setServices] = useState<ServiceLookup[]>([]);
 
   const [selectedDate, setSelectedDate] = useState(today);
-  const [viewMode, setViewMode] = useState<CalendarViewMode>("month");
+  const [viewMode, setViewMode] = useState<CalendarViewMode>(readDefaultView);
+  const [defaultViewMode, setDefaultViewMode] = useState<CalendarViewMode>(readDefaultView);
   const [selectedDoctorId, setSelectedDoctorId] = useState("all");
   const [selectedAssistantId, setSelectedAssistantId] = useState("all");
   const [selectedStatus, setSelectedStatus] =
@@ -209,8 +223,25 @@ const AppointmentManager = ({
   const canCreateAppointment = can("agenda.appointments.create");
   const canUpdateAppointment = can("agenda.appointments.update");
   const canCancelAppointment = can("agenda.appointments.cancel");
+  const canViewDoctorSchedule =
+    can("agenda.doctors.view") ||
+    can("agenda.doctors.viewAll") ||
+    can("agenda.doctors.viewOwn") ||
+    can("agenda.doctors.manage");
 
   const canCreateBlock = can("agenda.blocks.create");
+
+  const updateDefaultView = (nextView: CalendarViewMode) => {
+    setDefaultViewMode(nextView);
+    setViewMode(nextView);
+    try {
+      window.localStorage.setItem(AGENDA_DEFAULT_VIEW_KEY, nextView);
+    } catch {
+      toast.error("No se pudo guardar la vista predeterminada en este navegador.");
+      return;
+    }
+    toast.success("Vista predeterminada actualizada.");
+  };
 
   const canViewAllDoctors =
     agendaUser?.isAdmin === true ||
@@ -502,6 +533,7 @@ const AppointmentManager = ({
 
   const filteredAppointments = useMemo(() => {
     return appointments.filter((appointment) => {
+      if (!appointment) return false;
       if (!visibleDoctorIds.has(appointment.doctorId)) {
         return false;
       }
@@ -829,7 +861,7 @@ const AppointmentManager = ({
 
     const doctorSchedules = schedules.filter((schedule) => {
       return (
-        schedule.status === "active" &&
+        schedule?.status === "active" &&
         schedule.staffType === "doctor" &&
         schedule.staffId === doctorId
       );
@@ -863,7 +895,8 @@ const AppointmentManager = ({
     const schedulesForDate = getDoctorSchedulesForDate(doctorId, date);
 
     return schedulesForDate.some((schedule) => {
-      return schedule.startTime <= startTime && schedule.endTime >= endTime;
+      return timeToMinutes(schedule?.startTime) <= timeToMinutes(startTime)
+        && timeToMinutes(schedule?.endTime) >= timeToMinutes(endTime);
     });
   };
 
@@ -875,7 +908,7 @@ const AppointmentManager = ({
     endTime: string,
   ) => {
     return blocks.some((block) => {
-      if (block.status !== "active") return false;
+      if (block?.status !== "active") return false;
       if (block.staffType !== staffType) return false;
       if (block.staffId !== staffId) return false;
       if (!isDateWithinRange(date, block.startDate, block.endDate)) {
@@ -896,6 +929,7 @@ const AppointmentManager = ({
     ignoreAppointmentId?: string,
   ) => {
     return appointments.some((appointment) => {
+      if (!appointment) return false;
       if (appointment.id === ignoreAppointmentId) return false;
       if (appointment.status === "cancelled") return false;
       if (appointment.status === "no_show") return false;
@@ -919,6 +953,7 @@ const AppointmentManager = ({
     ignoreAppointmentId?: string,
   ) => {
     return appointments.some((appointment) => {
+      if (!appointment) return false;
       if (appointment.id === ignoreAppointmentId) return false;
       if (appointment.status === "cancelled") return false;
       if (appointment.status === "no_show") return false;
@@ -989,7 +1024,11 @@ const AppointmentManager = ({
       }
     }
 
-    if (form.startTime >= form.endTime) {
+    if (!normalizeTime(form.startTime) || !normalizeTime(form.endTime)) {
+      toast.error("Selecciona horas válidas de inicio y fin.");
+      return false;
+    }
+    if (timeToMinutes(form.startTime) >= timeToMinutes(form.endTime)) {
       toast.error("La hora de inicio debe ser menor que la hora de fin.");
       return false;
     }
@@ -1440,7 +1479,11 @@ const AppointmentManager = ({
       return;
     }
 
-    if (!blockForm.allDay && blockForm.startTime >= blockForm.endTime) {
+    if (!blockForm.allDay && (!normalizeTime(blockForm.startTime) || !normalizeTime(blockForm.endTime))) {
+      toast.error("Selecciona una hora de inicio y fin válidas.");
+      return;
+    }
+    if (!blockForm.allDay && timeToMinutes(blockForm.startTime) >= timeToMinutes(blockForm.endTime)) {
       toast.error("La hora inicial debe ser menor que la hora final.");
       return;
     }
@@ -1631,7 +1674,7 @@ const AppointmentManager = ({
 
   return (
     <div className="space-y-4">
-      <Card className="overflow-visible border bg-card shadow-sm">
+      <Card className="relative z-20 overflow-visible border bg-card shadow-sm">
         <CardContent className="p-3 sm:p-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <h2 className="text-base font-semibold">Filtros del calendario</h2>
@@ -1648,16 +1691,6 @@ const AppointmentManager = ({
           </div>
 
           <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            <div className="min-w-0 space-y-2">
-              <Label htmlFor="agenda-date">Día</Label>
-              <Input
-                id="agenda-date"
-                type="date"
-                value={selectedDate}
-                onChange={(event) => updateSelectedDate(event.target.value)}
-              />
-            </div>
-
             <div className="min-w-0 space-y-2">
               <Label htmlFor="agenda-doctor-filter">Doctor</Label>
               <SearchableSelect
@@ -1702,42 +1735,56 @@ const AppointmentManager = ({
                 </SelectContent>
               </Select>
             </div>
+
+            <div className="min-w-0 space-y-2">
+              <Label htmlFor="agenda-default-view">Vista predeterminada</Label>
+              <Select
+                value={defaultViewMode}
+                onValueChange={(value) => updateDefaultView(value as CalendarViewMode)}
+              >
+                <SelectTrigger id="agenda-default-view" className="h-10">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="doctorDay">Día</SelectItem>
+                  <SelectItem value="week">Semana</SelectItem>
+                  <SelectItem value="month">Mes</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
           </div>
         </CardContent>
       </Card>
 
-      <section className="space-y-3">
-        <div className="flex flex-col gap-3 rounded-xl border bg-card p-3 shadow-sm lg:flex-row lg:items-center lg:justify-between">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-              Calendario clínico
-            </p>
-            <h2 className="text-xl font-semibold capitalize leading-tight">
-              {calendarTitle}
-            </h2>
-          </div>
+      <section className="relative isolate z-0 overflow-hidden rounded-lg border bg-card shadow-sm">
+        <div className="relative z-10 flex flex-col gap-3 border-b bg-card p-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex min-w-0 flex-col gap-3 md:flex-row md:items-center">
+            <div className="min-w-0">
+              <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                Calendario clínico
+              </p>
+              <h2 className="truncate text-xl font-semibold capitalize leading-tight">
+                {calendarTitle}
+              </h2>
+            </div>
 
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" size="sm" onClick={goToPreviousPeriod}>
-              Anterior
-            </Button>
+            <Input
+              type="date"
+              value={selectedDate}
+              onChange={(event) => updateSelectedDate(event.target.value)}
+              className="h-9 w-full md:w-40"
+              aria-label="Fecha del calendario"
+            />
 
-            <Button variant="outline" size="sm" onClick={goToToday}>
-              Hoy
-            </Button>
-
-            <Button variant="outline" size="sm" onClick={goToNextPeriod}>
-              Siguiente
-            </Button>
-
-            <div className="flex rounded-lg border bg-muted/30 p-1">
+            <div className="flex w-fit rounded-lg border bg-muted/30 p-1">
               <Button
                 type="button"
                 size="sm"
-                variant={viewMode === "month" ? "default" : "ghost"}
-                onClick={() => setViewMode("month")}
+                variant={viewMode === "doctorDay" ? "default" : "ghost"}
+                onClick={() => setViewMode("doctorDay")}
               >
-                Mes
+                Día
               </Button>
 
               <Button
@@ -1752,15 +1799,45 @@ const AppointmentManager = ({
               <Button
                 type="button"
                 size="sm"
-                variant={viewMode === "doctorDay" ? "default" : "ghost"}
-                onClick={() => setViewMode("doctorDay")}
+                variant={viewMode === "month" ? "default" : "ghost"}
+                onClick={() => setViewMode("month")}
               >
-                Día
+                Mes
               </Button>
             </div>
           </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" size="sm" onClick={goToToday}>
+              Hoy
+            </Button>
+
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-9 w-9"
+              onClick={goToPreviousPeriod}
+              aria-label="Periodo anterior"
+              title="Anterior"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-9 w-9"
+              onClick={goToNextPeriod}
+              aria-label="Periodo siguiente"
+              title="Siguiente"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+
+          </div>
         </div>
 
+        <div className="min-h-0 bg-card">
         {agendaProfileLoading ? (
           <Card>
             <CardHeader>
@@ -1772,19 +1849,13 @@ const AppointmentManager = ({
               </CardDescription>
             </CardHeader>
           </Card>
-        ) : visibleDoctors.length === 0 ? (
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">
-                No hay doctor vinculado
-              </CardTitle>
-              <CardDescription>
-                Solicita la asignación de tu agenda para consultar el calendario.
-              </CardDescription>
-            </CardHeader>
-          </Card>
         ) : (
           <>
+            {visibleDoctors.length === 0 && (
+              <div className="rounded-lg border border-dashed bg-card p-4 text-sm text-muted-foreground">
+                No hay doctores disponibles.
+              </div>
+            )}
             {viewMode === "month" && (
               <MonthlyCalendarView
                 selectedDate={selectedDate}
@@ -1821,6 +1892,7 @@ const AppointmentManager = ({
             )}
           </>
         )}
+        </div>
       </section>
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
@@ -1916,7 +1988,7 @@ const AppointmentManager = ({
 
                           <span className="inline-flex items-center gap-1 text-sm text-muted-foreground">
                             <Clock className="h-4 w-4" />
-                            {appointment.startTime} - {appointment.endTime}
+                            {formatTimeRange(appointment?.startTime, appointment?.endTime)}
                           </span>
                         </div>
 
@@ -2010,6 +2082,8 @@ const AppointmentManager = ({
         services={services}
         doctors={visibleDoctors}
         assistants={visibleAssistants}
+        schedules={schedules}
+        canViewDoctorSchedule={canViewDoctorSchedule}
         saving={saving}
         title={
           editingAppointment

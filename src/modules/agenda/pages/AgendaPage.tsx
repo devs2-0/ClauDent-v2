@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   CalendarDays,
+  CheckCheck,
   ChevronDown,
   RefreshCw,
   Search,
@@ -9,6 +10,8 @@ import {
   UserRoundX,
   UsersRound,
   Clock,
+  Trash2,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -40,6 +43,13 @@ import {
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/components/ui/select";
+import {
   Tabs,
   TabsContent,
   TabsList,
@@ -58,6 +68,10 @@ import AgendaNotificationsButton from "../components/AgendaNotificationsButton";
 import AgendaHistoryPanel from "../components/AgendaHistoryPanel";
 
 const DEFAULT_DOCTOR_COLOR = "#2563EB";
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+type StaffStatusFilter = "all" | "active" | "inactive";
+type StaffFormErrors = Partial<Record<"nombre" | "email", string>>;
 
 
 interface DoctorFormState {
@@ -106,6 +120,18 @@ const AgendaPage = () => {
   const [refreshKey, setRefreshKey] = useState(0);
   const [assistantDoctorSearch, setAssistantDoctorSearch] = useState("");
   const [assignedDoctorsOpen, setAssignedDoctorsOpen] = useState(false);
+  const [doctorSearch, setDoctorSearch] = useState("");
+  const [doctorStatusFilter, setDoctorStatusFilter] =
+    useState<StaffStatusFilter>("all");
+  const [selectedDoctorIds, setSelectedDoctorIds] = useState<string[]>([]);
+  const [doctorFormErrors, setDoctorFormErrors] =
+    useState<StaffFormErrors>({});
+  const [assistantSearch, setAssistantSearch] = useState("");
+  const [assistantStatusFilter, setAssistantStatusFilter] =
+    useState<StaffStatusFilter>("all");
+  const [selectedAssistantIds, setSelectedAssistantIds] = useState<string[]>([]);
+  const [assistantFormErrors, setAssistantFormErrors] =
+    useState<StaffFormErrors>({});
   const { confirm, confirmationDialog } = useConfirmAction();
 
   const [doctors, setDoctors] = useState<Doctor[]>([]);
@@ -144,6 +170,59 @@ const AgendaPage = () => {
   const activeDoctors = useMemo(() => {
     return doctors.filter((doctor) => doctor.status === "active");
   }, [doctors]);
+
+  const listedDoctors = useMemo(() => {
+    return doctors.filter((doctor) => !doctor.deletedAt);
+  }, [doctors]);
+
+  const listedAssistants = useMemo(() => {
+    return assistants.filter((assistant) => !assistant.deletedAt);
+  }, [assistants]);
+
+  const filteredDoctors = useMemo(() => {
+    const term = doctorSearch.trim().toLocaleLowerCase("es-MX");
+    return listedDoctors
+      .filter((doctor) => {
+        const matchesStatus =
+          doctorStatusFilter === "all" || doctor.status === doctorStatusFilter;
+        const matchesSearch = !term || [doctor.nombre, doctor.email, doctor.especialidad]
+          .filter(Boolean)
+          .join(" ")
+          .toLocaleLowerCase("es-MX")
+          .includes(term);
+        return matchesStatus && matchesSearch;
+      })
+      .sort((first, second) =>
+        first.nombre.localeCompare(second.nombre, "es-MX", { sensitivity: "base" }),
+      );
+  }, [doctorSearch, doctorStatusFilter, listedDoctors]);
+
+  const filteredAssistants = useMemo(() => {
+    const term = assistantSearch.trim().toLocaleLowerCase("es-MX");
+    return listedAssistants
+      .filter((assistant) => {
+        const matchesStatus =
+          assistantStatusFilter === "all" || assistant.status === assistantStatusFilter;
+        const matchesSearch = !term || [assistant.nombre, assistant.email]
+          .filter(Boolean)
+          .join(" ")
+          .toLocaleLowerCase("es-MX")
+          .includes(term);
+        return matchesStatus && matchesSearch;
+      })
+      .sort((first, second) =>
+        first.nombre.localeCompare(second.nombre, "es-MX", { sensitivity: "base" }),
+      );
+  }, [assistantSearch, assistantStatusFilter, listedAssistants]);
+
+  const visibleDoctorIds = filteredDoctors.map((doctor) => doctor.id);
+  const visibleAssistantIds = filteredAssistants.map((assistant) => assistant.id);
+  const allVisibleDoctorsSelected =
+    visibleDoctorIds.length > 0 &&
+    visibleDoctorIds.every((id) => selectedDoctorIds.includes(id));
+  const allVisibleAssistantsSelected =
+    visibleAssistantIds.length > 0 &&
+    visibleAssistantIds.every((id) => selectedAssistantIds.includes(id));
 
   const filteredActiveDoctors = useMemo(() => {
     const term = assistantDoctorSearch.trim().toLocaleLowerCase("es-MX");
@@ -192,8 +271,6 @@ const AgendaPage = () => {
     ].filter((tab) => tab.visible);
   }, [
     can,
-    canManageDoctors,
-    canManageAssistants,
     canManageAvailability,
     canViewAgendaHistory,
   ]);
@@ -234,6 +311,7 @@ const AgendaPage = () => {
     if (!canManageDoctors) return;
     setEditingDoctor(null);
     setDoctorForm(emptyDoctorForm);
+    setDoctorFormErrors({});
     setDoctorDialogOpen(true);
   };
 
@@ -248,6 +326,7 @@ const AgendaPage = () => {
       color: doctor.color ?? DEFAULT_DOCTOR_COLOR,
       visibleEnAgenda: doctor.visibleEnAgenda,
     });
+    setDoctorFormErrors({});
     setDoctorDialogOpen(true);
   };
 
@@ -257,6 +336,7 @@ const AgendaPage = () => {
     setDoctorDialogOpen(false);
     setEditingDoctor(null);
     setDoctorForm(emptyDoctorForm);
+    setDoctorFormErrors({});
   };
 
   const handleSaveDoctor = async () => {
@@ -266,9 +346,18 @@ const AgendaPage = () => {
     }
 
     const nombre = doctorForm.nombre.trim();
+    const email = doctorForm.email.trim().toLowerCase();
 
-    if (!nombre) {
-      toast.error("El nombre del doctor es obligatorio.");
+    const errors: StaffFormErrors = {};
+    if (!nombre) errors.nombre = "El nombre del doctor es obligatorio.";
+    if (!email) {
+      errors.email = "El correo del doctor es obligatorio.";
+    } else if (!EMAIL_PATTERN.test(email)) {
+      errors.email = "Ingresa un correo válido para el doctor.";
+    }
+    setDoctorFormErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      toast.error("Revisa los campos obligatorios del doctor.");
       return;
     }
 
@@ -278,7 +367,7 @@ const AgendaPage = () => {
       if (editingDoctor) {
         await doctorService.updateDoctor(editingDoctor.id, {
           nombre,
-          email: doctorForm.email.trim().toLowerCase(),
+          email,
           telefono: doctorForm.telefono.trim(),
           especialidad: doctorForm.especialidad.trim(),
           color: doctorForm.color || DEFAULT_DOCTOR_COLOR,
@@ -290,7 +379,7 @@ const AgendaPage = () => {
       } else {
         await doctorService.createDoctor({
           nombre,
-          email: doctorForm.email.trim().toLowerCase(),
+          email,
           telefono: doctorForm.telefono.trim(),
           especialidad: doctorForm.especialidad.trim(),
           color: doctorForm.color || DEFAULT_DOCTOR_COLOR,
@@ -355,10 +444,36 @@ const AgendaPage = () => {
     }
   };
 
+  const handleDeleteDoctor = async (doctor: Doctor) => {
+    if (!canManageDoctors) {
+      toast.error("No tienes permiso para gestionar doctores.");
+      return;
+    }
+
+    const confirmed = await confirm({
+      title: "Eliminar doctor",
+      description: `${doctor.nombre} dejará de aparecer en la administración y en la agenda. Sus citas existentes se conservarán.`,
+      confirmLabel: "Eliminar",
+      destructive: true,
+    });
+    if (!confirmed) return;
+
+    try {
+      await doctorService.deactivateDoctor(doctor.id, currentUser?.uid);
+      setSelectedDoctorIds((current) => current.filter((id) => id !== doctor.id));
+      toast.success("Doctor eliminado correctamente.");
+      await loadData();
+    } catch (error) {
+      console.error(error);
+      toast.error("No se pudo eliminar el doctor.");
+    }
+  };
+
   const openCreateAssistantDialog = () => {
     if (!canManageAssistants) return;
     setEditingAssistant(null);
     setAssistantForm(emptyAssistantForm);
+    setAssistantFormErrors({});
     setAssistantDoctorSearch("");
     setAssignedDoctorsOpen(false);
     setAssistantDialogOpen(true);
@@ -375,6 +490,7 @@ const AgendaPage = () => {
       doctorIdsAsignados: assistant.doctorIdsAsignados ?? [],
       visibleEnAgenda: assistant.visibleEnAgenda,
     });
+    setAssistantFormErrors({});
     setAssistantDoctorSearch("");
     setAssignedDoctorsOpen(false);
     setAssistantDialogOpen(true);
@@ -386,6 +502,7 @@ const AgendaPage = () => {
     setAssistantDialogOpen(false);
     setEditingAssistant(null);
     setAssistantForm(emptyAssistantForm);
+    setAssistantFormErrors({});
   };
 
   const toggleAssistantDoctor = (doctorId: string) => {
@@ -408,9 +525,17 @@ const AgendaPage = () => {
     }
 
     const nombre = assistantForm.nombre.trim();
-
-    if (!nombre) {
-      toast.error("El nombre del asistente es obligatorio.");
+    const email = assistantForm.email.trim().toLowerCase();
+    const errors: StaffFormErrors = {};
+    if (!nombre) errors.nombre = "El nombre del asistente es obligatorio.";
+    if (!email) {
+      errors.email = "El correo del asistente es obligatorio.";
+    } else if (!EMAIL_PATTERN.test(email)) {
+      errors.email = "Ingresa un correo válido para el asistente.";
+    }
+    setAssistantFormErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      toast.error("Revisa los campos obligatorios del asistente.");
       return;
     }
 
@@ -420,7 +545,7 @@ const AgendaPage = () => {
       if (editingAssistant) {
         await assistantService.updateAssistant(editingAssistant.id, {
           nombre,
-          email: assistantForm.email.trim().toLowerCase(),
+          email,
           telefono: assistantForm.telefono.trim(),
           notas: assistantForm.notas.trim(),
           doctorIdsAsignados: assistantForm.doctorIdsAsignados,
@@ -432,7 +557,7 @@ const AgendaPage = () => {
       } else {
         await assistantService.createAssistant({
           nombre,
-          email: assistantForm.email.trim().toLowerCase(),
+          email,
           telefono: assistantForm.telefono.trim(),
           notas: assistantForm.notas.trim(),
           doctorIdsAsignados: assistantForm.doctorIdsAsignados,
@@ -497,6 +622,138 @@ const AgendaPage = () => {
     }
   };
 
+  const handleDeleteAssistant = async (assistant: Assistant) => {
+    if (!canManageAssistants) return;
+
+    const confirmed = await confirm({
+      title: "Eliminar asistente",
+      description: `${assistant.nombre} dejará de aparecer en la administración y en la agenda. Sus registros existentes se conservarán.`,
+      confirmLabel: "Eliminar",
+      destructive: true,
+    });
+    if (!confirmed) return;
+
+    try {
+      await assistantService.deactivateAssistant(assistant.id, currentUser?.uid);
+      setSelectedAssistantIds((current) => current.filter((id) => id !== assistant.id));
+      toast.success("Asistente eliminado correctamente.");
+      await loadData();
+    } catch (error) {
+      console.error(error);
+      toast.error("No se pudo eliminar el asistente.");
+    }
+  };
+
+  const toggleDoctorSelection = (doctorId: string) => {
+    setSelectedDoctorIds((current) =>
+      current.includes(doctorId)
+        ? current.filter((id) => id !== doctorId)
+        : [...current, doctorId],
+    );
+  };
+
+  const toggleVisibleDoctors = () => {
+    setSelectedDoctorIds((current) =>
+      allVisibleDoctorsSelected
+        ? current.filter((id) => !visibleDoctorIds.includes(id))
+        : Array.from(new Set([...current, ...visibleDoctorIds])),
+    );
+  };
+
+  const toggleAssistantSelection = (assistantId: string) => {
+    setSelectedAssistantIds((current) =>
+      current.includes(assistantId)
+        ? current.filter((id) => id !== assistantId)
+        : [...current, assistantId],
+    );
+  };
+
+  const toggleVisibleAssistants = () => {
+    setSelectedAssistantIds((current) =>
+      allVisibleAssistantsSelected
+        ? current.filter((id) => !visibleAssistantIds.includes(id))
+        : Array.from(new Set([...current, ...visibleAssistantIds])),
+    );
+  };
+
+  const handleDoctorBulkAction = async (action: "activate" | "deactivate" | "delete") => {
+    if (!canManageDoctors || selectedDoctorIds.length === 0) return;
+
+    const labels = {
+      activate: { title: "Activar doctores", verb: "activar", confirmLabel: "Activar" },
+      deactivate: { title: "Desactivar doctores", verb: "desactivar", confirmLabel: "Desactivar" },
+      delete: { title: "Eliminar doctores", verb: "eliminar", confirmLabel: "Eliminar" },
+    } as const;
+    const copy = labels[action];
+    const confirmed = await confirm({
+      title: copy.title,
+      description: `Se van a ${copy.verb} ${selectedDoctorIds.length} doctores seleccionados.${action === "delete" ? " Sus citas existentes se conservarán." : ""}`,
+      confirmLabel: copy.confirmLabel,
+      destructive: action !== "activate",
+    });
+    if (!confirmed) return;
+
+    setSaving(true);
+    try {
+      await Promise.all(selectedDoctorIds.map((doctorId) =>
+        action === "delete"
+          ? doctorService.deactivateDoctor(doctorId, currentUser?.uid)
+          : doctorService.updateDoctor(doctorId, {
+              status: action === "activate" ? "active" : "inactive",
+              visibleEnAgenda: action === "activate",
+              updatedBy: currentUser?.uid ?? null,
+            }),
+      ));
+      toast.success(`Se actualizaron ${selectedDoctorIds.length} doctores.`);
+      setSelectedDoctorIds([]);
+      await loadData();
+    } catch (error) {
+      console.error(error);
+      toast.error("No se pudo completar la acción por lote.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleAssistantBulkAction = async (action: "activate" | "deactivate" | "delete") => {
+    if (!canManageAssistants || selectedAssistantIds.length === 0) return;
+
+    const labels = {
+      activate: { title: "Activar asistentes", verb: "activar", confirmLabel: "Activar" },
+      deactivate: { title: "Desactivar asistentes", verb: "desactivar", confirmLabel: "Desactivar" },
+      delete: { title: "Eliminar asistentes", verb: "eliminar", confirmLabel: "Eliminar" },
+    } as const;
+    const copy = labels[action];
+    const confirmed = await confirm({
+      title: copy.title,
+      description: `Se van a ${copy.verb} ${selectedAssistantIds.length} asistentes seleccionados.${action === "delete" ? " Sus registros existentes se conservarán." : ""}`,
+      confirmLabel: copy.confirmLabel,
+      destructive: action !== "activate",
+    });
+    if (!confirmed) return;
+
+    setSaving(true);
+    try {
+      await Promise.all(selectedAssistantIds.map((assistantId) =>
+        action === "delete"
+          ? assistantService.deactivateAssistant(assistantId, currentUser?.uid)
+          : assistantService.updateAssistant(assistantId, {
+              status: action === "activate" ? "active" : "inactive",
+              visibleEnAgenda: action === "activate",
+              updatedBy: currentUser?.uid ?? null,
+            }),
+      ));
+      toast.success(`Se actualizaron ${selectedAssistantIds.length} asistentes.`);
+      setSelectedAssistantIds([]);
+      await loadData();
+    } catch (error) {
+      console.error(error);
+      toast.error("No se pudo completar la acción por lote.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (visibleTabs.length === 0) {
     return (
       <main className="space-y-6">
@@ -529,15 +786,16 @@ const AgendaPage = () => {
               </p>
             </SectionHelp>
             <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8"
+              variant="outline"
+              size="sm"
+              className="h-10 px-4"
               onClick={() => void refreshAgenda()}
               disabled={loading}
               aria-label="Actualizar agenda"
               title="Actualizar agenda"
             >
-              <RefreshCw className={`h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+              <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+              Actualizar
             </Button>
           </div>
         </div>
@@ -563,7 +821,11 @@ const AgendaPage = () => {
         </TabsList>
 
         <TabsContent value="calendario" className="relative isolate z-0 mt-4">
-          <AppointmentManager doctors={doctors} assistants={assistants} refreshKey={refreshKey} />
+          <AppointmentManager
+            doctors={doctors}
+            assistants={assistants}
+            refreshKey={refreshKey}
+          />
         </TabsContent>
 
         <TabsContent value="doctores" className="mt-4">
@@ -584,24 +846,87 @@ const AgendaPage = () => {
               )}
             </CardHeader>
 
-            <CardContent>
+            <CardContent className="space-y-3">
+              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_180px]">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    type="search"
+                    aria-label="Buscar doctores"
+                    value={doctorSearch}
+                    onChange={(event) => setDoctorSearch(event.target.value)}
+                    placeholder="Buscar por nombre, correo o especialidad..."
+                    className="h-10 pl-9"
+                  />
+                </div>
+                <Select
+                  value={doctorStatusFilter}
+                  onValueChange={(value) => setDoctorStatusFilter(value as StaffStatusFilter)}
+                >
+                  <SelectTrigger className="h-10" aria-label="Filtrar doctores por estado">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los estados</SelectItem>
+                    <SelectItem value="active">Activos</SelectItem>
+                    <SelectItem value="inactive">Inactivos</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {canManageDoctors && (
+                <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/20 p-2">
+                  <Button type="button" variant="outline" size="sm" onClick={toggleVisibleDoctors} disabled={visibleDoctorIds.length === 0 || saving}>
+                    <CheckCheck className="mr-2 h-4 w-4" />
+                    {allVisibleDoctorsSelected ? "Quitar visibles" : "Seleccionar visibles"}
+                  </Button>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedDoctorIds([])} disabled={selectedDoctorIds.length === 0 || saving}>
+                    <X className="mr-2 h-4 w-4" />
+                    Limpiar
+                  </Button>
+                  <span className="mr-auto text-sm text-muted-foreground">
+                    {selectedDoctorIds.length} seleccionados
+                  </span>
+                  <Button type="button" variant="outline" size="sm" onClick={() => void handleDoctorBulkAction("activate")} disabled={selectedDoctorIds.length === 0 || saving}>
+                    Activar
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => void handleDoctorBulkAction("deactivate")} disabled={selectedDoctorIds.length === 0 || saving}>
+                    Desactivar
+                  </Button>
+                  <Button type="button" variant="destructive" size="sm" onClick={() => void handleDoctorBulkAction("delete")} disabled={selectedDoctorIds.length === 0 || saving}>
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Eliminar
+                  </Button>
+                </div>
+              )}
+
               {loading ? (
                 <div className="py-8 text-center text-sm text-muted-foreground">
                   Cargando doctores...
                 </div>
-              ) : doctors.length === 0 ? (
+              ) : filteredDoctors.length === 0 ? (
                 <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-                  No hay doctores registrados.
+                  {listedDoctors.length === 0
+                    ? "No hay doctores registrados."
+                    : "No se encontraron doctores con los filtros actuales."}
                 </div>
               ) : (
                 <div className="grid gap-3 md:grid-cols-2">
-                  {doctors.map((doctor) => (
+                  {filteredDoctors.map((doctor) => (
                     <div
                       key={doctor.id}
-                      className="rounded-lg border bg-muted/20 p-3"
+                      className="relative rounded-lg border bg-muted/20 p-3"
                     >
+                      {canManageDoctors && (
+                        <Checkbox
+                          checked={selectedDoctorIds.includes(doctor.id)}
+                          onCheckedChange={() => toggleDoctorSelection(doctor.id)}
+                          className="absolute right-3 top-3"
+                          aria-label={`Seleccionar a ${doctor.nombre}`}
+                        />
+                      )}
                       <div className="flex items-start justify-between gap-4">
-                        <div className="space-y-2">
+                        <div className="min-w-0 space-y-2 pr-7">
                           <div className="flex flex-wrap items-center gap-2">
                             <span
                               className="h-4 w-4 rounded-full border"
@@ -658,6 +983,16 @@ const AgendaPage = () => {
                         </Button>)}
 
                         {canManageDoctors && (<Button
+                          variant="outline"
+                          size="sm"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => handleDeleteDoctor(doctor)}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Eliminar
+                        </Button>)}
+
+                        {canManageDoctors && (<Button
                           variant={
                             doctor.status === "active"
                               ? "destructive"
@@ -702,18 +1037,73 @@ const AgendaPage = () => {
               )}
             </CardHeader>
 
-            <CardContent>
+            <CardContent className="space-y-3">
+              <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_180px]">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    type="search"
+                    aria-label="Buscar asistentes"
+                    value={assistantSearch}
+                    onChange={(event) => setAssistantSearch(event.target.value)}
+                    placeholder="Buscar por nombre o correo..."
+                    className="h-10 pl-9"
+                  />
+                </div>
+                <Select
+                  value={assistantStatusFilter}
+                  onValueChange={(value) => setAssistantStatusFilter(value as StaffStatusFilter)}
+                >
+                  <SelectTrigger className="h-10" aria-label="Filtrar asistentes por estado">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos los estados</SelectItem>
+                    <SelectItem value="active">Activos</SelectItem>
+                    <SelectItem value="inactive">Inactivos</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {canManageAssistants && (
+                <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/20 p-2">
+                  <Button type="button" variant="outline" size="sm" onClick={toggleVisibleAssistants} disabled={visibleAssistantIds.length === 0 || saving}>
+                    <CheckCheck className="mr-2 h-4 w-4" />
+                    {allVisibleAssistantsSelected ? "Quitar visibles" : "Seleccionar visibles"}
+                  </Button>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => setSelectedAssistantIds([])} disabled={selectedAssistantIds.length === 0 || saving}>
+                    <X className="mr-2 h-4 w-4" />
+                    Limpiar
+                  </Button>
+                  <span className="mr-auto text-sm text-muted-foreground">
+                    {selectedAssistantIds.length} seleccionados
+                  </span>
+                  <Button type="button" variant="outline" size="sm" onClick={() => void handleAssistantBulkAction("activate")} disabled={selectedAssistantIds.length === 0 || saving}>
+                    Activar
+                  </Button>
+                  <Button type="button" variant="outline" size="sm" onClick={() => void handleAssistantBulkAction("deactivate")} disabled={selectedAssistantIds.length === 0 || saving}>
+                    Desactivar
+                  </Button>
+                  <Button type="button" variant="destructive" size="sm" onClick={() => void handleAssistantBulkAction("delete")} disabled={selectedAssistantIds.length === 0 || saving}>
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Eliminar
+                  </Button>
+                </div>
+              )}
+
               {loading ? (
                 <div className="py-8 text-center text-sm text-muted-foreground">
                   Cargando asistentes...
                 </div>
-              ) : assistants.length === 0 ? (
+              ) : filteredAssistants.length === 0 ? (
                 <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">
-                  No hay asistentes registrados.
+                  {listedAssistants.length === 0
+                    ? "No hay asistentes registrados."
+                    : "No se encontraron asistentes con los filtros actuales."}
                 </div>
               ) : (
                 <div className="grid gap-3 md:grid-cols-2">
-                  {assistants.map((assistant) => {
+                  {filteredAssistants.map((assistant) => {
                     const assignedDoctorNames = assistant.doctorIdsAsignados
                       .map(
                         (doctorId) =>
@@ -725,9 +1115,17 @@ const AgendaPage = () => {
                     return (
                       <div
                         key={assistant.id}
-                        className="rounded-lg border bg-muted/20 p-3"
+                        className="relative rounded-lg border bg-muted/20 p-3"
                       >
-                        <div className="space-y-2">
+                        {canManageAssistants && (
+                          <Checkbox
+                            checked={selectedAssistantIds.includes(assistant.id)}
+                            onCheckedChange={() => toggleAssistantSelection(assistant.id)}
+                            className="absolute right-3 top-3"
+                            aria-label={`Seleccionar a ${assistant.nombre}`}
+                          />
+                        )}
+                        <div className="space-y-2 pr-7">
                           <div className="flex flex-wrap items-center gap-2">
                             <h3 className="font-semibold">
                               {assistant.nombre}
@@ -782,6 +1180,16 @@ const AgendaPage = () => {
                             onClick={() => openEditAssistantDialog(assistant)}
                           >
                             Editar
+                          </Button>)}
+
+                          {canManageAssistants && (<Button
+                            variant="outline"
+                            size="sm"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => handleDeleteAssistant(assistant)}
+                          >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Eliminar
                           </Button>)}
 
                           {canManageAssistants && (<Button
@@ -846,15 +1254,21 @@ const AgendaPage = () => {
               <Label htmlFor="doctor-name">Nombre *</Label>
               <Input
                 id="doctor-name"
+                aria-invalid={Boolean(doctorFormErrors.nombre)}
+                className={doctorFormErrors.nombre ? "border-destructive focus-visible:ring-destructive" : undefined}
                 value={doctorForm.nombre}
-                onChange={(event) =>
+                onChange={(event) => {
                   setDoctorForm((current) => ({
                     ...current,
                     nombre: event.target.value,
-                  }))
-                }
+                  }));
+                  setDoctorFormErrors((current) => ({ ...current, nombre: undefined }));
+                }}
                 placeholder="Ej. Dra. Claudia"
               />
+              {doctorFormErrors.nombre && (
+                <p className="text-xs text-destructive">{doctorFormErrors.nombre}</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -873,19 +1287,26 @@ const AgendaPage = () => {
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="doctor-email">Correo (Opcional)</Label>
+              <Label htmlFor="doctor-email">Correo *</Label>
               <Input
                 id="doctor-email"
                 type="email"
+                required
+                aria-invalid={Boolean(doctorFormErrors.email)}
+                className={doctorFormErrors.email ? "border-destructive focus-visible:ring-destructive" : undefined}
                 value={doctorForm.email}
-                onChange={(event) =>
+                onChange={(event) => {
                   setDoctorForm((current) => ({
                     ...current,
                     email: event.target.value,
-                  }))
-                }
+                  }));
+                  setDoctorFormErrors((current) => ({ ...current, email: undefined }));
+                }}
                 placeholder="doctor@claudent.com"
               />
+              {doctorFormErrors.email && (
+                <p className="text-xs text-destructive">{doctorFormErrors.email}</p>
+              )}
             </div>
 
             <div className="space-y-2">
@@ -968,31 +1389,44 @@ const AgendaPage = () => {
               <Label htmlFor="assistant-name">Nombre *</Label>
               <Input
                 id="assistant-name"
+                aria-invalid={Boolean(assistantFormErrors.nombre)}
+                className={assistantFormErrors.nombre ? "border-destructive focus-visible:ring-destructive" : undefined}
                 value={assistantForm.nombre}
-                onChange={(event) =>
+                onChange={(event) => {
                   setAssistantForm((current) => ({
                     ...current,
                     nombre: event.target.value,
-                  }))
-                }
+                  }));
+                  setAssistantFormErrors((current) => ({ ...current, nombre: undefined }));
+                }}
                 placeholder="Ej. Luis Pérez"
               />
+              {assistantFormErrors.nombre && (
+                <p className="text-xs text-destructive">{assistantFormErrors.nombre}</p>
+              )}
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="assistant-email">Correo (Opcional)</Label>
+              <Label htmlFor="assistant-email">Correo *</Label>
               <Input
                 id="assistant-email"
                 type="email"
+                required
+                aria-invalid={Boolean(assistantFormErrors.email)}
+                className={assistantFormErrors.email ? "border-destructive focus-visible:ring-destructive" : undefined}
                 value={assistantForm.email}
-                onChange={(event) =>
+                onChange={(event) => {
                   setAssistantForm((current) => ({
                     ...current,
                     email: event.target.value,
-                  }))
-                }
+                  }));
+                  setAssistantFormErrors((current) => ({ ...current, email: undefined }));
+                }}
                 placeholder="asistente@claudent.com"
               />
+              {assistantFormErrors.email && (
+                <p className="text-xs text-destructive">{assistantFormErrors.email}</p>
+              )}
             </div>
 
             <div className="space-y-2">

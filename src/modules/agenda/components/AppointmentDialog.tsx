@@ -1,6 +1,7 @@
 import { useMemo, useState, type Dispatch, type SetStateAction } from "react";
+import { formatTimeRange, timeToMinutes } from "@/shared/utils/time";
 
-import { CalendarCheck, UserPlus } from "lucide-react";
+import { CalendarCheck, CircleHelp, UserPlus } from "lucide-react";
 
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
@@ -15,6 +16,11 @@ import {
 } from "@/shared/components/ui/dialog";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/shared/components/ui/popover";
 import { Textarea } from "@/shared/components/ui/textarea";
 
 import type { PatientLookup } from "../services/patientLookupService";
@@ -23,6 +29,7 @@ import type {
   AppointmentType,
   Assistant,
   Doctor,
+  StaffSchedule,
 } from "../types/agenda.types";
 import SearchableSelect, {
   type SearchableSelectOption,
@@ -55,6 +62,8 @@ interface AppointmentDialogProps {
   services: ServiceLookup[];
   doctors: Doctor[];
   assistants: Assistant[];
+  schedules: StaffSchedule[];
+  canViewDoctorSchedule: boolean;
   saving: boolean;
   title?: string;
   description?: string;
@@ -63,22 +72,15 @@ interface AppointmentDialogProps {
 }
 
 const getWaitMinutes = (arrivalTime: string, startTime: string) => {
-  if (!arrivalTime || !startTime) return null;
-
-  const [arrivalHours = "0", arrivalMinutes = "0"] = arrivalTime.split(":");
-  const [startHours = "0", startMinutes = "0"] = startTime.split(":");
-
-  const arrivalTotal = Number(arrivalHours) * 60 + Number(arrivalMinutes);
-  const startTotal = Number(startHours) * 60 + Number(startMinutes);
-
-  const diff = startTotal - arrivalTotal;
+  const diff = timeToMinutes(startTime) - timeToMinutes(arrivalTime);
+  if (!Number.isFinite(diff)) return null;
 
   return diff > 0 ? diff : 0;
 };
 
 const addMinutesToTime = (time: string, minutesToAdd: number) => {
-  const [hours = "0", minutes = "0"] = time.split(":");
-  const totalMinutes = Number(hours) * 60 + Number(minutes) + minutesToAdd;
+  const totalMinutes = timeToMinutes(time) + minutesToAdd;
+  if (!Number.isFinite(totalMinutes)) return "";
   const normalizedMinutes = Math.max(0, Math.min(totalMinutes, 23 * 60 + 59));
   const nextHours = Math.floor(normalizedMinutes / 60);
   const nextMinutes = normalizedMinutes % 60;
@@ -98,6 +100,8 @@ const AppointmentDialog = ({
   services,
   doctors,
   assistants,
+  schedules,
+  canViewDoctorSchedule,
   saving,
   title = "Nueva cita",
   description = "Busca paciente y servicio desde los catálogos existentes. También puedes escribirlos manualmente cuando todavía no estén registrados.",
@@ -154,6 +158,34 @@ const AppointmentDialog = ({
   }, [doctors]);
 
   const selectedDoctor = doctors.find((doctor) => doctor.id === form.doctorId);
+  const selectedDoctorSchedule = useMemo(() => {
+    if (!selectedDoctor || !canViewDoctorSchedule) return [];
+
+    const dayNames = [
+      "Domingo",
+      "Lunes",
+      "Martes",
+      "Miércoles",
+      "Jueves",
+      "Viernes",
+      "Sábado",
+    ];
+
+    return schedules
+      .filter((schedule) =>
+        schedule.staffType === "doctor" &&
+        schedule.staffId === selectedDoctor.id &&
+        schedule.status === "active" &&
+        (schedule.scheduleType ?? "weekly") === "weekly",
+      )
+      .sort((first, second) =>
+        first.dayOfWeek - second.dayOfWeek ||
+        first.startTime.localeCompare(second.startTime),
+      )
+      .map((schedule) =>
+        `${dayNames[schedule.dayOfWeek]}: ${formatTimeRange(schedule.startTime, schedule.endTime)}`,
+      );
+  }, [canViewDoctorSchedule, schedules, selectedDoctor]);
   const selectedPatient = patients.find(
     (patient) => patient.id === form.patientId,
   );
@@ -361,7 +393,7 @@ const AppointmentDialog = ({
             </div>
 
             <p className="text-xs text-muted-foreground">
-              {form.startDate} · {form.startTime} - {form.endTime}
+              {form.startDate} · {formatTimeRange(form.startTime, form.endTime)}
             </p>
 
             {isWalkIn && form.arrivalTime && (
@@ -548,7 +580,39 @@ const AppointmentDialog = ({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="appointment-doctor">Doctor *</Label>
+            <div className="flex items-center gap-1.5">
+              <Label htmlFor="appointment-doctor">Doctor *</Label>
+              {selectedDoctor && canViewDoctorSchedule && (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      aria-label={`Ver horario de ${selectedDoctor.nombre}`}
+                      title="Ver horario del doctor"
+                    >
+                      <CircleHelp className="h-4 w-4" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" className="w-72 space-y-2">
+                    <p className="text-sm font-medium">Horario de {selectedDoctor.nombre}</p>
+                    {selectedDoctorSchedule.length > 0 ? (
+                      <ul className="space-y-1 text-sm text-muted-foreground">
+                        {selectedDoctorSchedule.map((schedule, index) => (
+                          <li key={`${schedule}-${index}`}>{schedule}</li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        Este doctor no tiene horario registrado.
+                      </p>
+                    )}
+                  </PopoverContent>
+                </Popover>
+              )}
+            </div>
 
             <SearchableSelect
               id="appointment-doctor"

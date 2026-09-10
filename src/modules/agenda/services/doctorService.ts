@@ -51,10 +51,13 @@ export const doctorService = {
   },
 
   createDoctor: async (input: CreateDoctorInput): Promise<string> => {
+    const email = input.email?.trim().toLowerCase() || "";
+    if (!email) throw new Error("El correo del doctor es obligatorio.");
+
     const created = await addDoc(doctorsCollection, {
       ...input,
       nombre: input.nombre.trim(),
-      email: input.email?.trim().toLowerCase() || "",
+      email,
       telefono: input.telefono?.trim() || "",
       especialidad: input.especialidad?.trim() || "",
       color: input.color || "#2563EB",
@@ -72,8 +75,15 @@ export const doctorService = {
     doctorId: string,
     input: UpdateDoctorInput,
   ): Promise<void> => {
+    const normalizedInput = { ...input };
+    if ("email" in input) {
+      const email = input.email?.trim().toLowerCase() || "";
+      if (!email) throw new Error("El correo del doctor es obligatorio.");
+      normalizedInput.email = email;
+    }
+
     await updateDoc(doc(db, "doctores", doctorId), {
-      ...input,
+      ...normalizedInput,
       updatedAt: serverTimestamp(),
     });
   },

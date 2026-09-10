@@ -1,5 +1,5 @@
 import React, { createContext, ReactNode, useContext, useEffect, useState } from "react";
-import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, updateDoc } from "firebase/firestore";
+import { addDoc, collection, doc, onSnapshot, orderBy, query, updateDoc } from "firebase/firestore";
 import { toast } from "sonner";
 import { db } from "@/lib/firebase";
 import { useAuth, useCan } from "@/auth";
@@ -69,8 +69,8 @@ export const QuotationsProvider: React.FC<{ children: ReactNode }> = ({ children
 
   const deleteQuotation = async (id: string) => {
     if (!can("quotations.delete")) throw new Error("No tienes permiso para realizar esta acción.");
-    await deleteDoc(doc(db, "cotizaciones", id));
-    await addAuditLog("DELETE", "cotizaciones", `Cotizacion eliminada: ${id}`);
+    await updateDoc(doc(db, "cotizaciones", id), { estado: "inactivo" });
+    await addAuditLog("DELETE", "cotizaciones", `Cotizacion desactivada: ${id}`);
   };
 
   return (

@@ -23,7 +23,6 @@ export const generateQuotationPDF = (quotation: Quotation, patient?: Patient | n
 
   doc.setFontSize(10);
   doc.text(`Fecha: ${quotation.fecha}`, pageWidth - 50, 20);
-  doc.text(`Folio: ${quotation.id.substring(0, 8).toUpperCase()}`, pageWidth - 50, 26);
 
   // Información del Paciente
   doc.setTextColor(0, 0, 0);
@@ -57,7 +56,7 @@ export const generateQuotationPDF = (quotation: Quotation, patient?: Patient | n
   doc.setTextColor(100, 100, 100);
   doc.text('Este presupuesto tiene una validez de 30 días naturales.', 14, finalY);
   
-  doc.save(`Cotizacion_${patient.nombres}_${quotation.id.substring(0, 5)}.pdf`);
+  doc.save(`Cotizacion_${patient.nombres}_${quotation.fecha}.pdf`);
 };
 
 // --- FUNCIÓN: GENERAR EXPEDIENTE COMPLETO ---

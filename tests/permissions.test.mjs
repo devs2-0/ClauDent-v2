@@ -4,7 +4,7 @@ import { build } from 'esbuild';
 import { createRequire } from 'node:module';
 import vm from 'node:vm';
 import path from 'node:path';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 
 process.env.NODE_ENV = 'production';
 
@@ -33,6 +33,7 @@ const mocks = {
   '@/shared/services/currentUserIdentity': `export const getCurrentUserIdentity = () => ({});`,
   '@/lib/firebase': `export const db = {}; export const storage = {};`,
   '@/modules/audit/services/auditService': `export const addAuditLog = () => {};`,
+  '../hooks/useInventory': `export const useInventory = () => ({products:[],categories:[],movements:[],productsLoading:false,categoriesLoading:false,movementsLoading:false});`,
 };
 const entry = `
   import React from 'react';
@@ -42,15 +43,28 @@ const entry = `
   import Patients from './src/modules/patients/pages/PatientsPage';
   import Record from './src/modules/patients/pages/PatientRecordPage';
   import Services from './src/modules/services/pages/ServicesPage';
-  import Dashboard from './src/modules/dashboard/pages/DashboardPage';
+  import Dashboard, {DailyAgendaCard} from './src/modules/dashboard/pages/DashboardPage';
+  import Inventory from './src/modules/inventario/pages/InventarioPage';
+  import Daily from './src/modules/agenda/components/DailyCalendarView';
+  import Weekly from './src/modules/agenda/components/WeeklyCalendarView';
+  import Monthly from './src/modules/agenda/components/MonthlyCalendarView';
+  import * as time from './src/shared/utils/time';
   import History from './src/modules/patients/components/PatientHistory';
   import Payments from './src/modules/patients/components/PatientPayments';
   import {ProtectedRouteByPermission} from './src/auth/guards/ProtectedRouteByPermission';
   import {permissionCatalog} from './src/auth/constants/permissionCatalog';
   import {getPermissionDependencies, hasGrantedPermission, togglePermissionGrant} from './src/auth/constants/permissionDependencies';
-  export {permissionCatalog, getPermissionDependencies, hasGrantedPermission, togglePermissionGrant};
+  export {permissionCatalog, getPermissionDependencies, hasGrantedPermission, togglePermissionGrant, time};
+  export function renderCalendar(name, appointments) {
+    const View = {Daily, Weekly, Monthly, Summary:DailyAgendaCard}[name];
+    const now = new Date();
+    const today = new Date(now.getTime() - now.getTimezoneOffset()*60000).toISOString().slice(0,10);
+    return renderToStaticMarkup(<MemoryRouter><View appointments={appointments} today={today} selectedDate={today}
+      doctors={[{id:'doctor',nombre:'Doctora',status:'active'}]} selectedDoctorId="all" schedules={[]} blocks={[undefined]}
+      onSelectDate={()=>{}} onSelectAppointment={()=>{}} loading={false} canViewAgenda={true} /></MemoryRouter>);
+  }
   export function render(name, permission, anyPermission) {
-    const pages = {Patients, Record, Services, Dashboard, History, Payments};
+    const pages = {Patients, Record, Services, Dashboard, History, Payments, Inventory};
     const Page = pages[name];
     const content = <Page patientId="patient" patientName="Paciente Prueba"/>;
     return renderToStaticMarkup(<TooltipProvider><MemoryRouter initialEntries={['/pacientes/patient']}><Routes><Route path="/pacientes/:id" element={permission || anyPermission ? <ProtectedRouteByPermission permission={permission} anyPermission={anyPermission}>{content}</ProtectedRouteByPermission> : content}/></Routes></MemoryRouter></TooltipProvider>);
@@ -59,6 +73,7 @@ const entry = `
 const bundle = await build({
   stdin:{contents:entry,resolveDir:root,loader:'tsx'}, jsx:'automatic', bundle:true,write:false,format:'cjs',platform:'node',packages:'external',logLevel:'silent',
   plugins:[{name:'local-fixtures',setup(b){
+    b.onLoad({filter:/DashboardPage\.tsx$/}, args=>({contents:readFileSync(args.path,'utf8')+'\nexport {DailyAgendaCard};',loader:'tsx',resolveDir:path.dirname(args.path)}));
     b.onResolve({filter:/.*/},args=>{
       if(args.path === './useAuth' || (args.path.endsWith('/useAuth') && !args.path.startsWith('@/'))) return {path:'fixture-auth',namespace:'fixture'};
       if(args.path === './useCurrentUserProfile') return {path:'fixture-profile',namespace:'fixture'};
@@ -128,4 +143,43 @@ check('Historial y Pagos se montan sin proveedores de inventario/caja',()=>{
   assert.doesNotThrow(()=>api.render('History'));
   assert.doesNotThrow(()=>api.render('Payments'));
 });
-console.log(`${checks} escenarios de permisos aprobados.`);
+for (const grants of [[], ['inventory.view'], ['inventory.stock.adjust'], ['inventory.purchaseList.manage']]) {
+  useGrants(grants);
+  check(`Inventario: sin combinación válida no aparece botón Reabastecer (${grants.join(',')})`,()=>{
+    const html = api.render('Inventory', 'inventory.view');
+    assert.ok(!/<button[^>]*>(?:(?!<\/button>)[\s\S])*Reabastecer[\s\S]*?<\/button>/.test(html.replace(/<button[^>]*role="tab"[^>]*>[\s\S]*?<\/button>/g,'')));
+  });
+}
+for (const grant of ['inventory.stock.adjust','inventory.purchaseList.manage']) {
+  useGrants(['inventory.view', grant]);
+  check(`Inventario: botón visible con ${grant}`,()=>{
+    const html = api.render('Inventory', 'inventory.view').replace(/<button[^>]*role="tab"[^>]*>[\s\S]*?<\/button>/g,'');
+    assert.match(html, /<button[^>]*>(?:(?!<\/button>)[\s\S])*Reabastecer[\s\S]*?<\/button>/);
+  });
+  check(`Inventario: ${grant} depende de ver inventario`,()=>{
+    assert.ok(api.getPermissionDependencies(grant).includes('inventory.view'));
+    assert.equal(api.togglePermissionGrant([],grant).length,0);
+  });
+}
+check('Horas incompletas e inválidas no se convierten en medianoche ni generan NaN visible',()=>{
+  for (const value of [undefined,null,'','bad','24:00','12:99',{},1]) {
+    assert.equal(api.time.formatTime(value),'Sin hora');
+    assert.ok(Number.isNaN(api.time.timeToMinutes(value)));
+    assert.ok(Number.isFinite(api.time.compareTimes(value,undefined)));
+  }
+  assert.equal(api.time.formatTime('9:05'),'09:05');
+  assert.equal(api.time.timeToMinutes('00:00'),0);
+  assert.ok(api.time.compareTimes(undefined,'23:59')>0);
+});
+const now = new Date();
+const today = new Date(now.getTime() - now.getTimezoneOffset()*60000).toISOString().slice(0,10);
+for (const name of ['Daily','Weekly','Monthly','Summary']) {
+  check(`${name}: cita sin hora y registro undefined se renderizan sin caída`,()=>{
+    const appointments = [undefined,{id:'missing-time',patientName:'Paciente sin hora',doctorId:'doctor',startDate:today,status:'scheduled',appointmentType:'scheduled'}];
+    const html = api.renderCalendar(name,appointments);
+    assert.match(html,/Sin hora/);
+    assert.match(html,/Paciente sin hora/);
+    assert.ok(!html.includes('NaN'));
+  });
+}
+console.log(`${checks} escenarios de permisos y datos incompletos aprobados.`);

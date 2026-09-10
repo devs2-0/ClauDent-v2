@@ -58,10 +58,13 @@ export const assistantService = {
   },
 
   createAssistant: async (input: CreateAssistantInput): Promise<string> => {
+    const email = input.email?.trim().toLowerCase() || "";
+    if (!email) throw new Error("El correo del asistente es obligatorio.");
+
     const created = await addDoc(assistantsCollection, {
       ...input,
       nombre: input.nombre.trim(),
-      email: input.email?.trim().toLowerCase() || "",
+      email,
       telefono: input.telefono?.trim() || "",
       notas: input.notas?.trim() || "",
       doctorIdsAsignados: input.doctorIdsAsignados ?? [],
@@ -79,8 +82,15 @@ export const assistantService = {
     assistantId: string,
     input: UpdateAssistantInput,
   ): Promise<void> => {
+    const normalizedInput = { ...input };
+    if ("email" in input) {
+      const email = input.email?.trim().toLowerCase() || "";
+      if (!email) throw new Error("El correo del asistente es obligatorio.");
+      normalizedInput.email = email;
+    }
+
     await updateDoc(doc(db, "asistentes", assistantId), {
-      ...input,
+      ...normalizedInput,
       updatedAt: serverTimestamp(),
     });
   },
