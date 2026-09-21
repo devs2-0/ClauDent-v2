@@ -617,7 +617,7 @@ const RolesPage = () => {
           </Button>
 
           <Can permission="roles.create">
-            <Button onClick={openCreateDialog}>
+            <Button className="shadow-lg" onClick={openCreateDialog}>
               <Plus className="mr-2 h-4 w-4" />
               Nuevo rol
             </Button>

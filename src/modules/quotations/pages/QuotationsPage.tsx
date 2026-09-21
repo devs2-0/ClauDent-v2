@@ -501,7 +501,7 @@ const Cotizaciones: React.FC = () => {
           </div>
         </div>
         {canCreateQuotation && (
-          <Button onClick={() => handleOpenDialog()}>
+          <Button className="shadow-lg" onClick={() => handleOpenDialog()}>
             <Plus className="mr-2 h-4 w-4" />
             Nueva Cotización
           </Button>

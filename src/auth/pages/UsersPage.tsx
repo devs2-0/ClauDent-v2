@@ -755,7 +755,7 @@ const UsersPage = () => {
           </Button>
 
           <Can permission="users.create">
-            <Button onClick={openInviteDialog}>
+            <Button className="shadow-lg" onClick={openInviteDialog}>
               <MailPlus className="mr-2 h-4 w-4" />
               Nueva invitación
             </Button>

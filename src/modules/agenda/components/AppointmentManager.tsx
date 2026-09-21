@@ -1743,7 +1743,7 @@ const AppointmentManager = ({
 
             <div className="flex flex-wrap gap-2">
               {canCreateAppointment && (
-                <Button onClick={openManualAppointmentDialog}>
+                <Button className="shadow-lg" onClick={openManualAppointmentDialog}>
                   <Plus className="mr-2 h-4 w-4" />
                   Nueva cita
                 </Button>

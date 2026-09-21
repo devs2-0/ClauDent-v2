@@ -279,7 +279,7 @@ const ServiciosIndividuales: React.FC = () => {
             </SelectContent>
           </Select>
         </div>
-        {can('services.create') && <Button className="w-full sm:w-auto" onClick={() => handleOpenDialog()}>
+        {can('services.create') && <Button className="w-full shadow-lg sm:w-auto" onClick={() => handleOpenDialog()}>
           <Plus className="mr-2 h-4 w-4" />
           Nuevo servicio
         </Button>}

@@ -841,7 +841,7 @@ const AgendaPage = () => {
               </div>
 
               {canManageDoctors && (
-                <Button onClick={openCreateDoctorDialog}>
+                <Button className="shadow-lg" onClick={openCreateDoctorDialog}>
                   <Stethoscope className="mr-2 h-4 w-4" />
                   Nuevo doctor
                 </Button>
@@ -1032,7 +1032,7 @@ const AgendaPage = () => {
               </div>
 
               {canManageAssistants && (
-                <Button onClick={openCreateAssistantDialog}>
+                <Button className="shadow-lg" onClick={openCreateAssistantDialog}>
                   <UsersRound className="mr-2 h-4 w-4" />
                   Nuevo asistente
                 </Button>

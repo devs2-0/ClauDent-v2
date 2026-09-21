@@ -360,7 +360,7 @@ const ServiciosPaquetes: React.FC = () => {
             </SelectContent>
           </Select>
         </div>
-        <Can permission="packages.create"><Button onClick={() => handleOpenDialog()}>
+        <Can permission="packages.create"><Button className="shadow-lg" onClick={() => handleOpenDialog()}>
           <Plus className="h-4 w-4 mr-2" />
           Nuevo Paquete
         </Button></Can>
