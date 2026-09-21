@@ -5,6 +5,7 @@ import { Checkbox } from '@/shared/components/ui/checkbox';
 import { Input } from '@/shared/components/ui/input';
 import { Separator } from '@/shared/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/shared/components/ui/select';
+import { HYGIENE_OPTIONS, readLegacyHygieneOptions } from '@/modules/patients/utils/hygieneOptions';
 
 interface Props {
   formData: IApnp;
@@ -12,16 +13,21 @@ interface Props {
 }
 
 const FormApnp: React.FC<Props> = ({ formData, setFormData }) => {
-  const hygieneOptions = ['Hilo dental', 'Enjuague bucal', 'No usa auxiliares', 'Otros'];
   const legacyHygieneText = formData.auxiliares_cuales ?? '';
-  const selectedOptions = formData.auxiliares_opciones ?? (legacyHygieneText.trim() ? ['Otros'] : []);
-  const otherText = formData.auxiliares_otros ?? (formData.auxiliares_opciones ? '' : legacyHygieneText);
-  const updateHygiene = (options: string[], other = otherText) => setFormData((current) => ({
-    ...current,
-    auxiliares_opciones: options,
-    auxiliares_otros: other,
-    auxiliares_cuales: options.map((option) => option === 'Otros' ? other.trim() || 'Otros' : option).join(', '),
-  }));
+  const legacySelection = readLegacyHygieneOptions(legacyHygieneText);
+  const selectedOptions = formData.auxiliares_opciones ?? [
+    ...legacySelection.options,
+  ];
+  const otherText = formData.auxiliares_otros ?? (formData.auxiliares_opciones ? '' : legacySelection.other);
+  const updateHygiene = (options: string[], other = otherText) => {
+    const normalizedOther = options.includes('Otros') ? other : '';
+    setFormData((current) => ({
+      ...current,
+      auxiliares_opciones: options,
+      auxiliares_otros: normalizedOther,
+      auxiliares_cuales: options.map((option) => option === 'Otros' ? normalizedOther.trim() || 'Otros' : option).join(', '),
+    }));
+  };
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { id, value } = e.target;
     setFormData(prev => ({ ...prev, [id]: value }));
@@ -45,14 +51,18 @@ const FormApnp: React.FC<Props> = ({ formData, setFormData }) => {
       </div>
       <div className="space-y-4">
         <div className="flex items-center space-x-2">
-          <Checkbox id="auxiliares_higiene" checked={formData.auxiliares_higiene} onCheckedChange={(v) => handleCheckboxChange('auxiliares_higiene', !!v)} />
+          <Checkbox id="auxiliares_higiene" checked={formData.auxiliares_higiene} onCheckedChange={(value) => {
+            const checked = value === true;
+            if (checked) handleCheckboxChange('auxiliares_higiene', true);
+            else setFormData((current) => ({ ...current, auxiliares_higiene: false, auxiliares_opciones: [], auxiliares_otros: '', auxiliares_cuales: '' }));
+          }} />
           <Label htmlFor="auxiliares_higiene">Registrar auxiliares de higiene</Label>
         </div>
         {formData.auxiliares_higiene && (
           <div className="pl-6 space-y-3">
             <p className="text-sm text-muted-foreground">Selecciona una o varias opciones.</p>
             <div className="grid gap-3 sm:grid-cols-2">
-              {hygieneOptions.map((option, index) => <div key={option} className="flex items-center gap-2">
+              {HYGIENE_OPTIONS.map((option, index) => <div key={option} className="flex items-center gap-2">
                 <Checkbox id={`higiene-${index}`} checked={selectedOptions.includes(option)} onCheckedChange={(checked) => {
                   const next = checked === true
                     ? option === 'No usa auxiliares' ? [option] : [...selectedOptions.filter((item) => item !== 'No usa auxiliares'), option]

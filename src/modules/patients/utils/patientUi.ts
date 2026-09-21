@@ -81,7 +81,7 @@ const clinicalHistoryFields = {
     "tios",
     "abuelos",
   ],
-  appPatologicos: ["ets", "degenerativas", "neoplasicas", "congenitas", "otras"],
+  appPatologicos: ["padecimientos", "ets", "degenerativas", "neoplasicas", "congenitas", "otras"],
   apnp: [
     "frecuencia_cepillado",
     "auxiliares_higiene",
@@ -123,7 +123,8 @@ export const getClinicalHistoryStatus = (
     sectionHasAnyValue(sections[sectionName], fields),
   );
 
-  const hasNewFields = typeof sections.historiaGeneral?.paciente_niega_procedimientos === 'boolean'
+  const hasNewFields = typeof sections.appPatologicos?.padecimientos === 'boolean'
+    || sections.appPatologicos?.padecimientos === 'denied'
     || typeof sections.apnp?.cartilla_vacunacion === 'boolean'
     || typeof sections.apnp?.esquema_vacunacion_completo === 'boolean';
   if (!hasAnyHistory && !hasNewFields) return "none";

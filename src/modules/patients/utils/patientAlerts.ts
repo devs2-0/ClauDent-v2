@@ -2,9 +2,8 @@ import { addDuration, parseLocalDate, type Duration } from "@/shared/utils/durat
 import type { Patient } from "../types/patient.types";
 import { safeLocalDate } from "@/shared/utils/firestoreData";
 
-export const latestProcedureDate = (entries: { fecha?: unknown; pacienteNiegaProcedimientos?: boolean }[], today: Date): string | undefined =>
-  entries.filter((entry) => !entry.pacienteNiegaProcedimientos)
-    .map((entry) => safeLocalDate(entry.fecha))
+export const latestProcedureDate = (entries: { fecha?: unknown }[], today: Date): string | undefined =>
+  entries.map((entry) => safeLocalDate(entry.fecha))
     .filter((date) => { const parsed = parseLocalDate(date); return parsed && parsed <= today; })
     .sort().pop();
 

@@ -42,6 +42,7 @@ export interface IAntecedentesHereditarios {
 }
 
 export interface IAppPatologicos {
+  padecimientos?: boolean | "denied" | null;
   ets: boolean;
   degenerativas: boolean;
   neoplasicas: boolean;
@@ -152,7 +153,7 @@ export interface IHistoriaClinicaCompleta {
 export const initialState: IHistoriaClinicaCompleta = {
   historiaGeneral: { ocupacion: "", escolaridad: "", estado_civil: "", telefono: "", fecha_ult_consulta_medica: "", motivo_ult_consulta_medica: "", fecha_ult_consulta_odontologica: "", motivo_ult_consulta_odontologica: "" },
   antecedentesHereditarios: { madre: "", padre: "", hermanos: "", hijos: "", esposo: "", tios: "", abuelos: "" },
-  appPatologicos: { ets: false, degenerativas: false, neoplasicas: false, congenitas: false, otras: "" },
+  appPatologicos: { padecimientos: null, ets: false, degenerativas: false, neoplasicas: false, congenitas: false, otras: "" },
   apnp: { frecuencia_cepillado: "", auxiliares_higiene: false, auxiliares_cuales: "", come_entre_comidas: false, grupo_sanguineo: "", adic_tabaco: false, adic_alcohol: false },
   alergias: { antibioticos: false, analgesicos: false, anestesicos: false, alimentos: false, especificar: "" },
   hospitalizaciones: { ha_sido_hospitalizado: false, fecha: "", motivo: "" },

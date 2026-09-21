@@ -20,6 +20,7 @@ import { userService } from '../src/auth/services/userService';
 import { userInvitationService } from '../src/auth/services/userInvitationService';
 import { hasGrantedPermission } from '../src/auth/constants/permissionDependencies';
 import type { Patient } from '../src/modules/patients/types/patient.types';
+import { HYGIENE_OPTIONS, readLegacyHygieneOptions } from '../src/modules/patients/utils/hygieneOptions';
 
 const patient: Patient = { id: 'p1', nombres: 'Paciente', apellidos: 'Prueba', fechaRegistro: '2026-05-20', fechaNacimiento: '1995-09-20', sexo: 'F', telefonoPrincipal: '555', correo: '', estado: 'activo', estadoCivil: 'Casado(a)' };
 const now = new Date('2026-09-20T12:00:00');
@@ -66,25 +67,45 @@ test('birthdays use local month/day and ignore missing, invalid and future dates
   assert.equal(isBirthdayToday('2000-02-29', new Date('2024-02-29T12:00:00')), true);
 });
 
-test('refused procedures and future/invalid dates never reset clinical inactivity', () => {
+test('legacy procedure refusal no longer changes clinical activity', () => {
   assert.equal(latestProcedureDate([
     { fecha: '2026-05-21' },
-    { fecha: '2026-09-19', pacienteNiegaProcedimientos: true },
+    { fecha: '2026-09-19' },
     { fecha: '2099-01-01' }, { fecha: 'invalid' }, { fecha: null },
-  ], now), '2026-05-21');
+  ], now), '2026-09-19');
 });
 
 test('clinical history prefills equivalent fields and preserves captured data, false values and legacy text', () => {
   const fresh = prepareClinicalHistory(patient);
   assert.equal(fresh.historiaGeneral.telefono, '555');
   assert.equal(fresh.historiaGeneral.estado_civil, 'Casado(a)');
-  const existing = prepareClinicalHistory(patient, { historiaGeneral: { ...initialState.historiaGeneral, telefono: '777', paciente_niega_procedimientos: false }, apnp: { ...initialState.apnp, auxiliares_cuales: 'Cepillo interdental', cartilla_vacunacion: false } });
+  const existing = prepareClinicalHistory(patient, {
+    historiaGeneral: { ...initialState.historiaGeneral, telefono: '777', paciente_niega_procedimientos: false },
+    appPatologicos: { ...initialState.appPatologicos, padecimientos: 'denied' },
+    apnp: { ...initialState.apnp, auxiliares_cuales: 'Cepillo interdental', cartilla_vacunacion: false },
+  });
   assert.equal(existing.historiaGeneral.telefono, '777');
   assert.equal(existing.historiaGeneral.paciente_niega_procedimientos, false);
+  assert.equal(existing.appPatologicos.padecimientos, 'denied');
   assert.equal(existing.apnp.auxiliares_cuales, 'Cepillo interdental');
   assert.equal(existing.apnp.cartilla_vacunacion, false);
+  assert.equal(prepareClinicalHistory(patient, {
+    appPatologicos: { ...initialState.appPatologicos, padecimientos: false },
+  }).appPatologicos.padecimientos, false);
   assert.equal(initialState.historiaGeneral.telefono, '');
   assert.equal(getClinicalHistoryStatus({ apnp: { cartilla_vacunacion: false } }), 'incomplete');
+  assert.equal(getClinicalHistoryStatus({ historiaGeneral: { paciente_niega_procedimientos: true } }), 'none');
+});
+
+test('hygiene options are exact and legacy free text remains available through Otros', () => {
+  assert.deepEqual(HYGIENE_OPTIONS, [
+    'Hilo dental', 'Enjuague bucal', 'Cepillos interdentales', 'Limpiador de lengua',
+    'Irrigador', 'No usa auxiliares', 'Otros',
+  ]);
+  assert.deepEqual(readLegacyHygieneOptions('Hilo dental, Cepillo interdental'), {
+    options: ['Hilo dental', 'Otros'],
+    other: 'Cepillo interdental',
+  });
 });
 
 test('drafts recover incomplete information, isolate accounts/patients and discard explicitly', () => {

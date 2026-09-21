@@ -1,7 +1,7 @@
 // (Archivo MODIFICADO) src/components/ServiciosIndividuales.tsx
 import React, { useState, useMemo } from 'react';
 import { Can, useCan } from '@/auth';
-import { Edit, Plus, Search, Trash2 } from 'lucide-react';
+import { Check, ChevronsUpDown, Edit, Plus, Search, Trash2 } from 'lucide-react';
 import { useDentalServices } from '@/modules/services';
 import { formatCurrency } from '@/shared/utils/utils';
 import { Button } from '@/shared/components/ui/button';
@@ -30,6 +30,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import { Skeleton } from '@/shared/components/ui/skeleton';
 import { Switch } from '@/shared/components/ui/switch';
+import { Popover, PopoverContent, PopoverTrigger } from '@/shared/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/shared/components/ui/command';
 import { useConfirmAction } from '@/shared/hooks/useConfirmAction';
 import { generateServiceCode } from '@/shared/utils/catalogCodes';
 import type { Service } from '../types/service.types';
@@ -51,11 +53,21 @@ const ServiciosIndividuales: React.FC = () => {
   }, [categories, categoryFilter]);
   const [priceOrder, setPriceOrder] = useState<ServicePriceOrder>('default');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [categoryComboboxOpen, setCategoryComboboxOpen] = useState(false);
   const [editingService, setEditingService] = useState<string | null>(null);
   const [isFormLoading, setIsFormLoading] = useState(false);
   const { confirm, confirmationDialog } = useConfirmAction();
   const canUpdateServices = can('services.update');
   const canSafelyDeleteServices = can('services.delete');
+  const orderedCategoryOptions = useMemo(() => {
+    const usage = new Map<string, number>();
+    services.forEach((service) => {
+      const key = categoryKey(service.categoria);
+      if (key) usage.set(key, (usage.get(key) ?? 0) + 1);
+    });
+    return [...categories].map(([key, label]) => ({ key, label, usage: usage.get(key) ?? 0 }))
+      .sort((first, second) => second.usage - first.usage || first.label.localeCompare(second.label, 'es-MX'));
+  }, [categories, services]);
   
   const [formData, setFormData] = useState<{
     nombre: string;
@@ -98,6 +110,7 @@ const ServiciosIndividuales: React.FC = () => {
   ), [editingService, formData.categoria, formData.nombre, formData.precio, services, categories]);
 
   const handleOpenDialog = (serviceId?: string) => {
+    setCategoryComboboxOpen(false);
     if (!can(serviceId ? 'services.update' : 'services.create')) return;
     if (serviceId) {
       const service = services.find((s) => s.id === serviceId);
@@ -225,8 +238,8 @@ const ServiciosIndividuales: React.FC = () => {
 
   return (
     <div className="flex h-[max(22rem,calc(100dvh-16rem))] min-h-0 flex-col gap-4">
-      <div className="flex shrink-0 flex-wrap items-end justify-between gap-3">
-        <div className="grid w-full gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(14rem,1fr)_12rem_10rem_11rem]">
+      <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
+        <div className="grid w-full gap-2 sm:grid-cols-2 xl:max-w-5xl xl:grid-cols-[minmax(14rem,1fr)_12rem_10rem_11rem]">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -242,7 +255,7 @@ const ServiciosIndividuales: React.FC = () => {
             <SelectTrigger className="h-9" aria-label="Filtrar por categoría"><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="*">Todas las categorías</SelectItem>
-              {[...categories].map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}
+              {orderedCategoryOptions.map(({ key, label }) => <SelectItem key={key} value={key}>{label}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as ServiceStatusFilter)}>
@@ -266,10 +279,10 @@ const ServiciosIndividuales: React.FC = () => {
             </SelectContent>
           </Select>
         </div>
-        <Can permission="services.create"><Button onClick={() => handleOpenDialog()}>
-          <Plus className="h-4 w-4 mr-2" />
-          Nuevo Servicio
-        </Button></Can>
+        {can('services.create') && <Button className="w-full sm:w-auto" onClick={() => handleOpenDialog()}>
+          <Plus className="mr-2 h-4 w-4" />
+          Nuevo servicio
+        </Button>}
       </div>
 
       <Card className="relative isolate z-0 min-h-0 flex-1 flex flex-col overflow-hidden">
@@ -367,10 +380,42 @@ const ServiciosIndividuales: React.FC = () => {
             <fieldset disabled={isFormLoading} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="categoria">Categoría</Label>
-                <Select value={formData.categoria || '__none'} onValueChange={(value) => setFormData({ ...formData, categoria: value === '__none' ? '' : value })}>
-                  <SelectTrigger id="categoria"><SelectValue placeholder="Sin categoría" /></SelectTrigger>
-                  <SelectContent><SelectItem value="__none">Sin categoría</SelectItem>{[...categories].map(([key, label]) => <SelectItem key={key} value={label}>{label}</SelectItem>)}</SelectContent>
-                </Select>
+                <Popover open={categoryComboboxOpen} onOpenChange={setCategoryComboboxOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      id="categoria"
+                      type="button"
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={categoryComboboxOpen}
+                      className="w-full justify-between font-normal"
+                    >
+                      <span className="truncate">{formData.categoria || 'Sin categoría'}</span>
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Buscar categoría..." />
+                      <CommandList>
+                        <CommandEmpty>No se encontraron categorías.</CommandEmpty>
+                        <CommandGroup heading="Categorías">
+                          <CommandItem value="sin categoria" onSelect={() => { setFormData((current) => ({ ...current, categoria: '' })); setCategoryComboboxOpen(false); }}>
+                            <Check className={`mr-2 h-4 w-4 ${formData.categoria ? 'opacity-0' : 'opacity-100'}`} />
+                            Sin categoría
+                          </CommandItem>
+                          {orderedCategoryOptions.map(({ key, label, usage }, index) => (
+                            <CommandItem key={key} value={label} onSelect={() => { setFormData((current) => ({ ...current, categoria: label })); setCategoryComboboxOpen(false); }}>
+                              <Check className={`mr-2 h-4 w-4 ${categoryKey(formData.categoria) === key ? 'opacity-100' : 'opacity-0'}`} />
+                              <span className="flex-1 truncate">{label}</span>
+                              {usage > 0 && <span className="ml-2 text-xs text-muted-foreground">{index === 0 ? 'Más usada · ' : ''}{usage}</span>}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
               <div className="space-y-2">
 

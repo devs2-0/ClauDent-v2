@@ -24,7 +24,7 @@ const DataViewer: React.FC<{ data: Record<string, any>, title: string }> = ({ da
   // ¡CORREGIDO! El filtro ahora solo oculta 'null' o 'undefined',
   // pero SÍ permite 'false' (para los checkbox) y '""' (para texto vacío).
   const entries = Object.entries(data ?? {}).filter(([key, value]) =>
-    !['auxiliares_opciones', 'auxiliares_otros'].includes(key) && value !== null && value !== undefined,
+    !['auxiliares_opciones', 'auxiliares_otros', 'paciente_niega_procedimientos'].includes(key) && value !== null && value !== undefined,
   );
 
   if (entries.length === 0) {
@@ -36,7 +36,10 @@ const DataViewer: React.FC<{ data: Record<string, any>, title: string }> = ({ da
   }
 
   // ¡NUEVO! Función para mostrar el valor correctamente
-  const getDisplayValue = (value: any): string => {
+  const getDisplayValue = (key: string, value: any): string => {
+    if (key === 'padecimientos' && value === 'denied') {
+      return 'Paciente niega padecimientos';
+    }
     if (typeof value === 'boolean') {
       return value ? 'Sí' : 'No';
     }
@@ -53,7 +56,7 @@ const DataViewer: React.FC<{ data: Record<string, any>, title: string }> = ({ da
           <span className="text-xs font-medium text-muted-foreground">{clinicalFieldLabels[key] ?? 'Información adicional'}</span>
           {/* ¡CORREGIDO! Usamos la nueva función para mostrar el valor */}
           <span className="text-sm font-semibold">
-            {getDisplayValue(value)}
+            {getDisplayValue(key, value)}
           </span>
         </div>
       ))}
@@ -166,8 +169,6 @@ const PatientAntecedentes: React.FC<{ readOnly?: boolean }> = ({ readOnly = fals
           Editar
         </Button></Can>}
       </div>
-
-      <p className="rounded-md border p-3 text-sm">Paciente niega procedimientos: <strong>{historyData.historiaGeneral.paciente_niega_procedimientos == null ? 'Sin registrar' : historyData.historiaGeneral.paciente_niega_procedimientos ? 'Sí' : 'No'}</strong></p>
 
       <Accordion type="multiple" className="w-full">
         <AccordionItem value="item-1">

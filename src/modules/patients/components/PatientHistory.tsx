@@ -63,7 +63,6 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId, readOnly = f
   const [editingEntryId, setEditingEntryId] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
-    pacienteNiegaProcedimientos: false,
     fecha: new Date().toISOString().split('T')[0],
     servicios: [] as HistoryEntry["servicios"],
     materialesClinicos: [] as {
@@ -201,7 +200,6 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId, readOnly = f
     if (entry) {
         setEditingEntryId(entry.id);
         draftBaseline.current = {
-            pacienteNiegaProcedimientos: entry.pacienteNiegaProcedimientos === true,
             fecha: entry.fecha,
             servicios: entry.servicios,
             materialesClinicos: [],
@@ -210,7 +208,6 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId, readOnly = f
     } else {
         setEditingEntryId(null);
         draftBaseline.current = {
-            pacienteNiegaProcedimientos: false,
             fecha: new Date().toISOString().split('T')[0],
             servicios: [],
             materialesClinicos: [],
@@ -289,12 +286,7 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId, readOnly = f
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (readOnly || !hasPermission(editingEntryId ? "patients.procedures.update" : "patients.procedures.create")) return;
-    const previousMaterials = historial.find((entry) => entry.id === editingEntryId)?.materialesClinicos ?? [];
-    if (formData.pacienteNiegaProcedimientos && (formData.servicios.length > 0 || formData.materialesClinicos.length > 0 || previousMaterials.length > 0)) {
-      toast.error('Registra la negativa en una entrada sin servicios ni materiales aplicados.');
-      return;
-    }
-    if (formData.servicios.length === 0 && !formData.pacienteNiegaProcedimientos) {
+    if (formData.servicios.length === 0) {
       toast.error('Debe agregar al menos un servicio');
       return;
     }
@@ -370,7 +362,6 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId, readOnly = f
     }
     setIsFormLoading(true);
     const payload = {
-        pacienteNiegaProcedimientos: formData.pacienteNiegaProcedimientos,
         fecha: formData.fecha,
         servicios: formData.servicios.map((item) => ({ ...item, nombre: item.nombre || services.find((service) => service.id === item.servicioId)?.nombre || 'Servicio eliminado', precioUnitario: item.precioUnitario ?? services.find((service) => service.id === item.servicioId)?.precio ?? 0 })),
         notas: formData.notas,
@@ -511,7 +502,6 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId, readOnly = f
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">
-                {entry.pacienteNiegaProcedimientos && <Badge variant="outline">Paciente niega procedimientos</Badge>}
                 <div>
                   <p className="text-sm font-medium mb-2">Servicios:</p>
                   <ul className="list-disc list-inside space-y-1">
@@ -567,10 +557,6 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId, readOnly = f
             {draftRecovered && <p role="status" className="mb-3 text-sm text-muted-foreground">Se recuperó tu borrador. Cancelar lo descarta.</p>}
             <form id="history-form" onSubmit={handleSubmit} className="space-y-4">
                 <fieldset disabled={isFormLoading} className="space-y-4">
-                <div className="flex items-center gap-2 rounded-md border p-3">
-                  <Checkbox id="procedure-refusal" checked={formData.pacienteNiegaProcedimientos} onCheckedChange={(checked) => setFormData((current) => ({ ...current, pacienteNiegaProcedimientos: checked === true }))} />
-                  <Label htmlFor="procedure-refusal">Paciente niega procedimientos</Label>
-                </div>
                 <div className="space-y-2">
                     <Label htmlFor="fecha">Fecha</Label>
                     <Input

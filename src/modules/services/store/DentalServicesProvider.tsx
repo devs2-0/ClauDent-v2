@@ -23,7 +23,8 @@ const DentalServicesContext = createContext<DentalServicesContextValue | undefin
 export const DentalServicesProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { currentUser } = useAuth();
   const { can } = useCan();
-  const canRead = can("services.view") || can("packages.create") || can("packages.update") || can("patients.procedures.view") || can("agenda.appointments.create") || can("agenda.appointments.update") || can("quotations.view") || can("sales.view");
+  const canManageServiceSettings = can("settings.view") && can("settings.update");
+  const canRead = can("services.view") || canManageServiceSettings || can("packages.create") || can("packages.update") || can("patients.procedures.view") || can("agenda.appointments.create") || can("agenda.appointments.update") || can("quotations.view") || can("sales.view");
   const [rawServices, setServices] = useState<Service[]>([]);
   const [servicesLoading, setServicesLoading] = useState(false);
   const [servicesUnavailable, setServicesUnavailable] = useState(false);

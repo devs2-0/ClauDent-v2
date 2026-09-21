@@ -19,8 +19,6 @@ import {
   AccordionTrigger,
 } from '@/shared/components/ui/accordion';
 import { toast } from 'sonner';
-import { Checkbox } from '@/shared/components/ui/checkbox';
-import { Label } from '@/shared/components/ui/label';
 import { useModalDraft } from '@/shared/hooks/useModalDraft';
 import { prepareClinicalHistory } from '../utils/clinicalHistoryForm';
 
@@ -122,11 +120,6 @@ const InitialHistoryModal: React.FC<Props> = ({ isOpen, patientId, onClose, init
         <div className="flex-1 overflow-y-auto -mx-6 px-6 py-4">
           {draftRecovered && <p role="status" className="mb-3 text-sm text-muted-foreground">Se recuperó tu borrador. Cancelar lo descarta.</p>}
           {patient && <p className="mb-3 text-sm font-medium">{patient.nombres} {patient.apellidos}</p>}
-          <div className="mb-4 flex items-center gap-2 rounded-md border p-3">
-            <Checkbox id="paciente-niega-procedimientos" checked={formData.historiaGeneral.paciente_niega_procedimientos === true}
-              onCheckedChange={(checked) => createFormUpdater('historiaGeneral')((current) => ({ ...current, paciente_niega_procedimientos: checked === true }))} />
-            <Label htmlFor="paciente-niega-procedimientos">Paciente niega procedimientos</Label>
-          </div>
           {/* ¡CORREGIDO! 'collapsible' eliminado */}
           <Accordion type="multiple" className="w-full">
             <AccordionItem value="item-1">

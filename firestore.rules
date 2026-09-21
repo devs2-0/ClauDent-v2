@@ -974,6 +974,7 @@ service cloud.firestore {
     match /servicios/{serviceId} {
       // Package composition needs the service catalog, but never its management actions.
       allow read: if hasPermission("services.view")
+        || (hasPermission("settings.view") && hasPermission("settings.update"))
         || hasModulePermission("packages", "packages.create") || hasModulePermission("packages", "packages.update")
         || hasPatientSectionPermission("procedures", "patients.procedures.view")
         || hasModulePermission("agenda", "agenda.appointments.create") || hasModulePermission("agenda", "agenda.appointments.update")
