@@ -48,7 +48,7 @@ const bundle = await build({
     resolveDir: root,
     loader: 'tsx',
   },
-  jsx: 'automatic', bundle: true, write: false, format: 'cjs', platform: 'node', packages: 'external', logLevel: 'silent',
+  jsx: 'automatic', bundle: true, write: false, format: 'cjs', platform: 'node', packages: 'external', logLevel: 'silent', loader: { '.css': 'empty' },
   plugins: [{name: 'local-auth', setup(b) {
     b.onResolve({filter: /.*/}, args => {
       if (args.path === './useAuth') return {path: 'fixture-auth', namespace: 'fixture'};

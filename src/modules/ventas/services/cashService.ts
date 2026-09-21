@@ -21,13 +21,13 @@ import {
   INVENTORY_PRODUCTS_COLLECTION,
   resolveMovementQuantity,
 } from "@/modules/inventario/services/inventoryService";
-import { cleanData, safeDate } from "@/shared/utils/firestoreData";
+import { cleanData, safeLocalDate as safeDate } from "@/shared/utils/firestoreData";
 import { getCurrentUserIdentity, type CurrentUserIdentity } from "@/shared/services/currentUserIdentity";
+import { buildCashSummary as calculateCashCutSummary } from "../utils/cashReporting";
 import { calculatePercentageDiscount, normalizeDiscountPercentage, roundCurrency } from "../utils/discounts";
 import type {
   CashClosure,
   CashClosureTotals,
-  CashCutSummary,
   CashMovement,
   CashReferenceType,
   CancelPaymentInput,
@@ -103,10 +103,6 @@ const normalizePaymentMethod = (method: any): PaymentMethod => {
 const normalizeMovementType = (type: any): CashMovement["tipo"] => {
   if (type === "gasto") return "egreso";
   return type === "egreso" ? "egreso" : "ingreso";
-};
-
-const isOpeningMovement = (movement: Pick<CashMovement, "concepto" | "referenciaTipo">) => {
-  return movement.referenciaTipo === "apertura" || movement.concepto.toLowerCase().includes("apertura");
 };
 
 const mapPayment = (id: string, data: any): Payment => ({
@@ -214,58 +210,6 @@ const mapCashMovement = (id: string, data: any): CashMovement => ({
   usuarioNombre: data.usuarioNombre ?? data.usuarioEmail ?? "Sistema",
   usuarioEmail: data.usuarioEmail ?? "",
 });
-
-const calculateCashCutSummary = (movements: CashMovement[]): CashCutSummary => {
-  const totals = emptyTotals();
-  const breakdownByMethod = new Map(
-    paymentMethods.map((method) => [method, { metodo: method, ingresos: 0, egresos: 0, neto: 0 }]),
-  );
-  let totalIngresos = 0;
-  let totalEgresos = 0;
-  let fondoInicial = 0;
-  let ingresosEfectivo = 0;
-  let egresosEfectivo = 0;
-
-  movements
-    .filter((movement) => movement.estado === "activo")
-    .forEach((movement) => {
-      const amount = Number(movement.monto) || 0;
-
-      if (isOpeningMovement(movement)) {
-        if (movement.tipo === "ingreso") {
-          fondoInicial += amount;
-        }
-        return;
-      }
-
-      const methodTotals = breakdownByMethod.get(movement.metodo);
-      if (!methodTotals) return;
-
-      if (movement.tipo === "ingreso") {
-        totalIngresos += amount;
-        totals[movement.metodo] += amount;
-        totals.total += amount;
-        methodTotals.ingresos += amount;
-        methodTotals.neto += amount;
-        if (movement.metodo === "efectivo") ingresosEfectivo += amount;
-      } else {
-        totalEgresos += amount;
-        methodTotals.egresos += amount;
-        methodTotals.neto -= amount;
-        if (movement.metodo === "efectivo") egresosEfectivo += amount;
-      }
-    });
-
-  return {
-    totales: totals,
-    totalIngresos,
-    totalEgresos,
-    balanceNeto: totalIngresos - totalEgresos,
-    fondoInicial,
-    efectivoFinal: fondoInicial + ingresosEfectivo - egresosEfectivo,
-    desgloseMetodos: Array.from(breakdownByMethod.values()),
-  };
-};
 
 const getOpenCashClosureSnapshot = async () => {
   const byEstado = await getDocs(query(collection(db, CASH_CLOSURES_COLLECTION), where("estado", "==", "abierto"), limit(1)));

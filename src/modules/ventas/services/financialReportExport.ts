@@ -1,6 +1,7 @@
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import { formatCurrency } from "@/shared/utils/utils";
+import { formatVariation, getPreviousRange, today } from "../utils/cashFilters";
 
 export interface FinancialReportExpenseRow {
   categoria: string;
@@ -15,6 +16,7 @@ export interface CashCutConceptRow {
 }
 
 export interface FinancialReportProductRow {
+  productoId: string;
   producto: string;
   unidades: number;
   ingreso: number;
@@ -43,8 +45,8 @@ export interface FinancialReportExportData {
   margenNeto: number;
   ingresosPeriodoAnterior: number;
   utilidadPeriodoAnterior: number;
-  variacionIngresos: number;
-  variacionUtilidad: number;
+  variacionIngresos: number | null;
+  variacionUtilidad: number | null;
   gastosPorCategoria: FinancialReportExpenseRow[];
   ventasPorProducto: FinancialReportProductRow[];
   movimientos: FinancialReportMovementRow[];
@@ -74,7 +76,7 @@ export interface CashCutExportData {
   movimientos: FinancialReportMovementRow[];
 }
 
-const fileDate = () => new Date().toISOString().split("T")[0];
+const fileDate = today;
 
 const downloadBlob = (blob: Blob, fileName: string) => {
   const url = URL.createObjectURL(blob);
@@ -97,16 +99,23 @@ export const exportFinancialReportCsv = (report: FinancialReportExportData) => {
     ["Ingresos", report.ingresos].map(csvCell).join(","),
     ["Gastos operativos", report.gastosOperativos].map(csvCell).join(","),
     ["Costo mercaderia vendida", report.costoMercaderia].map(csvCell).join(","),
-    ["Utilidad bruta", report.utilidadBruta].map(csvCell).join(","),
-    ["Utilidad neta", report.utilidadNeta].map(csvCell).join(","),
-    ["Margen neto", `${report.margenNeto.toFixed(2)}%`].map(csvCell).join(","),
+    ["Flujo neto (cobros - egresos)", report.ingresos - report.gastosOperativos].map(csvCell).join(","),
+    ["Resultado estimado (flujo - costo vendido)", report.utilidadNeta].map(csvCell).join(","),
+    ["Resultado / cobros", report.ingresos > 0 ? `${report.margenNeto.toFixed(2)}%` : "Sin cobros"].map(csvCell).join(","),
+    "",
+    ["Comparacion anterior", `${getPreviousRange(report.fechaInicio, report.fechaFin).start} a ${getPreviousRange(report.fechaInicio, report.fechaFin).end}`].map(csvCell).join(","),
+    ["Ingresos periodo anterior", report.ingresosPeriodoAnterior].map(csvCell).join(","),
+    ["Resultado estimado anterior", report.utilidadPeriodoAnterior].map(csvCell).join(","),
+    ["Variacion ingresos", formatVariation(report.variacionIngresos)].map(csvCell).join(","),
+    ["Variacion resultado estimado", formatVariation(report.variacionUtilidad)].map(csvCell).join(","),
+    ["Nota", "Cobros recibidos menos egresos y costo de productos vendidos del periodo. Resultado estimado, no utilidad contable. Las ventas por producto pueden incluir saldo no cobrado."].map(csvCell).join(","),
     "",
     ["Gastos por categoria"].map(csvCell).join(","),
     ["Categoria", "Movimientos", "Total"].map(csvCell).join(","),
     ...report.gastosPorCategoria.map((row) => [row.categoria, row.movimientos, row.total].map(csvCell).join(",")),
     "",
     ["Ventas por producto"].map(csvCell).join(","),
-    ["Producto", "Unidades", "Ingresos", "Costo", "Utilidad"].map(csvCell).join(","),
+    ["Producto", "Unidades", "Importe vendido", "Costo", "Margen de producto"].map(csvCell).join(","),
     ...report.ventasPorProducto.map((row) => [row.producto, row.unidades, row.ingreso, row.costo, row.utilidad].map(csvCell).join(",")),
     "",
     ["Movimientos del periodo"].map(csvCell).join(","),
@@ -124,7 +133,7 @@ export const exportFinancialReportCsv = (report: FinancialReportExportData) => {
 
   downloadBlob(
     new Blob(["\uFEFF" + rows.join("\n")], { type: "text/csv;charset=utf-8;" }),
-    `reporte_financiero_${fileDate()}.csv`,
+    `reporte_financiero_${report.fechaInicio}_${report.fechaFin}.csv`,
   );
 };
 
@@ -135,22 +144,24 @@ export const exportFinancialReportPdf = (report: FinancialReportExportData) => {
   doc.text("Reporte financiero", 40, 40);
   doc.setFontSize(10);
   doc.text(`Periodo: ${report.fechaInicio} a ${report.fechaFin}`, 40, 58);
-  doc.text(`Generado: ${fileDate()}`, 40, 74);
+  doc.text(`Generado: ${fileDate()} | Comparacion: ${getPreviousRange(report.fechaInicio, report.fechaFin).start} a ${getPreviousRange(report.fechaInicio, report.fechaFin).end}`, 40, 74);
+  doc.setFontSize(8);
+  doc.text("Resultado estimado, no utilidad contable. Cobros menos egresos y costo vendido del periodo. Ventas de productos pueden incluir saldo no cobrado.", 40, 88);
 
   autoTable(doc, {
-    startY: 92,
+    startY: 102,
     head: [["Metrica", "Valor"]],
     body: [
       ["Ingresos", formatCurrency(report.ingresos)],
       ["Gastos operativos", formatCurrency(report.gastosOperativos)],
       ["Costo mercaderia vendida", formatCurrency(report.costoMercaderia)],
-      ["Utilidad bruta", formatCurrency(report.utilidadBruta)],
-      ["Utilidad neta", formatCurrency(report.utilidadNeta)],
-      ["Margen neto", `${report.margenNeto.toFixed(2)}%`],
+      ["Flujo neto (cobros - egresos)", formatCurrency(report.ingresos - report.gastosOperativos)],
+      ["Resultado estimado (flujo - costo vendido)", formatCurrency(report.utilidadNeta)],
+      ["Resultado / cobros", report.ingresos > 0 ? `${report.margenNeto.toFixed(2)}%` : "Sin cobros"],
       ["Ingresos periodo anterior", formatCurrency(report.ingresosPeriodoAnterior)],
-      ["Utilidad periodo anterior", formatCurrency(report.utilidadPeriodoAnterior)],
-      ["Variacion ingresos", `${report.variacionIngresos.toFixed(2)}%`],
-      ["Variacion utilidad", `${report.variacionUtilidad.toFixed(2)}%`],
+      ["Resultado estimado anterior", formatCurrency(report.utilidadPeriodoAnterior)],
+      ["Variacion ingresos", formatVariation(report.variacionIngresos)],
+      ["Variacion resultado estimado", formatVariation(report.variacionUtilidad)],
     ],
     styles: { fontSize: 8, cellPadding: 5 },
     headStyles: { fillColor: [18, 161, 236] },
@@ -174,7 +185,7 @@ export const exportFinancialReportPdf = (report: FinancialReportExportData) => {
 
   autoTable(doc, {
     startY: (doc as any).lastAutoTable.finalY + 18,
-    head: [["Producto", "Unidades", "Ingresos", "Costo", "Utilidad"]],
+    head: [["Producto", "Unidades", "Importe vendido", "Costo", "Margen de producto"]],
     body: report.ventasPorProducto.map((row) => [
       row.producto,
       String(row.unidades),
@@ -206,7 +217,7 @@ export const exportFinancialReportPdf = (report: FinancialReportExportData) => {
     margin: { left: 28, right: 28 },
   });
 
-  doc.save(`reporte_financiero_${fileDate()}.pdf`);
+  doc.save(`reporte_financiero_${report.fechaInicio}_${report.fechaFin}.pdf`);
 };
 
 export const exportCashCutCsv = (cut: CashCutExportData) => {

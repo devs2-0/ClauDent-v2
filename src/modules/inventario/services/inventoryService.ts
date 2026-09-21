@@ -18,7 +18,7 @@ import {
 import { db } from "@/lib/firebase";
 import { addAuditLog } from "@/modules/audit/services/auditService";
 import { getCurrentUserIdentity } from "@/shared/services/currentUserIdentity";
-import { cleanData, safeDate } from "@/shared/utils/firestoreData";
+import { cleanData, safeDate, safeLocalDate } from "@/shared/utils/firestoreData";
 import type {
   CreateInventoryCategoryInput,
   CreateInventoryProductInput,
@@ -153,7 +153,7 @@ const mapMovement = (id: string, data: any): InventoryMovement => ({
   id,
   productoId: data.productoId ?? "",
   productoNombre: data.productoNombre ?? "",
-  fecha: safeDate(data.fecha),
+  fecha: safeLocalDate(data.fecha),
   tipo: data.tipo ?? "ajuste",
   cantidad: Number(data.cantidad) || 0,
   stockAnterior: Number(data.stockAnterior) || 0,
@@ -170,9 +170,9 @@ const mapMovement = (id: string, data: any): InventoryMovement => ({
   proveedor: data.proveedor ?? "",
   documentoCompra: data.documentoCompra ?? "",
   costoUnitario: Number(data.costoUnitario) || 0,
-  costoTotal: Number(data.costoTotal) || 0,
+  costoTotal: data.costoTotal == null ? undefined : Number(data.costoTotal) || 0,
   precioUnitarioVenta: Number(data.precioUnitarioVenta) || 0,
-  ingresoTotal: Number(data.ingresoTotal) || 0,
+  ingresoTotal: data.ingresoTotal == null ? undefined : Number(data.ingresoTotal) || 0,
   clasificacion: normalizeClassification(data.clasificacion),
   materialClasificado: data.materialClasificado === true,
   requiereDobleAutorizacion: data.requiereDobleAutorizacion === true,
@@ -263,11 +263,11 @@ export const inventoryService = {
     });
   },
 
-  listenMovements: (onChange: (movements: InventoryMovement[]) => void) => {
+  listenMovements: (onChange: (movements: InventoryMovement[]) => void, onError?: () => void) => {
     const movementsQuery = query(collection(db, INVENTORY_MOVEMENTS_COLLECTION), orderBy("fecha", "desc"));
     return onSnapshot(movementsQuery, (snapshot) => {
       onChange(snapshot.docs.map((movementDoc) => mapMovement(movementDoc.id, movementDoc.data())));
-    });
+    }, onError);
   },
 
   listenStockEntries: (onChange: (entries: InventoryStockEntry[]) => void) => {
