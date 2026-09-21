@@ -16,27 +16,38 @@ import {
 } from "@/shared/components/ui/card";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
+import { Switch } from "@/shared/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/components/ui/select";
+import { durationUnitLabels, patientDurationUnits, type DurationUnit } from "@/shared/utils/duration";
 
 const PatientInactivitySettings = () => {
   const { can } = useCan();
-  const { inactivityDays, updateInactivityDays } = usePatientInactivitySettings();
-  const [daysInput, setDaysInput] = useState(String(inactivityDays));
+  const { settings, updateSettings } = usePatientInactivitySettings();
+  const [daysInput, setDaysInput] = useState(String(settings.value));
+  const [unit, setUnit] = useState<DurationUnit>(settings.unit);
+  const [enabled, setEnabled] = useState(settings.enabled);
   const canUpdateSettings = can("settings.update");
 
   useEffect(() => {
-    setDaysInput(String(inactivityDays));
-  }, [inactivityDays]);
+    setDaysInput(String(settings.value));
+    setUnit(settings.unit);
+    setEnabled(settings.enabled);
+  }, [settings]);
 
   const handleSave = () => {
+    if (!canUpdateSettings) return;
     const parsedDays = Number(daysInput);
-    if (!Number.isFinite(parsedDays) || parsedDays < 1 || parsedDays > 3650) {
-      toast.error("Ingresa un periodo entre 1 y 3650 días.");
+    if (!Number.isSafeInteger(parsedDays) || parsedDays < 1 || parsedDays > 3650) {
+      toast.error("Ingresa un número entero entre 1 y 3650.");
       return;
     }
 
-    const savedDays = updateInactivityDays(parsedDays);
-    setDaysInput(String(savedDays));
-    toast.success("Periodo de inactividad actualizado.");
+    try {
+      updateSettings({ value: parsedDays, unit, enabled });
+      toast.success("Periodo de inactividad actualizado.");
+    } catch {
+      toast.error("No se pudo guardar la configuración en este dispositivo.");
+    }
   };
 
   return (
@@ -52,24 +63,28 @@ const PatientInactivitySettings = () => {
                 <CardTitle className="text-lg">Inactividad de pacientes</CardTitle>
                 <SectionHelp title="Inactividad de pacientes">
                   <p>
-                    El filtro toma la última cita atendida o procedimiento registrado. Si aún no existe actividad, utiliza la fecha de registro del paciente.
+                    Los avisos toman la última cita atendida, procedimiento o consulta odontológica capturada, según tus permisos. Si no hay actividad disponible, usan la fecha de registro e indican esa fuente. La sugerencia inicial es de 4 meses.
                   </p>
                   <p>
                     Esta preferencia se conserva en este dispositivo porque actualmente no existe una configuración general compatible en Firestore.
                   </p>
                 </SectionHelp>
               </div>
-              <CardDescription>Periodo usado por el filtro del directorio.</CardDescription>
+              <CardDescription>Avisos de pacientes sin revisión. Se guarda en este dispositivo.</CardDescription>
             </div>
           </div>
-          <Badge variant="secondary">{inactivityDays} días</Badge>
+          <Badge variant="secondary">{settings.value} {durationUnitLabels[settings.unit].toLocaleLowerCase('es')}</Badge>
         </div>
       </CardHeader>
 
       <CardContent>
+        <div className="mb-4 flex items-center gap-2">
+          <Switch id="patient-inactivity-enabled" checked={enabled} onCheckedChange={setEnabled} disabled={!canUpdateSettings} />
+          <Label htmlFor="patient-inactivity-enabled">Avisar sobre pacientes sin revisión</Label>
+        </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <div className="w-full space-y-2 sm:max-w-52">
-            <Label htmlFor="patient-inactivity-days">Días sin actividad</Label>
+            <Label htmlFor="patient-inactivity-days">Duración sin actividad</Label>
             <Input
               id="patient-inactivity-days"
               type="number"
@@ -81,9 +96,14 @@ const PatientInactivitySettings = () => {
               disabled={!canUpdateSettings}
             />
           </div>
-          <Button type="button" onClick={handleSave} disabled={!canUpdateSettings}>
-            Guardar
-          </Button>
+          <div className="space-y-2 sm:w-40">
+            <Label htmlFor="patient-inactivity-unit">Unidad</Label>
+            <Select value={unit} onValueChange={(value) => setUnit(value as DurationUnit)} disabled={!canUpdateSettings}>
+              <SelectTrigger id="patient-inactivity-unit"><SelectValue /></SelectTrigger>
+              <SelectContent>{patientDurationUnits.map((value) => <SelectItem key={value} value={value}>{durationUnitLabels[value]}</SelectItem>)}</SelectContent>
+            </Select>
+          </div>
+          {canUpdateSettings && <Button type="button" onClick={handleSave}>Guardar</Button>}
         </div>
       </CardContent>
     </Card>

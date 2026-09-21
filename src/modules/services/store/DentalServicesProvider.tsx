@@ -4,6 +4,7 @@ import { db } from "@/lib/firebase";
 import { useAuth, useCan } from "@/auth";
 import { addAuditLog } from "@/modules/audit/services/auditService";
 import { cleanData } from "@/shared/utils/firestoreData";
+import { normalizeCategory } from "../utils/categories";
 import type { Service } from "../types/service.types";
 
 interface DentalServicesContextValue {
@@ -46,13 +47,13 @@ export const DentalServicesProvider: React.FC<{ children: ReactNode }> = ({ chil
 
   const addService = async (service: Omit<Service, "id">) => {
     if (!can("services.create")) throw new Error("No tienes permiso para realizar esta acción.");
-    await addDoc(collection(db, "servicios"), cleanData({ ...service, fechaCreacion: new Date() }));
+    await addDoc(collection(db, "servicios"), cleanData({ ...service, categoria: normalizeCategory(service.categoria, services.map((item) => item.categoria)), fechaCreacion: new Date() }));
     await addAuditLog("CREATE", "servicios", `Servicio: ${service.nombre}`);
   };
 
   const updateService = async (id: string, updates: Partial<Service>) => {
     if (!can("services.update")) throw new Error("No tienes permiso para realizar esta acción.");
-    await updateDoc(doc(db, "servicios", id), cleanData(updates));
+    await updateDoc(doc(db, "servicios", id), cleanData({ ...updates, ...(updates.categoria !== undefined ? { categoria: normalizeCategory(updates.categoria, services.map((item) => item.categoria)) } : {}) }));
     await addAuditLog("UPDATE", "servicios", `Servicio actualizado: ${updates.nombre ?? id}`);
   };
 

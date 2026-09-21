@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2,
   CheckCheck,
@@ -52,6 +52,8 @@ import {
   SelectValue,
 } from "@/shared/components/ui/select";
 import { Textarea } from "@/shared/components/ui/textarea";
+import { durationUnitLabels, type DurationUnit } from "@/shared/utils/duration";
+import { isRoleExpired, roleExpirationDate, withRoleLifetime } from "../utils/roleLifetime";
 import { useConfirmAction } from "@/shared/hooks/useConfirmAction";
 
 interface RoleFormState {
@@ -61,6 +63,9 @@ interface RoleFormState {
   color: string;
   icon: string;
   permissions: PermissionKey[];
+  temporary: boolean;
+  durationValue: string;
+  durationUnit: DurationUnit;
 }
 
 const emptyForm: RoleFormState = {
@@ -69,6 +74,9 @@ const emptyForm: RoleFormState = {
   color: DEFAULT_ROLE_COLOR,
   icon: DEFAULT_ROLE_EMOJI,
   permissions: [],
+  temporary: false,
+  durationValue: "1",
+  durationUnit: "days",
 };
 
 const visibleRolePermissionKeySet = new Set<PermissionKey>(rolePermissionKeys);
@@ -117,7 +125,7 @@ const RolesPage = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("active");
   const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
   const [bulkSaving, setBulkSaving] = useState(false);
   const { confirm, confirmationDialog } = useConfirmAction();
@@ -195,11 +203,11 @@ const RolesPage = () => {
     });
   };
 
-  const loadRoles = async () => {
+  const loadRoles = useCallback(async () => {
     setLoading(true);
 
     try {
-      const data = await roleService.listRoles();
+      const data = await roleService.listRoles({ processExpired: can("roles.update"), actorUid: currentUser?.uid });
       setRoles(data);
     } catch (error) {
       console.error(error);
@@ -207,19 +215,31 @@ const RolesPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [can, currentUser?.uid]);
 
   useEffect(() => {
-    loadRoles();
-  }, []);
+    void loadRoles();
+  }, [loadRoles]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const expiredActive = roles.some((role) => role.status === 'active' && isRoleExpired(role));
+      if (!expiredActive || loading) return;
+      if (can('roles.update')) void loadRoles();
+      else setRoles((current) => current.map((role) => withRoleLifetime(role)));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [roles, can, loading, loadRoles]);
 
   const openCreateDialog = () => {
+    if (!can('roles.create')) return;
     setEditingRole(null);
     setForm(emptyForm);
     setDialogOpen(true);
   };
 
   const openEditDialog = (role: Role) => {
+    if (!can('roles.update')) return;
     setEditingRole(role);
     setForm({
       id: role.id,
@@ -228,6 +248,9 @@ const RolesPage = () => {
       color: role.color ?? DEFAULT_ROLE_COLOR,
       icon: getRoleEmoji(role.icon),
       permissions: role.permissions ?? [],
+      temporary: role.temporary === true,
+      durationValue: String(role.durationValue ?? 1),
+      durationUnit: role.durationUnit ?? "days",
     });
     setDialogOpen(true);
   };
@@ -308,6 +331,11 @@ const RolesPage = () => {
             color: form.color,
             icon: form.icon,
             permissions: sanitizeVisiblePermissions(form.permissions),
+            ...(!editingRole || !isProtectedRole(editingRole) ? {
+              temporary: form.temporary,
+              durationValue: Number(form.durationValue),
+              durationUnit: form.durationUnit,
+            } : {}),
           },
           currentUser?.uid,
         );
@@ -321,6 +349,11 @@ const RolesPage = () => {
             color: form.color,
             icon: form.icon,
             permissions: sanitizeVisiblePermissions(form.permissions),
+            ...(!editingRole || !isProtectedRole(editingRole) ? {
+              temporary: form.temporary,
+              durationValue: Number(form.durationValue),
+              durationUnit: form.durationUnit,
+            } : {}),
           },
           currentUser?.uid,
         );
@@ -328,7 +361,9 @@ const RolesPage = () => {
         toast.success("Rol creado correctamente.");
       }
 
-      closeDialog();
+      setDialogOpen(false);
+      setEditingRole(null);
+      setForm(emptyForm);
       await loadRoles();
     } catch (error) {
       console.error(error);
@@ -398,12 +433,14 @@ const RolesPage = () => {
       return;
     }
 
-    const usageCount = await roleService.getRoleUsageCount(role.id);
-
-    if (usageCount > 0) {
-      toast.error(
-        `No se puede eliminar este rol porque está asignado a ${usageCount} usuario(s).`,
-      );
+    try {
+      const usageCount = await roleService.getRoleUsageCount(role.id);
+      if (usageCount > 0) {
+        toast.error(`No se puede eliminar este rol porque está asignado a ${usageCount} usuario(s).`);
+        return;
+      }
+    } catch {
+      toast.error('No se pudo comprobar el uso del rol. Intenta de nuevo.');
       return;
     }
 
@@ -418,6 +455,7 @@ const RolesPage = () => {
 
     try {
       await roleService.deleteRole(role.id);
+      setRoles((current) => current.filter((item) => item.id !== role.id));
       setSelectedRoleIds((current) => current.filter((id) => id !== role.id));
       toast.success("Rol eliminado correctamente.");
       await loadRoles();
@@ -696,7 +734,7 @@ const RolesPage = () => {
                             role.status === "active" ? "outline" : "secondary"
                           }
                         >
-                          {role.status === "active" ? "Activo" : "Inactivo"}
+                          {isRoleExpired(role) ? "Vencido" : role.status === "active" ? "Activo" : "Inactivo"}
                         </Badge>
                       </div>
 
@@ -706,6 +744,7 @@ const RolesPage = () => {
 
                       <p className="text-xs text-muted-foreground">
                         {role.permissions.length} permiso(s) asignado(s)
+                        {role.temporary && roleExpirationDate(role) && <span className="mt-1 block">Expira: {roleExpirationDate(role)!.toLocaleString('es-MX')}</span>}
                       </p>
                     </div>
 
@@ -758,7 +797,7 @@ const RolesPage = () => {
       {confirmationDialog}
 
       <Dialog
-        open={dialogOpen}
+        open={dialogOpen && can(editingRole ? 'roles.update' : 'roles.create')}
         onOpenChange={(open) => {
           if (open) {
             setDialogOpen(true);
@@ -823,6 +862,20 @@ const RolesPage = () => {
                   placeholder="Describe para qué sirve este rol."
                 />
               </div>
+
+              {(!editingRole || !isProtectedRole(editingRole)) && <div className="space-y-3 rounded-lg border p-3 md:col-span-2">
+                <div className="flex items-center gap-2">
+                  <Checkbox id="temporary-role" checked={form.temporary} onCheckedChange={(checked) => setForm((current) => ({ ...current, temporary: checked === true }))} />
+                  <Label htmlFor="temporary-role">Rol temporal</Label>
+                </div>
+                {form.temporary && <>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-2"><Label htmlFor="role-duration">Duración</Label><Input id="role-duration" type="number" min={1} max={3650} step={1} value={form.durationValue} onChange={(event) => setForm((current) => ({ ...current, durationValue: event.target.value }))} /></div>
+                    <div className="space-y-2"><Label htmlFor="role-duration-unit">Unidad</Label><Select value={form.durationUnit} onValueChange={(value) => setForm((current) => ({ ...current, durationUnit: value as DurationUnit }))}><SelectTrigger id="role-duration-unit"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(durationUnitLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">La duración comienza al guardar. Al vencer se considera inactivo y se conserva su registro. Si ya está inactivo, podrás activarlo después de guardar una nueva duración.</p>
+                </>}
+              </div>}
 
               <div className="space-y-5 md:col-span-2">
                 <div className="rounded-xl border bg-muted/30 p-4">

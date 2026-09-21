@@ -9,6 +9,7 @@ export interface ClinicalMaterialUsage {
 }
 
 export interface HistoryEntry {
+  pacienteNiegaProcedimientos?: boolean;
   id: string;
   fecha: string;
   servicios: { servicioId: string; cantidad: number }[];
@@ -19,6 +20,7 @@ export interface HistoryEntry {
 }
 
 export interface IHistoriaGeneral {
+  paciente_niega_procedimientos?: boolean;
   ocupacion: string;
   escolaridad: string;
   estado_civil: string;
@@ -48,6 +50,10 @@ export interface IAppPatologicos {
 }
 
 export interface IApnp {
+  auxiliares_opciones?: string[];
+  auxiliares_otros?: string;
+  cartilla_vacunacion?: boolean | null;
+  esquema_vacunacion_completo?: boolean | null;
   frecuencia_cepillado: string;
   auxiliares_higiene: boolean;
   auxiliares_cuales: string;

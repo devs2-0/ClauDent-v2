@@ -16,21 +16,7 @@ import type { PermissionKey } from "../types/permission.types";
 import type { Role } from "../types/role.types";
 import type { AppUser, AppUserStatus } from "../types/user.types";
 
-const normalizeRole = (id: string, data: any): Role => ({
-  id,
-  name: data.name ?? "",
-  description: data.description ?? "",
-  color: data.color ?? "",
-  icon: data.icon ?? "",
-  permissions: Array.isArray(data.permissions) ? data.permissions : [],
-  isSystem: data.isSystem === true,
-  isAdmin: data.isAdmin === true,
-  status: data.status ?? "active",
-  createdAt: data.createdAt ?? null,
-  updatedAt: data.updatedAt ?? null,
-  createdBy: data.createdBy ?? null,
-  updatedBy: data.updatedBy ?? null,
-});
+import { normalizeRole } from "./roleService";
 
 const normalizeUser = (id: string, data: any): AppUser => ({
   uid: data.uid ?? id,
@@ -39,6 +25,8 @@ const normalizeUser = (id: string, data: any): AppUser => ({
   photoURL: data.photoURL ?? null,
   phone: data.phone ?? null,
   status: data.status ?? "inactive",
+  visible: data.visible !== false,
+  deletedAt: data.deletedAt ?? null,
   roleIds: Array.isArray(data.roleIds) ? data.roleIds : [],
   primaryRoleId: data.primaryRoleId ?? null,
   permissions: Array.isArray(data.permissions) ? data.permissions : [],
@@ -135,6 +123,9 @@ export const userService = {
 
     const roles = await listActiveRoles();
     const uniqueRoleIds = Array.from(new Set(roleIds));
+    if (uniqueRoleIds.some((id) => !roles.some((role) => role.id === id))) {
+      throw new Error("La selección contiene un rol inactivo o vencido. Actualiza los roles e intenta de nuevo.");
+    }
     const effective = calculateEffectivePermissions(uniqueRoleIds, roles);
 
     const activeAdminCount = await countActiveAdmins();

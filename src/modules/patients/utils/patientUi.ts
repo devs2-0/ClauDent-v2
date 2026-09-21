@@ -123,7 +123,10 @@ export const getClinicalHistoryStatus = (
     sectionHasAnyValue(sections[sectionName], fields),
   );
 
-  if (!hasAnyHistory) return "none";
+  const hasNewFields = typeof sections.historiaGeneral?.paciente_niega_procedimientos === 'boolean'
+    || typeof sections.apnp?.cartilla_vacunacion === 'boolean'
+    || typeof sections.apnp?.esquema_vacunacion_completo === 'boolean';
+  if (!hasAnyHistory && !hasNewFields) return "none";
 
   const firstTwoComplete =
     sectionIsComplete(sections.historiaGeneral, clinicalHistoryFields.historiaGeneral) &&

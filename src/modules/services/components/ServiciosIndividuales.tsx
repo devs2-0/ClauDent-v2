@@ -32,6 +32,8 @@ import { Skeleton } from '@/shared/components/ui/skeleton';
 import { Switch } from '@/shared/components/ui/switch';
 import { useConfirmAction } from '@/shared/hooks/useConfirmAction';
 import { generateServiceCode } from '@/shared/utils/catalogCodes';
+import type { Service } from '../types/service.types';
+import { categoryKey, categoryOptions, normalizeCategory } from '../utils/categories';
 
 type ServiceStatusFilter = 'all' | 'activo' | 'inactivo';
 type ServicePriceOrder = 'default' | 'price_asc' | 'price_desc';
@@ -41,7 +43,9 @@ const ServiciosIndividuales: React.FC = () => {
   
   const { can } = useCan();
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<ServiceStatusFilter>('all');
+  const [statusFilter, setStatusFilter] = useState<ServiceStatusFilter>('activo');
+  const [categoryFilter, setCategoryFilter] = useState('*');
+  const categories = useMemo(() => categoryOptions(services.map((service) => service.categoria ?? '')), [services]);
   const [priceOrder, setPriceOrder] = useState<ServicePriceOrder>('default');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingService, setEditingService] = useState<string | null>(null);
@@ -65,30 +69,30 @@ const ServiciosIndividuales: React.FC = () => {
   });
 
   const filteredServices = useMemo(() => {
-    const search = searchQuery.trim().toLowerCase();
+    const search = categoryKey(searchQuery);
     return services
       .filter((service) => {
         const matchesSearch = !search || [service.nombre, service.codigo, service.categoria]
-          .some((value) => value?.toLowerCase().includes(search));
+          .some((value) => categoryKey(value).includes(search));
         const matchesStatus = statusFilter === 'all' || service.estado === statusFilter;
-        return matchesSearch && matchesStatus;
+        return matchesSearch && matchesStatus && (categoryFilter === '*' || categoryKey(service.categoria) === categoryFilter);
       })
       .sort((first, second) => {
         if (priceOrder === 'price_asc') return first.precio - second.precio;
         if (priceOrder === 'price_desc') return second.precio - first.precio;
         return first.nombre.localeCompare(second.nombre, 'es', { sensitivity: 'base' });
       });
-  }, [services, searchQuery, statusFilter, priceOrder]);
+  }, [services, searchQuery, statusFilter, priceOrder, categoryFilter]);
 
   const generatedCode = useMemo(() => generateServiceCode(
-    formData.categoria,
+    normalizeCategory(formData.categoria, [...categories.values()]),
     formData.nombre,
     Number(formData.precio),
     services
       .filter((service) => service.id !== editingService)
       .map((service) => service.codigo)
       .filter(Boolean),
-  ), [editingService, formData.categoria, formData.nombre, formData.precio, services]);
+  ), [editingService, formData.categoria, formData.nombre, formData.precio, services, categories]);
 
   const handleOpenDialog = (serviceId?: string) => {
     if (!can(serviceId ? 'services.update' : 'services.create')) return;
@@ -99,7 +103,7 @@ const ServiciosIndividuales: React.FC = () => {
           nombre: service.nombre,
           descripcion: service.descripcion,
           precio: service.precio,
-          categoria: service.categoria,
+          categoria: categories.get(categoryKey(service.categoria)) ?? '',
           estado: service.estado,
         });
         setEditingService(service.id);
@@ -133,6 +137,7 @@ const ServiciosIndividuales: React.FC = () => {
 
     const payload = {
         ...formData,
+        categoria: normalizeCategory(formData.categoria, [...categories.values()]),
         codigo: generatedCode,
         precio: finalPrice,
     };
@@ -159,7 +164,7 @@ const ServiciosIndividuales: React.FC = () => {
     if (!canSafelyDeleteServices) return;
     const confirmed = await confirm({
       title: 'Eliminar servicio',
-      description: 'El servicio quedará inactivo para conservar cotizaciones e historiales existentes.',
+      description: 'El servicio se quitará del listado principal. Se conservará como inactivo para mantener cotizaciones e historiales existentes.',
       confirmLabel: 'Eliminar',
       destructive: true,
     });
@@ -167,7 +172,8 @@ const ServiciosIndividuales: React.FC = () => {
 
     try {
       await deleteService(id);
-      toast.success('Servicio desactivado');
+      setStatusFilter('activo');
+      toast.success('Servicio eliminado del listado principal');
     } catch (error) {
       console.error(error);
       toast.error('Error al eliminar el servicio');
@@ -217,7 +223,7 @@ const ServiciosIndividuales: React.FC = () => {
   return (
     <div className="flex h-[max(22rem,calc(100dvh-16rem))] min-h-0 flex-col gap-4">
       <div className="flex shrink-0 flex-wrap items-end justify-between gap-3">
-        <div className="grid w-full gap-2 sm:grid-cols-[minmax(14rem,1fr)_10rem_11rem] lg:max-w-3xl">
+        <div className="grid w-full gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(14rem,1fr)_12rem_10rem_11rem]">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -229,6 +235,13 @@ const ServiciosIndividuales: React.FC = () => {
               className="h-9 pl-9"
             />
           </div>
+          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+            <SelectTrigger className="h-9" aria-label="Filtrar por categoría"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="*">Todas las categorías</SelectItem>
+              {[...categories].map(([key, label]) => <SelectItem key={key} value={key}>{label}</SelectItem>)}
+            </SelectContent>
+          </Select>
           <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as ServiceStatusFilter)}>
             <SelectTrigger className="h-9" aria-label="Filtrar servicios por estado">
               <SelectValue />
@@ -289,7 +302,7 @@ const ServiciosIndividuales: React.FC = () => {
                           <p className="text-sm text-muted-foreground line-clamp-1">{service.descripcion}</p>
                         </div>
                       </TableCell>
-                      <TableCell className="whitespace-nowrap">{service.categoria}</TableCell>
+                      <TableCell className="whitespace-nowrap">{categories.get(categoryKey(service.categoria)) || 'Sin categoría'}</TableCell>
                       <TableCell className="font-semibold whitespace-nowrap">{formatCurrency(service.precio)}</TableCell>
                       <TableCell className="whitespace-nowrap">
                         {canUpdateServices ? (
@@ -353,12 +366,15 @@ const ServiciosIndividuales: React.FC = () => {
                 <Label htmlFor="categoria">Categoría *</Label>
                 <Input
                   id="categoria"
+                  list="service-categories"
+                  onBlur={() => setFormData((current) => ({ ...current, categoria: normalizeCategory(current.categoria, [...categories.values()]) }))}
                   value={formData.categoria}
                   onChange={(e) => setFormData({ ...formData, categoria: e.target.value })}
                   required
                 />
               </div>
               <div className="space-y-2">
+                <datalist id="service-categories">{[...categories].map(([key, label]) => <option key={key} value={label} />)}</datalist>
                 <Label htmlFor="nombre">Nombre del Servicio *</Label>
                 <Input
                   id="nombre"

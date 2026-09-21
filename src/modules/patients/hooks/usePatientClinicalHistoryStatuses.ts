@@ -19,6 +19,11 @@ const supportedSections = new Set<keyof ClinicalHistorySections>([
   "alergias",
   "hospitalizaciones",
 ]);
+const legacySections: Record<string, keyof ClinicalHistorySections> = {
+  datos_generales: 'historiaGeneral', antecedentes_hereditarios: 'antecedentesHereditarios',
+  antecedentes_patologicos: 'appPatologicos', antecedentes_no_patologicos: 'apnp',
+  antecedentes_alergicos: 'alergias',
+};
 
 export const usePatientClinicalHistoryStatuses = (visiblePatients: Patient[]) => {
   const { can } = useCan();
@@ -53,7 +58,7 @@ export const usePatientClinicalHistoryStatuses = (visiblePatients: Patient[]) =>
         const sections: ClinicalHistorySections = {};
 
         snapshot.docs.forEach((historyDocument) => {
-          const sectionName = historyDocument.id as keyof ClinicalHistorySections;
+          const sectionName = legacySections[historyDocument.id] ?? historyDocument.id as keyof ClinicalHistorySections;
           if (supportedSections.has(sectionName)) {
             sections[sectionName] = historyDocument.data();
           }

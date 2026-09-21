@@ -10,6 +10,8 @@ import {
   where,
 } from "firebase/firestore";
 
+import { isRoleExpired } from "../utils/roleLifetime";
+import { roleService } from "./roleService";
 import { db } from "@/lib/firebase";
 import { addAuditLog } from "@/modules/audit/services/auditService";
 import type { AppUserStatus, Role } from "@/auth";
@@ -60,7 +62,7 @@ export const normalizeInvitationEmail = (email: string) => {
 const calculateEffectivePermissions = (roleIds: string[], roles: Role[]) => {
   const activeRolesById = new Map(
     roles
-      .filter((role) => role.status === "active")
+      .filter((role) => role.status === "active" && !isRoleExpired(role))
       .map((role) => [role.id, role]),
   );
 
@@ -182,7 +184,11 @@ export const userInvitationService = {
       }
     }
 
-    const effective = calculateEffectivePermissions(roleIds, roles);
+    const latestRoles = await roleService.listRoles();
+    if (roleIds.some((id) => !latestRoles.some((role) => role.id === id && role.status === "active"))) {
+      throw new Error("Selecciona únicamente roles activos y vigentes.");
+    }
+    const effective = calculateEffectivePermissions(roleIds, latestRoles);
 
     await setDoc(invitationRef, {
       email,

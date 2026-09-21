@@ -17,12 +17,15 @@ import { Skeleton } from '@/shared/components/ui/skeleton';
 import { Edit } from 'lucide-react';
 
 import InitialHistoryModal from '@/modules/patients/components/InitialHistoryModal';
+import { clinicalFieldLabels } from '../utils/clinicalFieldLabels';
 
 // ¡CORREGIDO! Componente DataViewer
 const DataViewer: React.FC<{ data: Record<string, any>, title: string }> = ({ data, title }) => {
   // ¡CORREGIDO! El filtro ahora solo oculta 'null' o 'undefined',
   // pero SÍ permite 'false' (para los checkbox) y '""' (para texto vacío).
-  const entries = Object.entries(data ?? {}).filter(([_, value]) => value !== null && value !== undefined);
+  const entries = Object.entries(data ?? {}).filter(([key, value]) =>
+    !['auxiliares_opciones', 'auxiliares_otros'].includes(key) && value !== null && value !== undefined,
+  );
 
   if (entries.length === 0) {
     return (
@@ -47,7 +50,7 @@ const DataViewer: React.FC<{ data: Record<string, any>, title: string }> = ({ da
     <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-2">
       {entries.map(([key, value]) => (
         <div key={key} className="flex flex-col">
-          <span className="text-xs font-medium text-muted-foreground capitalize">{key.replace(/_/g, ' ')}</span>
+          <span className="text-xs font-medium text-muted-foreground">{clinicalFieldLabels[key] ?? 'Información adicional'}</span>
           {/* ¡CORREGIDO! Usamos la nueva función para mostrar el valor */}
           <span className="text-sm font-semibold">
             {getDisplayValue(value)}
@@ -66,7 +69,7 @@ const PatientAntecedentes: React.FC = () => {
 
   // ¡MODIFICADO! Este useEffect ahora mapea correctamente los IDs de la BD
   useEffect(() => {
-    if (!patientId) return;
+    if (!patientId || isModalOpen) return;
 
     const fetchHistoryData = async () => {
       setIsLoading(true);
@@ -163,6 +166,8 @@ const PatientAntecedentes: React.FC = () => {
           Editar
         </Button></Can>
       </div>
+
+      <p className="rounded-md border p-3 text-sm">Paciente niega procedimientos: <strong>{historyData.historiaGeneral.paciente_niega_procedimientos == null ? 'Sin registrar' : historyData.historiaGeneral.paciente_niega_procedimientos ? 'Sí' : 'No'}</strong></p>
 
       <Accordion type="multiple" className="w-full">
         <AccordionItem value="item-1">

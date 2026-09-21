@@ -13,6 +13,11 @@ import { doc, getDoc } from "firebase/firestore";
 import { Link } from "react-router-dom";
 
 import { useAuth, useCan } from "@/auth";
+import { usePatients } from "@/modules/patients";
+import { usePatientInactivitySettings } from "@/modules/patients/hooks/usePatientInactivitySettings";
+import { usePatientClinicalActivity } from "@/modules/patients/hooks/usePatientClinicalActivity";
+import { isBirthdayToday, patientReviewDue } from "@/modules/patients/utils/patientAlerts";
+import { safeLocalDate } from "@/shared/utils/firestoreData";
 import { useGlobalNotificationSeen } from "@/app/hooks/useGlobalNotificationSeen";
 import {
   agendaNotificationService,
@@ -183,7 +188,7 @@ const NotificationsPopover = ({
                   >
                     <Link
                       to={notification.path}
-                      onClick={() => setOpen(false)}
+                      onClick={() => { markSeen(notification.id); setOpen(false); }}
                       className="flex items-start gap-2 rounded-t-lg p-3 pb-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
                     >
                       <NotificationIcon notification={notification} />
@@ -382,6 +387,51 @@ const AgendaNotificationsSource = ({
   return children({ notifications, loading });
 };
 
+const PatientNotificationsSource = ({ children }: {
+  children: (source: NotificationSourceResult) => ReactNode;
+}) => {
+  const { can } = useCan();
+  const { patients, patientsLoading, patientsUnavailable } = usePatients();
+  const { settings } = usePatientInactivitySettings();
+  const [today, setToday] = useState(() => new Date());
+  useEffect(() => {
+    const refresh = () => setToday(new Date());
+    const timer = window.setInterval(refresh, 60000);
+    window.addEventListener('focus', refresh);
+    return () => { window.clearInterval(timer); window.removeEventListener('focus', refresh); };
+  }, []);
+  // Only patients who could be due need clinical-history reads. Unknown registration
+  // dates remain candidates so an actual clinical date can still be used.
+  const candidateIds = useMemo(() => settings.enabled ? patients.filter((patient) =>
+    !patient.fechaRegistro || patientReviewDue(patient, settings, today),
+  ).map((patient) => patient.id) : [], [patients, settings, today]);
+  const { historyActivityByPatient, appointmentActivityByPatient, consultationActivityByPatient, clinicalActivityLoading, clinicalActivityUnavailable } = usePatientClinicalActivity(candidateIds);
+  const notifications = useMemo<GlobalNotification[]>(() => {
+    if (patientsUnavailable) return [];
+    const dateKey = safeLocalDate(today);
+    return patients.flatMap((patient) => {
+      const result: GlobalNotification[] = [];
+      const path = can('patients.record.view') ? `/pacientes/${patient.id}` : '/pacientes';
+      if (isBirthdayToday(patient.fechaNacimiento, today)) result.push({
+        id: `patient-birthday-${patient.id}-${dateKey}`,
+        title: 'Cumpleaños de hoy', detail: `${patient.nombres} ${patient.apellidos}`,
+        source: 'patients', path, timestamp: new Date(`${dateKey}T00:00:00`).getTime(),
+      });
+      if (settings.enabled && !clinicalActivityLoading) {
+        const due = patientReviewDue(patient, settings, today, historyActivityByPatient.get(patient.id), appointmentActivityByPatient.get(patient.id), consultationActivityByPatient.get(patient.id));
+        if (due) result.push({
+          id: `patient-review-${patient.id}-${due.referenceDate}-${settings.value}-${settings.unit}`,
+          title: 'Revisión pendiente',
+          detail: `${patient.nombres} ${patient.apellidos} · Desde ${due.referenceDate}, según ${due.source}.${clinicalActivityUnavailable ? ' Información clínica parcial.' : ''}`,
+          source: 'patients', path, timestamp: due.due.getTime(),
+        });
+      }
+      return result;
+    });
+  }, [patients, patientsUnavailable, today, settings, clinicalActivityLoading, clinicalActivityUnavailable, historyActivityByPatient, appointmentActivityByPatient, consultationActivityByPatient, can]);
+  return children({ notifications, loading: patientsLoading });
+};
+
 export const GlobalNotificationsButton = () => {
   const { currentUser, sessions } = useAuth();
   const { can, loading } = useCan();
@@ -419,13 +469,18 @@ export const GlobalNotificationsButton = () => {
   );
 
   const renderCashSource = (...sources: NotificationSourceResult[]) => {
-    if (!canViewCashAlerts) return renderNotifications(...sources);
+    if (!canViewCashAlerts) return renderPatientSource(...sources);
 
     return (
       <CashNotificationsSource path={cashPath}>
-        {(cashSource) => renderNotifications(...sources, cashSource)}
+        {(cashSource) => renderPatientSource(...sources, cashSource)}
       </CashNotificationsSource>
     );
+  };
+
+  const renderPatientSource = (...sources: NotificationSourceResult[]) => {
+    if (!can('patients.view')) return renderNotifications(...sources);
+    return <PatientNotificationsSource>{(patientSource) => renderNotifications(...sources, patientSource)}</PatientNotificationsSource>;
   };
 
   const renderAgendaSource = (...sources: NotificationSourceResult[]) => {
@@ -450,7 +505,5 @@ export const GlobalNotificationsButton = () => {
     );
   }
 
-  // La fuente de Pacientes queda preparada en el modelo visual. Se conectará cuando exista
-  // una señal global confiable que no requiera consultar cada expediente individualmente.
   return renderAgendaSource();
 };

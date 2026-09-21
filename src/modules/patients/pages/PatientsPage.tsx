@@ -1,12 +1,13 @@
 // RF02-RF05: Patients list (CORREGIDO: BUG DE ALERTDIALOG)
 import React, { useState, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Plus, Search, Edit, Eye, Filter, User, Phone, ChevronLeft, ChevronRight, ClipboardCheck, Trash2, UserCheck, UserX } from 'lucide-react';
+import { Plus, Search, Edit, Eye, Filter, User, ChevronLeft, ChevronRight, ClipboardCheck, Trash2, UserCheck, UserX } from 'lucide-react';
 import { useCan } from '@/auth';
 import { Patient, usePatients } from '@/modules/patients';
 import { usePatientClinicalHistoryStatuses } from '@/modules/patients/hooks/usePatientClinicalHistoryStatuses';
 import {
   calculatePatientAge,
+  getPatientSexLabel,
   hasKnownMaritalStatus,
   MARITAL_STATUS_OPTIONS,
   normalizePatientName,
@@ -25,6 +26,7 @@ import { Skeleton } from '@/shared/components/ui/skeleton';
 import { Checkbox } from '@/shared/components/ui/checkbox';
 import { SectionHelp } from '@/shared/components/SectionHelp';
 import { useConfirmAction } from '@/shared/hooks/useConfirmAction';
+import { useModalDraft } from '@/shared/hooks/useModalDraft';
 import InitialHistoryModal from '@/modules/patients/components/InitialHistoryModal';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -49,7 +51,7 @@ const toDateKey = (value?: string) => {
 };
 
 const Pacientes: React.FC = () => {
-  const { patients, addPatient, updatePatient, searchQuery, patientsLoading } = usePatients();
+  const { patients, addPatient, updatePatient, deletePatient, searchQuery, patientsLoading } = usePatients();
   const { can, loading: permissionsLoading } = useCan();
   const [searchParams, setSearchParams] = useSearchParams();
   const { confirm, confirmationDialog } = useConfirmAction();
@@ -74,6 +76,21 @@ const Pacientes: React.FC = () => {
   
   const [historyModalState, setHistoryModalState] = useState<{isOpen: boolean; patientId: string | null}>({ isOpen: false, patientId: null });
   const [formData, setFormData] = useState<Omit<Patient, 'id' | 'fechaRegistro'>>(initialFormData);
+  const draft = useModalDraft<typeof initialFormData>('new-patient');
+  const [draftRecovered, setDraftRecovered] = useState(false);
+
+  const closePatientDialog = (discard = false) => {
+    if (!editingPatient) {
+      const hasChanges = Object.entries(initialFormData).some(([key, value]) =>
+        String(formData[key as keyof typeof initialFormData] ?? '').trim() !== String(value));
+      if (discard || !hasChanges) draft.discard();
+      else {
+        const persisted = draft.save(formData);
+        toast.info(persisted ? 'Borrador guardado en este dispositivo.' : 'Borrador conservado durante esta sesión.');
+      }
+    }
+    setIsDialogOpen(false);
+  };
 
   const filteredPatients = useMemo(() => {
     const matchingPatients = patients.filter((patient) => {
@@ -146,6 +163,10 @@ const Pacientes: React.FC = () => {
     setCurrentPage(1);
   }, [localSearch, filterStatus, sortOrder]);
 
+  React.useEffect(() => {
+    setCurrentPage((page) => Math.min(page, Math.max(1, totalPages)));
+  }, [totalPages]);
+
   const handleOpenDialog = (patientId?: string) => {
     if (!can(patientId ? "patients.update" : "patients.create")) return;
     setCrearHistorial(false);
@@ -156,7 +177,9 @@ const Pacientes: React.FC = () => {
         setEditingPatient(patientId);
       }
     } else {
-      setFormData(initialFormData);
+      const recovered = draft.read();
+      setFormData({ ...initialFormData, ...recovered });
+      setDraftRecovered(Boolean(recovered));
       setEditingPatient(null);
     }
     setIsDialogOpen(true);
@@ -173,10 +196,12 @@ const Pacientes: React.FC = () => {
     if (!canCreatePatient) return;
 
     setCrearHistorial(false);
-    setFormData(initialFormData);
+    const recovered = draft.read();
+    setFormData({ ...initialFormData, ...recovered });
+    setDraftRecovered(Boolean(recovered));
     setEditingPatient(null);
     setIsDialogOpen(true);
-  }, [canCreatePatient, permissionsLoading, searchParams, setSearchParams]);
+  }, [canCreatePatient, permissionsLoading, searchParams, setSearchParams, draft]);
 
   const handleRequestSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -200,6 +225,7 @@ const Pacientes: React.FC = () => {
         toast.success('Paciente actualizado');
       } else {
         const newId = await addPatient(normalizedFormData);
+        draft.discard();
         toast.success('Paciente creado');
         if (crearHistorial && can("patients.clinicalHistory.update")) setHistoryModalState({ isOpen: true, patientId: newId });
       }
@@ -254,8 +280,9 @@ const Pacientes: React.FC = () => {
     setIsBulkUpdating(true);
     try {
       await Promise.all(
-        selectedPatients.map((patient) => updatePatient(patient.id, { estado: status })),
+        selectedPatients.map((patient) => actionLabel === 'Eliminar' ? deletePatient(patient.id) : updatePatient(patient.id, { estado: status })),
       );
+      if (actionLabel === 'Eliminar') setFilterStatus('activo');
       setSelectedPatientIds(new Set());
       const singular = selectedPatients.length === 1;
       const result = actionLabel === 'Activar'
@@ -282,7 +309,8 @@ const Pacientes: React.FC = () => {
     if (!confirmed) return;
 
     try {
-      await updatePatient(patient.id, { estado: 'inactivo' });
+      await deletePatient(patient.id);
+      setFilterStatus('activo');
       setSelectedPatientIds((current) => {
         const next = new Set(current);
         next.delete(patient.id);
@@ -342,14 +370,14 @@ const Pacientes: React.FC = () => {
             
             <div className="space-y-1.5 text-sm text-muted-foreground">
                  <div className="flex items-center gap-2">
-                    <Phone className="h-3 w-3" /> 
-                    {p.telefonoPrincipal ? p.telefonoPrincipal : <span className="italic text-xs">Sin teléfono</span>}
+                    <User className="h-3 w-3" />
+                    Género: {getPatientSexLabel(p.sexo)}
                  </div>
                  {can("patients.clinicalHistory.view") && <div className="flex items-center gap-2">
                     <ClipboardCheck className="h-3 w-3" />
                     <Badge variant="outline" className={`font-normal ${clinicalHistoryClassName}`}>
                       {clinicalHistoryStatusesLoading && !clinicalHistoryStatuses.has(p.id)
-                        ? 'Sin historial'
+                        ? 'Consultando historial…'
                         : clinicalHistoryLabel}
                     </Badge>
                  </div>}
@@ -560,12 +588,13 @@ const Pacientes: React.FC = () => {
       )}
 
       {/* Modal de Formulario */}
-      <Dialog open={isDialogOpen && can(editingPatient ? "patients.update" : "patients.create")} onOpenChange={setIsDialogOpen}>
+      <Dialog open={isDialogOpen && can(editingPatient ? "patients.update" : "patients.create")} onOpenChange={(open) => { if (!open) closePatientDialog(); }}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingPatient ? 'Editar Paciente' : 'Registrar Nuevo Paciente'}</DialogTitle>
             <DialogDescription>Los campos marcados con * son obligatorios.</DialogDescription>
           </DialogHeader>
+          {!editingPatient && draftRecovered && <p role="status" className="text-sm text-muted-foreground">Se recuperó tu borrador. Cancelar lo descarta.</p>}
           <form onSubmit={handleRequestSubmit} className="space-y-6 pt-2">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
@@ -627,6 +656,19 @@ const Pacientes: React.FC = () => {
                   </div>
               </div>
 
+              <details className="rounded-lg border p-4">
+                <summary className="cursor-pointer text-sm font-medium">Dirección (opcional)</summary>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  {([
+                    ['calle', 'Calle'], ['numeroExterior', 'Número exterior'], ['numeroInterior', 'Número interior'],
+                    ['colonia', 'Colonia'], ['municipio', 'Municipio'], ['estadoDireccion', 'Estado'], ['direccion', 'Referencia o dirección adicional'],
+                  ] as const).map(([field, label]) => <div key={field} className="space-y-2">
+                    <Label htmlFor={field}>{label}</Label>
+                    <Input id={field} value={formData[field] ?? ''} onChange={handleFormChange} />
+                  </div>)}
+                </div>
+              </details>
+
               {!editingPatient && can("patients.clinicalHistory.update") && (
                   <div className="flex items-center space-x-2 bg-primary/5 p-3 rounded-md border border-primary/20">
                     <Checkbox id="crearHistorial" checked={crearHistorial} onCheckedChange={(c) => setCrearHistorial(!!c)} />
@@ -635,8 +677,8 @@ const Pacientes: React.FC = () => {
               )}
 
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
-              <Button type="submit">{editingPatient ? 'Guardar Cambios' : 'Registrar Paciente'}</Button>
+              <Button type="button" variant="outline" disabled={isFormLoading} onClick={() => closePatientDialog(true)}>Cancelar</Button>
+              <Button type="submit" disabled={isFormLoading}>{editingPatient ? 'Guardar Cambios' : 'Registrar Paciente'}</Button>
             </DialogFooter>
           </form>
         </DialogContent>

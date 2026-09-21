@@ -35,7 +35,7 @@ import {
 const PatientRecordPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { patients, patientsLoading, patientsUnavailable, updatePatient } = usePatients();
+  const { patients, patientsLoading, patientsUnavailable, deletePatient } = usePatients();
   const { can } = useCan();
   const { confirm, confirmationDialog } = useConfirmAction();
   const [activeTab, setActiveTab] = useState("datos");
@@ -96,7 +96,7 @@ const PatientRecordPage: React.FC = () => {
     if (!confirmed) return;
 
     try {
-      await updatePatient(patient.id, { estado: "inactivo" });
+      await deletePatient(patient.id);
       toast.success("Paciente eliminado del listado activo");
       navigate("/pacientes");
     } catch {

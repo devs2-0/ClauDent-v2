@@ -1674,6 +1674,46 @@ const AppointmentManager = ({
 
   return (
     <div className="space-y-4">
+      <p className="text-xs text-muted-foreground">Resumen del día seleccionado · {selectedDate}</p>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
+        <Card>
+          <CardContent className="p-3">
+            <p className="text-xs text-muted-foreground">Total</p>
+            <p className="mt-1 text-2xl font-semibold">{daySummary.total}</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-3">
+            <p className="text-xs text-muted-foreground">Programadas</p>
+            <p className="mt-1 text-2xl font-semibold">
+              {daySummary.scheduledAppointments}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-3">
+            <p className="text-xs text-muted-foreground">Sin cita</p>
+            <p className="mt-1 text-2xl font-semibold">{daySummary.walkIns}</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-3">
+            <p className="text-xs text-muted-foreground">Atendidas</p>
+            <p className="mt-1 text-2xl font-semibold">{daySummary.completed}</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-3">
+            <p className="text-xs text-muted-foreground">Canceladas</p>
+            <p className="mt-1 text-2xl font-semibold">{daySummary.cancelled}</p>
+          </CardContent>
+        </Card>
+      </div>
+
       <Card className="relative z-20 overflow-visible border bg-card shadow-sm">
         <CardContent className="p-3 sm:p-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -1894,157 +1934,6 @@ const AppointmentManager = ({
         )}
         </div>
       </section>
-
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
-        <Card>
-          <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">Total</p>
-            <p className="mt-1 text-2xl font-semibold">{daySummary.total}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">Programadas</p>
-            <p className="mt-1 text-2xl font-semibold">
-              {daySummary.scheduledAppointments}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">Sin cita</p>
-            <p className="mt-1 text-2xl font-semibold">{daySummary.walkIns}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">Atendidas</p>
-            <p className="mt-1 text-2xl font-semibold">{daySummary.completed}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">Canceladas</p>
-            <p className="mt-1 text-2xl font-semibold">{daySummary.cancelled}</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card className="overflow-hidden">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Pacientes del día</CardTitle>
-        </CardHeader>
-
-        <CardContent>
-          {loading ? (
-            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-              Cargando citas...
-            </div>
-          ) : dayAppointments.length === 0 ? (
-            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-              No hay citas para este día.
-            </div>
-          ) : (
-            <div className="grid gap-3">
-              {dayAppointments.map((appointment) => {
-                const doctor = doctorsById.get(appointment.doctorId);
-                const appointmentAssistants = appointment.assistantIds
-                  .map((assistantId) => assistantsById.get(assistantId)?.nombre)
-                  .filter(Boolean);
-                const doctorColor = doctor?.color || "#2563EB";
-
-                return (
-                  <div
-                    key={appointment.id}
-                    className="rounded-lg border bg-muted/20 p-3 transition-colors hover:bg-muted/30"
-                    style={{
-                      borderLeftWidth: 5,
-                      borderLeftColor: doctorColor,
-                      backgroundColor: `${doctorColor}0D`,
-                    }}
-                  >
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge
-                            variant={
-                              appointment.status === "cancelled"
-                                ? "destructive"
-                                : appointment.status === "completed"
-                                  ? "secondary"
-                                  : "outline"
-                            }
-                          >
-                            {statusLabels[appointment.status]}
-                          </Badge>
-
-                          {appointment.appointmentType === "walk_in" && (
-                            <Badge variant="secondary">Sin cita</Badge>
-                          )}
-
-                          <span className="inline-flex items-center gap-1 text-sm text-muted-foreground">
-                            <Clock className="h-4 w-4" />
-                            {formatTimeRange(appointment?.startTime, appointment?.endTime)}
-                          </span>
-                        </div>
-
-                        <h3 className="font-semibold">
-                          {appointment.patientName}
-                        </h3>
-
-                        <p className="text-sm text-muted-foreground">
-                          {appointment.serviceName || appointment.reason}
-                        </p>
-
-                        {appointment.appointmentType === "walk_in" && (
-                          <p className="text-xs text-muted-foreground">
-                            Llegada: {appointment.arrivalTime || "No registrada"}
-                            {appointment.waitMinutes != null
-                              ? ` · Espera: ${appointment.waitMinutes} min`
-                              : ""}
-                          </p>
-                        )}
-
-                        <p className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-                          <Stethoscope className="h-4 w-4" />
-                          {doctor?.nombre ?? "Doctor no encontrado"}
-                        </p>
-
-                        {appointmentAssistants.length > 0 && (
-                          <p className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-                            <UserCheck className="h-4 w-4" />
-                            {appointmentAssistants.join(", ")}
-                          </p>
-                        )}
-
-                        {appointment.notes && (
-                          <p className="text-xs text-muted-foreground">
-                            {appointment.notes}
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openAppointmentDetails(appointment)}
-                        >
-                          Ver detalles
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
 
       {confirmationDialog}
 

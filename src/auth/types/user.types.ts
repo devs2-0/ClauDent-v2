@@ -24,6 +24,8 @@ export interface AppUser {
    * blocked debe impedir operar aunque el usuario exista en Firebase Auth.
    */
   status: AppUserStatus;
+  visible?: boolean;
+  deletedAt?: Timestamp | null;
 
   /**
    * ClauDent soportará varios roles por usuario.

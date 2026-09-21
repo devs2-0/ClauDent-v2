@@ -1,5 +1,6 @@
 import type { Timestamp } from "firebase/firestore";
 import type { PermissionKey } from "./permission.types";
+import type { DurationUnit } from "@/shared/utils/duration";
 
 export type RoleStatus = "active" | "archived";
 
@@ -32,6 +33,10 @@ export interface Role {
   isAdmin: boolean;
 
   status: RoleStatus;
+  temporary?: boolean;
+  durationValue?: number | null;
+  durationUnit?: DurationUnit | null;
+  expiresAt?: Timestamp | null;
 
   createdAt?: Timestamp | null;
   updatedAt?: Timestamp | null;

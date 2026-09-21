@@ -1,4 +1,5 @@
-import { CalendarClock, Clock, Stethoscope, UserPlus } from "lucide-react";
+import { useLayoutEffect, useRef, useState } from "react";
+import { CalendarClock, ChevronLeft, ChevronRight, Clock, Stethoscope, UserPlus } from "lucide-react";
 import { formatTimeRange, normalizeTime, timeToMinutes } from "@/shared/utils/time";
 
 import { Badge } from "@/shared/components/ui/badge";
@@ -123,6 +124,24 @@ const DailyCalendarView = ({
   onSelectSlot,
   onSelectAppointment,
 }: DailyCalendarViewProps) => {
+  const calendarRef = useRef<HTMLDivElement>(null);
+  const topScrollRef = useRef<HTMLDivElement>(null);
+  const [scrollWidth, setScrollWidth] = useState(0);
+  const [hasOverflow, setHasOverflow] = useState(false);
+  useLayoutEffect(() => {
+    const calendar = calendarRef.current;
+    if (!calendar) return;
+    const measure = () => {
+      setScrollWidth(calendar.scrollWidth);
+      setHasOverflow(calendar.scrollWidth > calendar.clientWidth + 1);
+    };
+    const observer = new ResizeObserver(measure);
+    observer.observe(calendar);
+    if (calendar.firstElementChild) observer.observe(calendar.firstElementChild);
+    measure();
+    return () => observer.disconnect();
+  }, [doctors, selectedDoctorId]);
+
   const visibleDoctors = doctors.filter((doctor) => {
     const isActive = doctor.status === "active";
     const matchesFilter =
@@ -283,7 +302,23 @@ const DailyCalendarView = ({
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        {hasOverflow && (
+          <div className="sticky top-0 z-10 hidden border-b bg-card px-3 py-2 md:block">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs text-muted-foreground">Desplazar doctores</span>
+              <div className="flex gap-1">
+                <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Doctores anteriores" onClick={() => calendarRef.current?.scrollBy({ left: -300, behavior: 'smooth' })}><ChevronLeft className="h-4 w-4" /></Button>
+                <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Doctores siguientes" onClick={() => calendarRef.current?.scrollBy({ left: 300, behavior: 'smooth' })}><ChevronRight className="h-4 w-4" /></Button>
+              </div>
+            </div>
+            <div ref={topScrollRef} tabIndex={0} role="region" aria-label="Desplazamiento horizontal por doctores" className="overflow-x-scroll" onScroll={(event) => {
+              if (calendarRef.current && calendarRef.current.scrollLeft !== event.currentTarget.scrollLeft) calendarRef.current.scrollLeft = event.currentTarget.scrollLeft;
+            }}><div style={{ width: scrollWidth }} className="h-1" /></div>
+          </div>
+        )}
+        <div ref={calendarRef} className="overflow-x-auto" onScroll={(event) => {
+          if (topScrollRef.current && topScrollRef.current.scrollLeft !== event.currentTarget.scrollLeft) topScrollRef.current.scrollLeft = event.currentTarget.scrollLeft;
+        }}>
           <div
             className="grid min-w-[820px]"
             style={{

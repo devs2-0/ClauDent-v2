@@ -156,7 +156,7 @@ const UsersPage = () => {
 
   const visibleUsers = useMemo(() => {
     return users.filter(
-      (user) => (user as AppUser & { visible?: boolean }).visible !== false,
+      (user) => user.visible !== false && !user.deletedAt,
     );
   }, [users]);
 
@@ -336,7 +336,7 @@ const UsersPage = () => {
         assistantsData,
       ] = await Promise.all([
         userService.listUsers(),
-        roleService.listRoles(),
+        roleService.listRoles({ processExpired: can("roles.update"), actorUid: currentUser?.uid }),
         canReadInvitations
           ? userInvitationService.listPendingInvitations()
           : Promise.resolve([]),
