@@ -1,3 +1,15 @@
+// Business dates must follow the local calendar, including timestamps near midnight.
+export const safeLocalDate = (value: unknown): string => {
+  if (!value) return "";
+  if (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  const date = value instanceof Date ? value
+    : typeof value === "object" && "toDate" in value && typeof value.toDate === "function" ? value.toDate() as Date
+      : typeof value === "string" ? new Date(value) : null;
+  if (!date || !Number.isFinite(date.getTime())) return "";
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return local.toISOString().split("T")[0];
+};
+
 export const safeDate = (timestamp: any): string => {
   if (!timestamp) return new Date().toISOString().split("T")[0];
   if (timestamp.toDate && typeof timestamp.toDate === "function") {

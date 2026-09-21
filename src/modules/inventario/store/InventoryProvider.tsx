@@ -21,6 +21,7 @@ interface InventoryContextValue {
   categoriesLoading: boolean;
   movements: InventoryMovement[];
   movementsLoading: boolean;
+  movementsUnavailable: boolean;
   stockEntries: InventoryStockEntry[];
   stockEntriesLoading: boolean;
   createCategory: (category: CreateInventoryCategoryInput) => Promise<string>;
@@ -45,6 +46,7 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
   const [productsLoading, setProductsLoading] = useState(false);
   const [categoriesLoading, setCategoriesLoading] = useState(false);
   const [movementsLoading, setMovementsLoading] = useState(false);
+  const [movementsUnavailable, setMovementsUnavailable] = useState(false);
   const [stockEntriesLoading, setStockEntriesLoading] = useState(false);
 
   useEffect(() => {
@@ -79,14 +81,17 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
     if (!currentUser) {
       setMovements([]);
       setMovementsLoading(false);
+      setMovementsUnavailable(false);
       return;
     }
 
     setMovementsLoading(true);
+    setMovementsUnavailable(false);
     return inventoryService.listenMovements((nextMovements) => {
       setMovements(nextMovements);
       setMovementsLoading(false);
-    });
+      setMovementsUnavailable(false);
+    }, () => { setMovements([]); setMovementsLoading(false); setMovementsUnavailable(true); });
   }, [currentUser]);
 
   useEffect(() => {
@@ -164,6 +169,7 @@ export const InventoryProvider: React.FC<{ children: ReactNode }> = ({ children 
         categoriesLoading,
         movements,
         movementsLoading,
+        movementsUnavailable,
         stockEntries,
         stockEntriesLoading,
         createCategory,

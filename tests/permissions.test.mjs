@@ -71,7 +71,7 @@ const entry = `
   }
 `;
 const bundle = await build({
-  stdin:{contents:entry,resolveDir:root,loader:'tsx'}, jsx:'automatic', bundle:true,write:false,format:'cjs',platform:'node',packages:'external',logLevel:'silent',
+  stdin:{contents:entry,resolveDir:root,loader:'tsx'}, jsx:'automatic', bundle:true,write:false,format:'cjs',platform:'node',packages:'external',logLevel:'silent',loader:{'.css':'empty'},
   plugins:[{name:'local-fixtures',setup(b){
     b.onLoad({filter:/DashboardPage\.tsx$/}, args=>({contents:readFileSync(args.path,'utf8')+'\nexport {DailyAgendaCard};',loader:'tsx',resolveDir:path.dirname(args.path)}));
     b.onResolve({filter:/.*/},args=>{

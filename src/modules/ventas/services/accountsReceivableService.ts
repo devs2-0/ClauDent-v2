@@ -13,7 +13,7 @@ import {
 
 import { db } from "@/lib/firebase";
 import { addAuditLog } from "@/modules/audit/services/auditService";
-import { cleanData, safeDate } from "@/shared/utils/firestoreData";
+import { cleanData, safeLocalDate as safeDate } from "@/shared/utils/firestoreData";
 import { getCurrentUserIdentity } from "@/shared/services/currentUserIdentity";
 import type {
   AccountReceivable,
@@ -83,11 +83,11 @@ const mapAccount = (id: string, data: any): AccountReceivable => ({
 });
 
 export const accountsReceivableService = {
-  listenAllAccounts: (onChange: (accounts: AccountReceivable[]) => void) => {
+  listenAllAccounts: (onChange: (accounts: AccountReceivable[]) => void, onError?: () => void) => {
     const accountsQuery = query(collection(db, COLLECTION), orderBy("fechaCreacion", "desc"));
     return onSnapshot(accountsQuery, (snapshot) => {
       onChange(snapshot.docs.map((accountDoc) => mapAccount(accountDoc.id, accountDoc.data())));
-    });
+    }, onError);
   },
 
   listenPatientAccounts: (patientId: string, onChange: (accounts: AccountReceivable[]) => void, onError?: () => void) => {

@@ -46,7 +46,9 @@ const CashContext = createContext<CashContextValue | undefined>(undefined);
 export const CashProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const { currentUser } = useAuth();
   const [paymentsUnavailable, setPaymentsUnavailable] = useState(false);
-  const [cashSummaryUnavailable, setCashSummaryUnavailable] = useState(false);
+  const [closuresUnavailable, setClosuresUnavailable] = useState(false);
+  const [movementsUnavailable, setMovementsUnavailable] = useState(false);
+  const cashSummaryUnavailable = closuresUnavailable || movementsUnavailable;
   const [payments, setPayments] = useState<Payment[]>([]);
   const [cashClosures, setCashClosures] = useState<CashClosure[]>([]);
   const [cashMovements, setCashMovements] = useState<CashMovement[]>([]);
@@ -60,13 +62,16 @@ export const CashProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (!currentUser) {
       setPayments([]);
       setPaymentsLoading(false);
+      setPaymentsUnavailable(false);
       return;
     }
 
     setPaymentsLoading(true);
+    setPaymentsUnavailable(false);
     return cashService.listenPayments((nextPayments) => {
       setPayments(nextPayments);
       setPaymentsLoading(false);
+      setPaymentsUnavailable(false);
     }, () => { setPayments([]); setPaymentsLoading(false); setPaymentsUnavailable(true); });
   }, [currentUser]);
 
@@ -88,28 +93,34 @@ export const CashProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     if (!currentUser) {
       setCashClosures([]);
       setCashClosuresLoading(false);
+      setClosuresUnavailable(false);
       return;
     }
 
     setCashClosuresLoading(true);
+    setClosuresUnavailable(false);
     return cashService.listenCashClosures((nextClosures) => {
       setCashClosures(nextClosures);
       setCashClosuresLoading(false);
-    }, () => { setCashClosures([]); setCashClosuresLoading(false); setCashSummaryUnavailable(true); });
+      setClosuresUnavailable(false);
+    }, () => { setCashClosures([]); setCashClosuresLoading(false); setClosuresUnavailable(true); });
   }, [currentUser]);
 
   useEffect(() => {
     if (!currentUser) {
       setCashMovements([]);
       setCashMovementsLoading(false);
+      setMovementsUnavailable(false);
       return;
     }
 
     setCashMovementsLoading(true);
+    setMovementsUnavailable(false);
     return cashService.listenCashMovements((nextMovements) => {
       setCashMovements(nextMovements);
       setCashMovementsLoading(false);
-    }, () => { setCashMovements([]); setCashMovementsLoading(false); setCashSummaryUnavailable(true); });
+      setMovementsUnavailable(false);
+    }, () => { setCashMovements([]); setCashMovementsLoading(false); setMovementsUnavailable(true); });
   }, [currentUser]);
 
   const openCashRegister = useCallback(async (input: OpenCashRegisterInput) => {
