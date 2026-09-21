@@ -1,3 +1,8 @@
+import { assertAppointmentReferences } from '../src/modules/agenda/services/appointmentReferences';
+import { legacyCategories, resolveServiceCategory, saveCategory } from '../src/modules/services/utils/categoryCatalog';
+import { historicalDoctors, selectedDayLabel } from '../src/modules/agenda/utils/historicalDoctors';
+import { doctorService } from '../src/modules/agenda/services/doctorService';
+import { assistantService } from '../src/modules/agenda/services/assistantService';
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { records, Timestamp } from './firestoreStub';
@@ -110,14 +115,14 @@ test('drafts remain recoverable in session when browser storage fails; cancel st
 test('inactivity defaults to four months, retains legacy days and rejects corrupt settings', () => {
   const storage = new Map<string, string>();
   (globalThis as any).window = { localStorage: { getItem: (key: string) => storage.get(key) } };
-  assert.deepEqual(readPatientInactivitySettings(), { value: 4, unit: 'months', enabled: true });
+  assert.deepEqual(readPatientInactivitySettings(), { value: 4, unit: 'months', enabled: true, automatic: { value: 6, unit: 'months' } });
   storage.set('claudent.patient-inactivity-days', '180');
-  assert.deepEqual(readPatientInactivitySettings(), { value: 180, unit: 'days', enabled: true });
+  assert.deepEqual(readPatientInactivitySettings(), { value: 180, unit: 'days', enabled: true, automatic: { value: 6, unit: 'months' } });
   storage.set('claudent.patient-inactivity.v2', JSON.stringify({ value: 3, unit: 'weeks', enabled: false }));
-  assert.deepEqual(readPatientInactivitySettings(), { value: 3, unit: 'weeks', enabled: false });
+  assert.deepEqual(readPatientInactivitySettings(), { value: 3, unit: 'weeks', enabled: false, automatic: { value: 6, unit: 'months' } });
   storage.clear();
   storage.set('claudent.patient-inactivity.v2', '{malformed');
-  assert.deepEqual(readPatientInactivitySettings(), { value: 4, unit: 'months', enabled: true });
+  assert.deepEqual(readPatientInactivitySettings(), { value: 4, unit: 'months', enabled: true, automatic: { value: 6, unit: 'months' } });
 });
 
 test('expired roles are inactive on reads without silently writing, while system/admin roles remain protected', async () => {
@@ -154,16 +159,14 @@ test('temporary creation persists duration, protected roles cannot expire or be 
   assert.equal(records.has('roles/r1'), false);
 });
 
-test('deleted users stay hidden after rereading; self-removal and last-admin removal are rejected', async () => {
+test('deleted user main documents are removed after rereading; self-removal and last-admin removal are rejected', async () => {
   records.set('usuarios/u1', { uid: 'u1', email: 'test@example.test', status: 'active', roleIds: ['r1'] });
-  await assert.rejects(userInvitationService.softDeleteUserAccess('u1', 'u1'), /propia/);
-  await userInvitationService.softDeleteUserAccess('u1', 'admin');
-  const [deleted] = await userService.listUsers();
-  assert.equal(deleted.visible, false);
-  assert.equal(deleted.status, 'blocked');
-  assert.deepEqual(deleted.permissions, []);
+  await assert.rejects(userInvitationService.deleteUserAccess('u1', 'u1'), /propia/);
+  await userInvitationService.deleteUserAccess('u1', 'admin');
+  assert.equal(records.has("usuarios/u1"), false);
+  assert.equal((await userService.listUsers()).length, 0);
   records.set('usuarios/admin', { uid: 'admin', email: 'admin@example.test', status: 'active', isAdmin: true });
-  await assert.rejects(userInvitationService.softDeleteUserAccess('admin', 'other'), /último administrador/);
+  await assert.rejects(userInvitationService.deleteUserAccess('admin', 'other'), /último administrador/);
   await assert.rejects(userService.updateUserStatus('admin', 'inactive', 'other'), /último administrador/);
 });
 
@@ -176,4 +179,84 @@ test('expired roles cannot be assigned and view permissions never grant writes',
       assert.equal(hasGrantedPermission([`${module}.view`], `${module}.${action}`), false);
     }
   }
+});
+
+
+test('category catalog normalizes duplicates, retains legacy assignment on rename and clears deleted assignments', () => {
+  const initial = legacyCategories(['  endodoncia  ', 'Endodóncia', ' Cirugia oral ']);
+  assert.equal(initial.length, 2);
+  assert.throws(() => saveCategory(initial, 'ENDODONCIA', 'new'), /existe/);
+  const old = initial.find((category) => categoryKey(category.name) === 'endodoncia')!;
+  const renamed = saveCategory(initial, 'tratamientos   de conducto', old.id);
+  assert.equal(resolveServiceCategory({ categoria: 'Endodoncia' }, renamed)?.name, 'Tratamientos De Conducto');
+  const deleted = renamed.filter((category) => category.id !== old.id);
+  assert.equal(resolveServiceCategory({ categoria: 'Endodoncia' }, deleted), undefined);
+  const recreated = saveCategory(deleted, 'Endodoncia', 'brand-new');
+  assert.equal(resolveServiceCategory({ categoria: 'Endodoncia', categoriaId: old.id }, recreated), undefined);
+  assert.equal(resolveServiceCategory({ categoria: 'Endodoncia' }, recreated), undefined);
+});
+
+test('four-month reminder does not imply six-month inactivity; clinical activity resets both', () => {
+  const registered = { ...patient, fechaRegistro: '2026-01-21' };
+  const atFourMonths = new Date('2026-05-21T12:00:00');
+  assert.ok(patientReviewDue(registered, { value: 4, unit: 'months' }, atFourMonths));
+  assert.equal(patientReviewDue(registered, { value: 6, unit: 'months' }, atFourMonths), null);
+  const atSixMonths = new Date('2026-07-21T12:00:00');
+  assert.ok(patientReviewDue(registered, { value: 6, unit: 'months' }, atSixMonths));
+  assert.equal(patientReviewDue(registered, { value: 6, unit: 'months' }, atSixMonths, '2026-07-20'), null);
+});
+
+test('deleted doctor references retain future and past appointments without expanding own-doctor scope', () => {
+  const appointments = [{ doctorId: 'gone', doctorName: 'Dra. Ana', startDate: '2025-01-01' }, { doctorId: 'gone', startDate: '2027-01-01' }, { doctorId: 'other' }] as any;
+  const own = historicalDoctors([], appointments, false, new Set(['gone']));
+  assert.equal(own.length, 1);
+  assert.equal(own[0].isDeletedReference, true);
+  assert.equal(own[0].status, 'inactive');
+  assert.match(own[0].nombre, /Ana.*eliminado/);
+  assert.equal(appointments.filter((item: any) => own.some((doctor) => doctor.id === item.doctorId)).length, 2);
+  assert.equal(historicalDoctors([], appointments, false, new Set()).length, 0);
+  assert.equal(historicalDoctors([], appointments, true, new Set()).length, 2);
+  assert.equal(selectedDayLabel('2026-09-21'), '21 septiembre 2026');
+});
+
+test('expired roles renew with a valid duration or become permanent, never active with a past expiry', async () => {
+  records.set('roles/r1', role);
+  await assert.rejects(roleService.updateRole('r1', { status: 'active', temporary: true, durationValue: 0, durationUnit: 'days' }), /duración/i);
+  await roleService.updateRole('r1', { status: 'active', temporary: true, durationValue: 3, durationUnit: 'days' });
+  assert.equal(records.get('roles/r1')!.status, 'active');
+  assert.ok(records.get('roles/r1')!.expiresAt.toDate().getTime() > Date.now());
+  records.set('roles/r1', role);
+  await roleService.updateRole('r1', { status: 'active', temporary: false });
+  assert.equal(records.get('roles/r1')!.temporary, false);
+  assert.equal(records.get('roles/r1')!.expiresAt, null);
+});
+
+test('doctor and assistant deletion removes only catalog documents and keeps historical references', async () => {
+  records.set('doctores/d1', { nombre: 'Doctor' });
+  records.set('asistentes/a1', { nombre: 'Asistente' });
+  records.set('citas/c1', { doctorId: 'd1', assistantIds: ['a1'] });
+  records.set('historialAgenda/h1', { doctorId: 'd1' });
+  await doctorService.deleteDoctor('d1');
+  await assistantService.deleteAssistant('a1');
+  assert.equal(records.has('doctores/d1'), false);
+  assert.equal(records.has('asistentes/a1'), false);
+  assert.equal(records.has('citas/c1'), true);
+  assert.equal(records.has('historialAgenda/h1'), true);
+  assert.equal(hasGrantedPermission(['agenda.view', 'agenda.doctors.view', 'agenda.doctors.manage'], 'agenda.doctors.delete'), false);
+});
+
+
+test('stale appointment selections cannot assign deleted doctors, services, patients or assistants', async () => {
+  records.set('doctores/live', { status: 'active' });
+  await assert.rejects(assertAppointmentReferences({ doctorId: 'gone' }), /Doctor eliminado/);
+  await assert.rejects(assertAppointmentReferences({ doctorId: 'live', serviceId: 'gone' }), /Servicio eliminado/);
+  await assert.rejects(assertAppointmentReferences({ doctorId: 'live', patientId: 'gone' }), /Paciente eliminado/);
+  await assert.rejects(assertAppointmentReferences({ doctorId: 'live', assistantIds: ['gone'] }), /Asistente eliminado/);
+});
+
+test('future appointment doctor can be replaced while its deleted patient/service remain historical references', async () => {
+  records.set('doctores/live', { status: 'active' });
+  const previous = { doctorId: 'deleted', patientId: 'old-patient', serviceId: 'old-service', assistantIds: [] } as any;
+  await assertAppointmentReferences({ doctorId: 'live', patientId: 'old-patient', serviceId: 'old-service' }, previous);
+  await assert.rejects(assertAppointmentReferences({ doctorId: 'deleted' }, previous), /Doctor eliminado/);
 });

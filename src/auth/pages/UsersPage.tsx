@@ -584,29 +584,29 @@ const UsersPage = () => {
     }
 
     const confirmed = await confirm({
-      title: "Quitar acceso",
-      description: `${user.displayName || user.email} ya no podrá ingresar a ClauDent y dejará de aparecer en este listado.`,
-      confirmLabel: "Quitar acceso",
+      title: "Eliminar usuario",
+      description: `${user.displayName || user.email} ya no podrá ingresar a ClauDent y se eliminará su perfil. Los registros históricos conservarán sus referencias.`,
+      confirmLabel: "Eliminar",
       destructive: true,
     });
 
     if (!confirmed) return;
 
     try {
-      await userInvitationService.softDeleteUserAccess(
+      await userInvitationService.deleteUserAccess(
         user.uid,
         currentUser?.uid,
       );
 
       setSelectedUserIds((current) => current.filter((id) => id !== user.uid));
-      toast.success("Usuario bloqueado y ocultado correctamente.");
+      toast.success("Perfil de usuario eliminado. Su historial se conserva.");
       await loadData();
     } catch (error) {
       console.error(error);
       toast.error(
         error instanceof Error
           ? error.message
-          : "No se pudo eliminar visualmente al usuario.",
+          : "No se pudo eliminar al usuario.",
       );
     }
   };
@@ -666,8 +666,8 @@ const UsersPage = () => {
       },
       delete: {
         title: "Quitar acceso a usuarios",
-        description: `Se bloquearán y ocultarán ${targets.length} usuario(s), conservando su historial.`,
-        confirmLabel: "Quitar acceso",
+        description: `Se eliminarán los perfiles principales de ${targets.length} usuario(s), conservando su historial.`,
+        confirmLabel: "Eliminar",
       },
     } as const;
     const confirmed = await confirm({
@@ -680,7 +680,7 @@ const UsersPage = () => {
     try {
       for (const user of targets) {
         if (action === "delete") {
-          await userInvitationService.softDeleteUserAccess(
+          await userInvitationService.deleteUserAccess(
             user.uid,
             currentUser?.uid,
           );

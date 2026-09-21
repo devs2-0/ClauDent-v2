@@ -407,6 +407,7 @@ const AppointmentDialog = ({
           </div>
         )}
 
+        {form.doctorId && !doctors.some((doctor) => doctor.id === form.doctorId) && <p role="status" className="rounded-lg border bg-muted p-3 text-sm text-muted-foreground">Doctor eliminado o inactivo. La cita conserva su referencia histórica. Selecciona un doctor activo para guardar los cambios.</p>}
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="space-y-2 lg:col-span-2">
             <Label htmlFor="appointment-type">Tipo de registro</Label>

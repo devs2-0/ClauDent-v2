@@ -1,6 +1,7 @@
 import {
   collection,
   doc,
+  deleteDoc,
   getDoc,
   getDocs,
   query,
@@ -249,7 +250,7 @@ export const userInvitationService = {
     await addAuditLog("UPDATE", "usuarios", `Invitacion cancelada: ${normalizedEmail}`);
   },
 
-  softDeleteUserAccess: async (uid: string, actorUid?: string | null) => {
+  deleteUserAccess: async (uid: string, actorUid?: string | null) => {
     if (actorUid && uid === actorUid) {
       throw new Error("No puedes quitar el acceso de tu propia cuenta.");
     }
@@ -271,19 +272,7 @@ export const userInvitationService = {
       }
     }
 
-    await updateDoc(doc(db, "usuarios", uid), {
-      status: "blocked",
-      roleIds: [],
-      primaryRoleId: null,
-      permissions: [],
-      isAdmin: false,
-      visible: false,
-      deletedAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-      deletedBy: actorUid ?? null,
-      updatedBy: actorUid ?? null,
-      deletedFromAuth: false,
-    });
+    await deleteDoc(doc(db, "usuarios", uid));
     await addAuditLog("DELETE", "usuarios", `Acceso eliminado: ${uid}`);
   },
 };

@@ -27,6 +27,7 @@ export interface AgendaHistoryLog {
   entityType: AgendaHistoryEntityType;
   entityId: string;
   doctorId?: string | null;
+  doctorName?: string | null;
   patientId?: string | null;
   patientName?: string | null;
   title: string;
@@ -46,6 +47,7 @@ export interface CreateAgendaHistoryLogInput {
   entityType: AgendaHistoryEntityType;
   entityId: string;
   doctorId?: string | null;
+  doctorName?: string | null;
   patientId?: string | null;
   patientName?: string | null;
   title: string;
@@ -77,6 +79,7 @@ const toHistoryLog = (
         ? (data.entityType as AgendaHistoryEntityType)
         : "appointment",
     entityId: typeof data.entityId === "string" ? data.entityId : "",
+    doctorName: typeof data.doctorName === "string" ? data.doctorName : null,
     doctorId: typeof data.doctorId === "string" ? data.doctorId : null,
     patientId: typeof data.patientId === "string" ? data.patientId : null,
     patientName:
@@ -127,6 +130,7 @@ export const agendaHistoryService = {
       entityType: input.entityType,
       entityId: input.entityId,
       doctorId: input.doctorId ?? null,
+      doctorName: input.doctorName ?? null,
       patientId: input.patientId ?? null,
       patientName: input.patientName ?? null,
       title: input.title,

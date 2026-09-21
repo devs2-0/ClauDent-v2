@@ -3,6 +3,7 @@ import {
   collection,
   doc,
   getDocs,
+  getDoc,
   serverTimestamp,
   Timestamp,
   updateDoc,
@@ -10,6 +11,7 @@ import {
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
 
+import { assertAppointmentReferences } from "./appointmentReferences";
 import { db } from "@/lib/firebase";
 import { normalizeTime, compareTimes } from "@/shared/utils/time";
 import type {
@@ -70,6 +72,7 @@ const toAppointment = (
     serviceId: typeof data.serviceId === "string" ? data.serviceId : null,
     serviceName:
       typeof data.serviceName === "string" ? data.serviceName : "",
+    doctorName: typeof data.doctorName === "string" ? data.doctorName : "",
     doctorId: typeof data.doctorId === "string" ? data.doctorId : "",
     assistantIds: Array.isArray(data.assistantIds)
       ? data.assistantIds.filter(
@@ -117,6 +120,7 @@ export const appointmentService = {
   createAppointment: async (
     input: CreateAppointmentInput,
   ): Promise<string> => {
+    await assertAppointmentReferences(input);
     const appointmentType = input.appointmentType ?? "scheduled";
 
     const created = await addDoc(appointmentsCollection, {
@@ -126,6 +130,7 @@ export const appointmentService = {
       serviceId: input.serviceId ?? null,
       serviceName: input.serviceName.trim(),
       doctorId: input.doctorId,
+      doctorName: input.doctorName ?? "",
       assistantIds: input.assistantIds ?? [],
       startDate: input.startDate,
       startTime: input.startTime,
@@ -157,6 +162,9 @@ export const appointmentService = {
     appointmentId: string,
     input: UpdateAppointmentInput,
   ): Promise<void> => {
+    const previousSnapshot = await getDoc(doc(db, 'citas', appointmentId));
+    if (!previousSnapshot.exists()) throw new Error('La cita ya no está disponible.');
+    await assertAppointmentReferences(input, { id: appointmentId, ...previousSnapshot.data() } as Appointment);
     const appointmentType = input.appointmentType;
 
     const payload: Record<string, unknown> = {

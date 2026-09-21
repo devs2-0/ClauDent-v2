@@ -129,7 +129,8 @@ const OdontogramEditorPage: React.FC = () => {
   const { patients } = usePatients();
   
   const { can } = useCan();
-  const canEdit = can("patients.odontogram.update");
+  const patientExists = patients.some((patient) => patient.id === patientId);
+  const canEdit = patientExists && can("patients.odontogram.update");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [odontogram, setOdontogram] = useState<Odontogram | null>(null);
@@ -309,20 +310,20 @@ const OdontogramEditorPage: React.FC = () => {
               Odontograma {odontogram.tipo === 'mixto' ? 'Mixto' : 'Permanente'}
             </h2>
             <p className="text-xs text-muted-foreground hidden sm:block">
-               {patients.find(p => p.id === patientId)?.nombres} {patients.find(p => p.id === patientId)?.apellidos}
+               {patients.find(p => p.id === patientId)?.nombres ?? 'Paciente eliminado'} {patients.find(p => p.id === patientId)?.apellidos}
             </p>
           </div>
         </div>
-        <Can permission="patients.odontogram.update"><Button onClick={handleSave} disabled={saving} size="sm" className={cn(saving && "opacity-80")}>
+        {patientExists && <Can permission="patients.odontogram.update"><Button onClick={handleSave} disabled={saving} size="sm" className={cn(saving && "opacity-80")}>
           {saving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
           Guardar
-        </Button></Can>
+        </Button></Can>}
       </div>
 
       <div className="flex flex-col lg:flex-row flex-1 gap-4 overflow-hidden">
         
         {/* HERRAMIENTAS */}
-        <Can permission="patients.odontogram.update"><Card className="w-full lg:w-60 shrink-0 flex flex-col max-h-[200px] lg:max-h-full">
+        {patientExists && <Can permission="patients.odontogram.update"><Card className="w-full lg:w-60 shrink-0 flex flex-col max-h-[200px] lg:max-h-full">
           <CardHeader className="p-3 pb-2 border-b">
             <CardTitle className="text-xs uppercase text-muted-foreground font-bold">Diagnósticos</CardTitle>
           </CardHeader>
@@ -345,7 +346,7 @@ const OdontogramEditorPage: React.FC = () => {
               ))}
             </div>
           </CardContent>
-        </Card></Can>
+        </Card></Can>}
 
         {/* CANVAS CON SCROLL HORIZONTAL MEJORADO */}
         <div className="flex-1 bg-card rounded-xl border p-0 lg:p-4 overflow-hidden flex flex-col min-h-[300px] relative">

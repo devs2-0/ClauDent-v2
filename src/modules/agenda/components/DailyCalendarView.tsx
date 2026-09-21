@@ -143,11 +143,11 @@ const DailyCalendarView = ({
   }, [doctors, selectedDoctorId]);
 
   const visibleDoctors = doctors.filter((doctor) => {
-    const isActive = doctor.status === "active";
+
     const matchesFilter =
       selectedDoctorId === "all" || doctor.id === selectedDoctorId;
 
-    return isActive && matchesFilter;
+    return matchesFilter;
   });
 
   const selectedDayOfWeek = getDayOfWeek(selectedDate);
@@ -158,6 +158,7 @@ const DailyCalendarView = ({
   );
 
   const getDoctorSchedulesForDate = (doctorId: string) => {
+    if (doctors.find((doctor) => doctor.id === doctorId)?.status !== "active") return [];
     const doctorSchedules = schedules.filter((schedule) => {
       return (
         schedule?.status === "active" &&

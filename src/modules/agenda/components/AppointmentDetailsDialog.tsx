@@ -29,6 +29,8 @@ interface AppointmentDetailsDialogProps {
   onOpenChange: (open: boolean) => void;
   appointment: Appointment | null;
   doctorName: string;
+  patientDeleted?: boolean;
+  serviceDeleted?: boolean;
   assistantNames: string[];
   walkInAssistantName?: string;
   canUpdate: boolean;
@@ -62,6 +64,8 @@ const AppointmentDetailsDialog = ({
   onOpenChange,
   appointment,
   doctorName,
+  patientDeleted = false,
+  serviceDeleted = false,
   assistantNames,
   walkInAssistantName,
   canUpdate,
@@ -110,11 +114,11 @@ const AppointmentDetailsDialog = ({
             </div>
 
             <h3 className="mt-3 text-lg font-semibold">
-              {appointment.patientName}
+              {appointment.patientName}{patientDeleted && <Badge variant="secondary" className="ml-2">Paciente eliminado</Badge>}
             </h3>
 
             <p className="mt-1 text-sm text-muted-foreground">
-              {appointment.serviceName || appointment.reason || "Sin servicio"}
+              {appointment.serviceName || appointment.reason || "Sin servicio"}{serviceDeleted && <Badge variant="secondary" className="ml-2">Servicio eliminado</Badge>}
             </p>
 
             {appointment.reason && appointment.serviceName && (

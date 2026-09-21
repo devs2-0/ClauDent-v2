@@ -2,6 +2,7 @@ import {
   addDoc,
   collection,
   doc,
+  deleteDoc,
   getDocs,
   orderBy,
   query,
@@ -95,17 +96,7 @@ export const assistantService = {
     });
   },
 
-  deactivateAssistant: async (
-    assistantId: string,
-    actorId?: string | null,
-  ): Promise<void> => {
-    await updateDoc(doc(db, "asistentes", assistantId), {
-      status: "inactive",
-      visibleEnAgenda: false,
-      deletedAt: serverTimestamp(),
-      deletedBy: actorId ?? null,
-      updatedAt: serverTimestamp(),
-      updatedBy: actorId ?? null,
-    });
+  deleteAssistant: async (id: string, _actorId?: string | null): Promise<void> => {
+    await deleteDoc(doc(db, "asistentes", id));
   },
 };

@@ -33,19 +33,22 @@ import { Switch } from '@/shared/components/ui/switch';
 import { useConfirmAction } from '@/shared/hooks/useConfirmAction';
 import { generateServiceCode } from '@/shared/utils/catalogCodes';
 import type { Service } from '../types/service.types';
-import { categoryKey, categoryOptions, normalizeCategory } from '../utils/categories';
+import { categoryKey, normalizeCategory } from '../utils/categories';
 
 type ServiceStatusFilter = 'all' | 'activo' | 'inactivo';
 type ServicePriceOrder = 'default' | 'price_asc' | 'price_desc';
 
 const ServiciosIndividuales: React.FC = () => {
-  const { services, addService, updateService, deleteService, servicesLoading } = useDentalServices();
+  const { categories: configuredCategories, services, addService, updateService, deleteService, servicesLoading } = useDentalServices();
   
   const { can } = useCan();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<ServiceStatusFilter>('activo');
   const [categoryFilter, setCategoryFilter] = useState('*');
-  const categories = useMemo(() => categoryOptions(services.map((service) => service.categoria ?? '')), [services]);
+  const categories = useMemo(() => new Map(configuredCategories.map((category) => [categoryKey(category.name), category.name])), [configuredCategories]);
+  React.useEffect(() => {
+    if (categoryFilter !== '*' && !categories.has(categoryFilter)) setCategoryFilter('*');
+  }, [categories, categoryFilter]);
   const [priceOrder, setPriceOrder] = useState<ServicePriceOrder>('default');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingService, setEditingService] = useState<string | null>(null);
@@ -85,7 +88,7 @@ const ServiciosIndividuales: React.FC = () => {
   }, [services, searchQuery, statusFilter, priceOrder, categoryFilter]);
 
   const generatedCode = useMemo(() => generateServiceCode(
-    normalizeCategory(formData.categoria, [...categories.values()]),
+    normalizeCategory(formData.categoria, [...categories.values()]) || "Sin categoría",
     formData.nombre,
     Number(formData.precio),
     services
@@ -125,8 +128,8 @@ const ServiciosIndividuales: React.FC = () => {
     e.preventDefault();
     if (!can(editingService ? 'services.update' : 'services.create')) return;
     const finalPrice = formData.precio === '' ? 0 : Number(formData.precio);
-    if (!formData.categoria.trim() || !formData.nombre.trim() || !Number.isFinite(finalPrice)) {
-      toast.error('Completa categoría, nombre y precio.');
+    if (!formData.nombre.trim() || !Number.isFinite(finalPrice)) {
+      toast.error('Completa nombre y precio.');
       return;
     }
     if (!generatedCode) {
@@ -164,7 +167,7 @@ const ServiciosIndividuales: React.FC = () => {
     if (!canSafelyDeleteServices) return;
     const confirmed = await confirm({
       title: 'Eliminar servicio',
-      description: 'El servicio se quitará del listado principal. Se conservará como inactivo para mantener cotizaciones e historiales existentes.',
+      description: 'El servicio se eliminará del catálogo. Las cotizaciones y los procedimientos conservarán sus referencias históricas con la etiqueta Servicio eliminado.',
       confirmLabel: 'Eliminar',
       destructive: true,
     });
@@ -363,18 +366,14 @@ const ServiciosIndividuales: React.FC = () => {
           <form onSubmit={handleSubmit} className="space-y-4">
             <fieldset disabled={isFormLoading} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="categoria">Categoría *</Label>
-                <Input
-                  id="categoria"
-                  list="service-categories"
-                  onBlur={() => setFormData((current) => ({ ...current, categoria: normalizeCategory(current.categoria, [...categories.values()]) }))}
-                  value={formData.categoria}
-                  onChange={(e) => setFormData({ ...formData, categoria: e.target.value })}
-                  required
-                />
+                <Label htmlFor="categoria">Categoría</Label>
+                <Select value={formData.categoria || '__none'} onValueChange={(value) => setFormData({ ...formData, categoria: value === '__none' ? '' : value })}>
+                  <SelectTrigger id="categoria"><SelectValue placeholder="Sin categoría" /></SelectTrigger>
+                  <SelectContent><SelectItem value="__none">Sin categoría</SelectItem>{[...categories].map(([key, label]) => <SelectItem key={key} value={label}>{label}</SelectItem>)}</SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
-                <datalist id="service-categories">{[...categories].map(([key, label]) => <option key={key} value={label} />)}</datalist>
+
                 <Label htmlFor="nombre">Nombre del Servicio *</Label>
                 <Input
                   id="nombre"

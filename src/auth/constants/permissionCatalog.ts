@@ -323,6 +323,16 @@ export const permissionCatalog: PermissionDefinition[] = [
     level: "read",
   },
   {
+    key: "agenda.doctors.delete",
+    module: "agenda", group: "Doctores", label: "Eliminar doctores",
+    description: "Elimina el doctor del catálogo conservando sus citas.", level: "manage",
+  },
+  {
+    key: "agenda.assistants.delete",
+    module: "agenda", group: "Asistentes", label: "Eliminar asistentes",
+    description: "Elimina el asistente del catálogo conservando sus referencias.", level: "manage",
+  },
+  {
     key: "agenda.doctors.manage",
     module: "agenda",
     group: "Doctores",

@@ -16,6 +16,8 @@ const sectionParents: Partial<Record<PermissionKey, PermissionKey>> = {
   "patients.attachments.view": "patients.record.view",
   "patients.attachments.upload": "patients.attachments.view",
   "patients.attachments.delete": "patients.attachments.view",
+  "agenda.doctors.delete": "agenda.doctors.view",
+  "agenda.assistants.delete": "agenda.assistants.view",
   "agenda.doctors.manage": "agenda.doctors.view",
   "agenda.assistants.manage": "agenda.assistants.view",
   "agenda.blocks.create": "agenda.availability.view",

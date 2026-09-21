@@ -1,13 +1,15 @@
-import React, { createContext, ReactNode, useContext, useEffect, useState } from "react";
-import { addDoc, collection, doc, onSnapshot, query, updateDoc } from "firebase/firestore";
+import React, { createContext, ReactNode, useContext, useEffect, useState, useMemo } from "react";
+import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
 import { useAuth, useCan } from "@/auth";
 import { addAuditLog } from "@/modules/audit/services/auditService";
 import { cleanData } from "@/shared/utils/firestoreData";
-import { normalizeCategory } from "../utils/categories";
+import { categoryKey } from "../utils/categories";
+import { resolveServiceCategory } from "../utils/categoryCatalog";
+import { useServiceCategoryCatalog } from "../hooks/useServiceCategoryCatalog";
 import type { Service } from "../types/service.types";
 
-interface DentalServicesContextValue {
+interface DentalServicesContextValue extends ReturnType<typeof useServiceCategoryCatalog> {
   services: Service[];
   servicesLoading: boolean;
   servicesUnavailable: boolean;
@@ -22,7 +24,7 @@ export const DentalServicesProvider: React.FC<{ children: ReactNode }> = ({ chil
   const { currentUser } = useAuth();
   const { can } = useCan();
   const canRead = can("services.view") || can("packages.create") || can("packages.update") || can("patients.procedures.view") || can("agenda.appointments.create") || can("agenda.appointments.update") || can("quotations.view") || can("sales.view");
-  const [services, setServices] = useState<Service[]>([]);
+  const [rawServices, setServices] = useState<Service[]>([]);
   const [servicesLoading, setServicesLoading] = useState(false);
   const [servicesUnavailable, setServicesUnavailable] = useState(false);
 
@@ -45,26 +47,38 @@ export const DentalServicesProvider: React.FC<{ children: ReactNode }> = ({ chil
     });
   }, [currentUser, canRead]);
 
+  const legacyValues = useMemo(() => rawServices.map((item) => item.categoria ?? ""), [rawServices]);
+  const catalog = useServiceCategoryCatalog(legacyValues, canRead || can("settings.view"), canRead && !servicesLoading && !servicesUnavailable);
+  const services = useMemo(() => rawServices.map((service) => {
+    const category = resolveServiceCategory(service, catalog.categories);
+    return { ...service, categoria: category?.name ?? "", categoriaId: category?.id ?? null };
+  }), [rawServices, catalog.categories]);
+  const categoryFields = (name: string) => {
+    if (catalog.categoriesLoading || catalog.categoriesUnavailable) throw new Error("Catálogo de categorías no disponible.");
+    const category = catalog.categories.find((item) => categoryKey(item.name) === categoryKey(name));
+    if (name && !category) throw new Error("Selecciona una categoría configurada.");
+    return { categoria: category?.name ?? "", categoriaId: category?.id ?? null };
+  };
   const addService = async (service: Omit<Service, "id">) => {
     if (!can("services.create")) throw new Error("No tienes permiso para realizar esta acción.");
-    await addDoc(collection(db, "servicios"), cleanData({ ...service, categoria: normalizeCategory(service.categoria, services.map((item) => item.categoria)), fechaCreacion: new Date() }));
+    await addDoc(collection(db, "servicios"), cleanData({ ...service, ...categoryFields(service.categoria), fechaCreacion: new Date() }));
     await addAuditLog("CREATE", "servicios", `Servicio: ${service.nombre}`);
   };
 
   const updateService = async (id: string, updates: Partial<Service>) => {
     if (!can("services.update")) throw new Error("No tienes permiso para realizar esta acción.");
-    await updateDoc(doc(db, "servicios", id), cleanData({ ...updates, ...(updates.categoria !== undefined ? { categoria: normalizeCategory(updates.categoria, services.map((item) => item.categoria)) } : {}) }));
+    await updateDoc(doc(db, "servicios", id), cleanData({ ...updates, ...(updates.categoria !== undefined ? categoryFields(updates.categoria) : {}) }));
     await addAuditLog("UPDATE", "servicios", `Servicio actualizado: ${updates.nombre ?? id}`);
   };
 
   const deleteService = async (id: string) => {
     if (!can("services.delete")) throw new Error("No tienes permiso para realizar esta acción.");
-    await updateDoc(doc(db, "servicios", id), { estado: "inactivo" });
-    await addAuditLog("DELETE", "servicios", `Servicio desactivado: ${id}`);
+    await deleteDoc(doc(db, "servicios", id));
+    await addAuditLog("DELETE", "servicios", `Servicio eliminado: ${id}`);
   };
 
   return (
-    <DentalServicesContext.Provider value={{ services, servicesLoading, servicesUnavailable, addService, updateService, deleteService }}>
+    <DentalServicesContext.Provider value={{ ...catalog, services, servicesLoading, servicesUnavailable, addService, updateService, deleteService }}>
       {children}
     </DentalServicesContext.Provider>
   );

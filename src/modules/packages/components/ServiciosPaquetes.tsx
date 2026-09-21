@@ -226,6 +226,9 @@ const ServiciosPaquetes: React.FC = () => {
       return toast.error("Debe incluir al menos un servicio.");
     }
 
+    if (formData.serviciosIncluidos.some((item) => !services.some((service) => service.id === item.id))) {
+      toast.error('El paquete contiene un servicio eliminado. Retíralo o reemplázalo antes de guardar.'); return;
+    }
     setIsFormLoading(true);
     
     const finalPrice = formData.precioTotal === '' ? 0 : Number(formData.precioTotal);
@@ -554,7 +557,7 @@ const ServiciosPaquetes: React.FC = () => {
                                         onSelect={() => addServicio(service)}
                                     >
                                         <div className="flex justify-between w-full">
-                                            <span>{service.nombre}</span>
+                                            <span>{service.nombre}{!services.some((item) => item.id === service.id) ? " · Servicio eliminado" : ""}</span>
                                             <span className="text-xs text-muted-foreground">{formatCurrency(service.precio)}</span>
                                         </div>
                                         <Plus className="ml-auto h-4 w-4 text-muted-foreground" />
@@ -582,7 +585,7 @@ const ServiciosPaquetes: React.FC = () => {
                                         className="flex items-center justify-between p-2 rounded-md border bg-background shadow-sm"
                                     >
                                         <div className="flex flex-col min-w-0 flex-1 mr-2">
-                                            <span className="text-sm font-medium truncate">{service.nombre}</span>
+                                            <span className="text-sm font-medium truncate">{service.nombre}{!services.some((item) => item.id === service.id) ? " · Servicio eliminado" : ""}</span>
                                             <span className="text-xs text-muted-foreground">{formatCurrency(service.precio)}</span>
                                         </div>
 

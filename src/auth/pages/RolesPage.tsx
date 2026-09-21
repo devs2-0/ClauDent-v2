@@ -231,8 +231,11 @@ const RolesPage = () => {
     return () => window.clearInterval(timer);
   }, [roles, can, loading, loadRoles]);
 
+  const [activatingRole, setActivatingRole] = useState(false);
+
   const openCreateDialog = () => {
     if (!can('roles.create')) return;
+    setActivatingRole(false);
     setEditingRole(null);
     setForm(emptyForm);
     setDialogOpen(true);
@@ -240,6 +243,7 @@ const RolesPage = () => {
 
   const openEditDialog = (role: Role) => {
     if (!can('roles.update')) return;
+    setActivatingRole(false);
     setEditingRole(role);
     setForm({
       id: role.id,
@@ -260,6 +264,7 @@ const RolesPage = () => {
 
     blurActiveElement();
     setDialogOpen(false);
+    setActivatingRole(false);
     setEditingRole(null);
     setForm(emptyForm);
   };
@@ -326,6 +331,7 @@ const RolesPage = () => {
         await roleService.updateRole(
           editingRole.id,
           {
+            ...(activatingRole ? { status: "active" as const } : {}),
             name,
             description: form.description,
             color: form.color,
@@ -362,6 +368,7 @@ const RolesPage = () => {
       }
 
       setDialogOpen(false);
+      setActivatingRole(false);
       setEditingRole(null);
       setForm(emptyForm);
       await loadRoles();
@@ -388,6 +395,11 @@ const RolesPage = () => {
       return;
     }
 
+    if (role.status !== "active" && role.temporary) {
+      openEditDialog(role);
+      setActivatingRole(true);
+      return;
+    }
     const nextStatus = role.status === "active" ? "archived" : "active";
 
     const confirmed = await confirm({
@@ -446,7 +458,7 @@ const RolesPage = () => {
 
     const confirmed = await confirm({
       title: "Eliminar rol",
-      description: `Se eliminará el rol ${role.name}. Esta acción no se puede deshacer.`,
+      description: `Se eliminará el rol ${role.name}. Los registros históricos conservarán sus referencias. Esta acción no se puede deshacer.`,
       confirmLabel: "Eliminar rol",
       destructive: true,
     });
@@ -502,6 +514,10 @@ const RolesPage = () => {
       return;
     }
 
+    if (action === "activate" && targets.some((role) => role.temporary)) {
+      toast.info("Activa los roles temporales individualmente para elegir su nueva vigencia.");
+      return;
+    }
     if (action === "delete") {
       try {
         const usage = await Promise.all(
@@ -539,7 +555,7 @@ const RolesPage = () => {
       },
       delete: {
         title: "Eliminar roles",
-        description: `Se eliminarán ${targets.length} rol(es) sin usuarios asignados.`,
+        description: `Se eliminarán ${targets.length} rol(es) sin usuarios asignados. Los registros históricos conservarán sus referencias.`,
         confirmLabel: "Eliminar",
       },
     } as const;
@@ -815,7 +831,7 @@ const RolesPage = () => {
         >
           <DialogHeader>
             <DialogTitle>
-              {editingRole ? "Editar rol" : "Crear rol personalizado"}
+              {activatingRole ? "Activar rol y renovar vigencia" : editingRole ? "Editar rol" : "Crear rol personalizado"}
             </DialogTitle>
             <DialogDescription>
               Selecciona la apariencia y los permisos que tendrá este rol. Los
@@ -867,6 +883,7 @@ const RolesPage = () => {
                 <div className="flex items-center gap-2">
                   <Checkbox id="temporary-role" checked={form.temporary} onCheckedChange={(checked) => setForm((current) => ({ ...current, temporary: checked === true }))} />
                   <Label htmlFor="temporary-role">Rol temporal</Label>
+                  {activatingRole && <p className="text-sm text-muted-foreground">La vigencia comienza al activar. Elige una duración nueva o desmarca temporal para activar sin vencimiento.</p>}
                 </div>
                 {form.temporary && <>
                   <div className="grid gap-3 sm:grid-cols-2">
@@ -1084,7 +1101,7 @@ const RolesPage = () => {
             </Button>
 
             <Button onClick={handleSubmit} disabled={saving}>
-              {saving ? "Guardando..." : "Guardar rol"}
+              {saving ? "Guardando..." : activatingRole ? "Activar rol" : "Guardar rol"}
             </Button>
           </DialogFooter>
         </DialogContent>

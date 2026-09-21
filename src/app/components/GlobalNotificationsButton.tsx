@@ -1,3 +1,4 @@
+import { durationUnitLabels } from "@/shared/utils/duration";
 import { type ReactNode, useEffect, useMemo, useState } from "react";
 import {
   Bell,
@@ -392,7 +393,7 @@ const PatientNotificationsSource = ({ children }: {
 }) => {
   const { can } = useCan();
   const { patients, patientsLoading, patientsUnavailable } = usePatients();
-  const { settings } = usePatientInactivitySettings();
+  const { settings, automatic } = usePatientInactivitySettings();
   const [today, setToday] = useState(() => new Date());
   useEffect(() => {
     const refresh = () => setToday(new Date());
@@ -421,14 +422,14 @@ const PatientNotificationsSource = ({ children }: {
         const due = patientReviewDue(patient, settings, today, historyActivityByPatient.get(patient.id), appointmentActivityByPatient.get(patient.id), consultationActivityByPatient.get(patient.id));
         if (due) result.push({
           id: `patient-review-${patient.id}-${due.referenceDate}-${settings.value}-${settings.unit}`,
-          title: 'Revisión pendiente',
-          detail: `${patient.nombres} ${patient.apellidos} · Desde ${due.referenceDate}, según ${due.source}.${clinicalActivityUnavailable ? ' Información clínica parcial.' : ''}`,
+          title: 'Recordatorio de inactividad',
+          detail: `${patient.nombres} ${patient.apellidos} · Lleva al menos ${settings.value} ${durationUnitLabels[settings.unit].toLowerCase()} sin actividad. ${patientReviewDue(patient, automatic, today, historyActivityByPatient.get(patient.id), appointmentActivityByPatient.get(patient.id), consultationActivityByPatient.get(patient.id)) ? "Cumple el periodo de inactividad automática" : "Pasará a inactivo"} a los ${automatic.value} ${durationUnitLabels[automatic.unit].toLowerCase()}. Desde ${due.referenceDate}, según ${due.source}.${clinicalActivityUnavailable ? ' Información clínica parcial.' : ''}`,
           source: 'patients', path, timestamp: due.due.getTime(),
         });
       }
       return result;
     });
-  }, [patients, patientsUnavailable, today, settings, clinicalActivityLoading, clinicalActivityUnavailable, historyActivityByPatient, appointmentActivityByPatient, consultationActivityByPatient, can]);
+  }, [patients, patientsUnavailable, today, settings, automatic, clinicalActivityLoading, clinicalActivityUnavailable, historyActivityByPatient, appointmentActivityByPatient, consultationActivityByPatient, can]);
   return children({ notifications, loading: patientsLoading });
 };
 

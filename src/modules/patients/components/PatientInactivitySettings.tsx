@@ -25,6 +25,8 @@ const PatientInactivitySettings = () => {
   const { settings, updateSettings } = usePatientInactivitySettings();
   const [daysInput, setDaysInput] = useState(String(settings.value));
   const [unit, setUnit] = useState<DurationUnit>(settings.unit);
+  const [autoValue, setAutoValue] = useState(String(settings.automatic?.value ?? 6));
+  const [autoUnit, setAutoUnit] = useState<DurationUnit>(settings.automatic?.unit ?? "months");
   const [enabled, setEnabled] = useState(settings.enabled);
   const canUpdateSettings = can("settings.update");
 
@@ -32,6 +34,8 @@ const PatientInactivitySettings = () => {
     setDaysInput(String(settings.value));
     setUnit(settings.unit);
     setEnabled(settings.enabled);
+    setAutoValue(String(settings.automatic?.value ?? 6));
+    setAutoUnit(settings.automatic?.unit ?? "months");
   }, [settings]);
 
   const handleSave = () => {
@@ -43,7 +47,7 @@ const PatientInactivitySettings = () => {
     }
 
     try {
-      updateSettings({ value: parsedDays, unit, enabled });
+      updateSettings({ value: parsedDays, unit, enabled, automatic: { value: Number(autoValue), unit: autoUnit } });
       toast.success("Periodo de inactividad actualizado.");
     } catch {
       toast.error("No se pudo guardar la configuración en este dispositivo.");
@@ -70,7 +74,7 @@ const PatientInactivitySettings = () => {
                   </p>
                 </SectionHelp>
               </div>
-              <CardDescription>Avisos de pacientes sin revisión. Se guarda en este dispositivo.</CardDescription>
+              <CardDescription>Dos periodos independientes, guardados en este dispositivo.</CardDescription>
             </div>
           </div>
           <Badge variant="secondary">{settings.value} {durationUnitLabels[settings.unit].toLocaleLowerCase('es')}</Badge>
@@ -78,6 +82,15 @@ const PatientInactivitySettings = () => {
       </CardHeader>
 
       <CardContent>
+        <section className="mb-6 space-y-3 rounded-lg border p-3">
+          <h3 className="font-medium">Inactividad automática</h3>
+          <p className="text-sm text-muted-foreground">El listado calcula el estado al consultar la actividad clínica completa. Sin un proceso de servidor, no se cambia el documento ni se ejecuta con la aplicación cerrada.</p>
+          <div className="flex gap-3">
+            <div className="space-y-2"><Label htmlFor="auto-inactivity-value">Duración</Label><Input id="auto-inactivity-value" type="number" min={1} max={3650} value={autoValue} onChange={(event) => setAutoValue(event.target.value)} disabled={!canUpdateSettings} /></div>
+            <div className="space-y-2"><Label htmlFor="auto-inactivity-unit">Unidad</Label><Select value={autoUnit} onValueChange={(value) => setAutoUnit(value as DurationUnit)} disabled={!canUpdateSettings}><SelectTrigger id="auto-inactivity-unit"><SelectValue /></SelectTrigger><SelectContent>{patientDurationUnits.map((value) => <SelectItem key={value} value={value}>{durationUnitLabels[value]}</SelectItem>)}</SelectContent></Select></div>
+          </div>
+        </section>
+        <h3 className="mb-3 font-medium">Recordatorio de inactividad</h3>
         <div className="mb-4 flex items-center gap-2">
           <Switch id="patient-inactivity-enabled" checked={enabled} onCheckedChange={setEnabled} disabled={!canUpdateSettings} />
           <Label htmlFor="patient-inactivity-enabled">Avisar sobre pacientes sin revisión</Label>

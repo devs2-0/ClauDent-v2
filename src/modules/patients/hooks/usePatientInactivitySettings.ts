@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useCan } from "@/auth";
 import { isValidDuration, patientDurationUnits, type Duration } from "@/shared/utils/duration";
 
@@ -6,8 +6,8 @@ const LEGACY_STORAGE_KEY = "claudent.patient-inactivity-days";
 const STORAGE_KEY = "claudent.patient-inactivity.v2";
 const CHANGE_EVENT = "claudent:patient-inactivity-days-changed";
 export const DEFAULT_PATIENT_INACTIVITY_DAYS = 180;
-export interface PatientInactivitySettings extends Duration { enabled: boolean }
-export const DEFAULT_PATIENT_INACTIVITY: PatientInactivitySettings = { value: 4, unit: "months", enabled: true };
+export interface PatientInactivitySettings extends Duration { enabled: boolean; automatic?: Duration }
+export const DEFAULT_PATIENT_INACTIVITY: PatientInactivitySettings = { value: 4, unit: "months", enabled: true, automatic: { value: 6, unit: "months" } };
 
 const normalizeDays = (value: unknown) => {
   const parsedValue = Number(value);
@@ -21,11 +21,11 @@ export const readPatientInactivitySettings = (): PatientInactivitySettings => {
     if (raw) {
       const stored = JSON.parse(raw);
       if (stored && isValidDuration(stored) && patientDurationUnits.includes(stored.unit)) {
-        return { value: stored.value, unit: stored.unit, enabled: stored.enabled !== false };
+        return { value: stored.value, unit: stored.unit, enabled: stored.enabled !== false, automatic: isValidDuration(stored.automatic ?? {}) && patientDurationUnits.includes(stored.automatic.unit) ? stored.automatic : { value: 6, unit: "months" } };
       }
     }
     const legacy = window.localStorage.getItem(LEGACY_STORAGE_KEY);
-    if (legacy && Number.isFinite(Number(legacy)) && Number(legacy) > 0) return { value: normalizeDays(legacy), unit: "days", enabled: true };
+    if (legacy && Number.isFinite(Number(legacy)) && Number(legacy) > 0) return { value: normalizeDays(legacy), unit: "days", enabled: true, automatic: { value: 6, unit: "months" } };
   } catch { /* Keep a usable default when browser storage is unavailable. */ }
   return DEFAULT_PATIENT_INACTIVITY;
 };
@@ -49,10 +49,12 @@ export const usePatientInactivitySettings = () => {
   const updateSettings = useCallback((nextValue: PatientInactivitySettings) => {
     if (!can("settings.update")) throw new Error("No tienes permiso para cambiar la configuración.");
     if (!isValidDuration(nextValue) || !patientDurationUnits.some((unit) => unit === nextValue.unit)) throw new Error("Ingresa un periodo válido.");
+    if (!nextValue.automatic || !isValidDuration(nextValue.automatic) || !patientDurationUnits.some((unit) => unit === nextValue.automatic?.unit)) throw new Error("Ingresa un periodo automático válido.");
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(nextValue));
     setSettings(nextValue);
     window.dispatchEvent(new Event(CHANGE_EVENT));
   }, [can]);
 
-  return { settings, updateSettings };
+  const automatic = useMemo(() => settings.automatic ?? { value: 6, unit: "months" as const }, [settings]);
+  return { settings, automatic, updateSettings };
 };

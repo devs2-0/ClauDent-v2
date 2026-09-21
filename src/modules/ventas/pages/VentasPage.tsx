@@ -307,6 +307,9 @@ const VentasPage: React.FC = () => {
   };
 
   const validateSaleBeforeCheckout = () => {
+    if ((patientId !== 'mostrador' && !patients.some((patient) => patient.id === patientId)) || serviceItems.some((item) => !services.some((service) => service.id === item.servicioId))) {
+      toast.error('El paciente o un servicio fue eliminado. Actualiza la selección antes de registrar la venta.'); return false;
+    }
     if (!hasOpenCashForSelectedDate) {
       toast.error(openCashClosure ? `La caja abierta es del ${openCashClosure.fecha}` : "Abre caja antes de vender");
       return false;
@@ -968,7 +971,7 @@ const VentasPage: React.FC = () => {
 
                     return (
                       <TableRow key={payment.id}>
-                        <TableCell className="font-medium">{payment.pacienteNombre}</TableCell>
+                        <TableCell className="font-medium">{payment.pacienteNombre}{payment.pacienteId && !patients.some((patient) => patient.id === payment.pacienteId) && <Badge variant="secondary" className="ml-1">Paciente eliminado</Badge>}</TableCell>
                         <TableCell>{payment.concepto}</TableCell>
                         <TableCell>
                           <Badge variant="outline" className="gap-1">

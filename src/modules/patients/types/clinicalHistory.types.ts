@@ -12,7 +12,7 @@ export interface HistoryEntry {
   pacienteNiegaProcedimientos?: boolean;
   id: string;
   fecha: string;
-  servicios: { servicioId: string; cantidad: number }[];
+  servicios: { servicioId: string; cantidad: number; nombre?: string; precioUnitario?: number }[];
   materialesClinicos?: ClinicalMaterialUsage[];
   notas: string;
   total: number;

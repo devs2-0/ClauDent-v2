@@ -4,10 +4,8 @@ import type { HistoryEntry, Odontogram, Patient, ToothState } from '@/modules/pa
 import type { Quotation } from '../types/quotation.types';
 
 // --- FUNCIÓN: GENERAR PDF DE UNA COTIZACIÓN INDIVIDUAL ---
-export const generateQuotationPDF = (quotation: Quotation, patient?: Patient | null) => {
-  if (!patient) {
-    throw new Error('Paciente no encontrado para generar la cotizacion');
-  }
+export const generateQuotationPDF = (quotation: Quotation, patient?: Patient | null, deletedServiceIds: ReadonlySet<string> = new Set()) => {
+  const patientName = patient ? `${patient.nombres} ${patient.apellidos}` : `${quotation.pacienteNombre || 'Paciente'} · Eliminado`;
 
   const doc = new jsPDF();
   // CORRECCIÓN: Acceso directo a propiedades de pageSize
@@ -30,7 +28,7 @@ export const generateQuotationPDF = (quotation: Quotation, patient?: Patient | n
   doc.setFont("helvetica", "bold");
   doc.text('PACIENTE:', 14, 50);
   doc.setFont("helvetica", "normal");
-  doc.text(`${patient.nombres} ${patient.apellidos}`, 40, 50);
+  doc.text(patientName, 40, 50);
 
   // Tabla de Conceptos
   autoTable(doc, {
@@ -38,7 +36,7 @@ export const generateQuotationPDF = (quotation: Quotation, patient?: Patient | n
     head: [['Cant.', 'Descripción', 'Precio Unit.', 'Subtotal']],
     body: quotation.items.map(item => [
       item.cantidad,
-      item.nombre,
+      `${item.nombre}${item.servicioId && deletedServiceIds.has(item.servicioId) ? " · Servicio eliminado" : ""}`,
       `$${item.precioUnitario.toLocaleString()}`,
       `$${(item.cantidad * item.precioUnitario).toLocaleString()}`
     ]),
@@ -56,7 +54,7 @@ export const generateQuotationPDF = (quotation: Quotation, patient?: Patient | n
   doc.setTextColor(100, 100, 100);
   doc.text('Este presupuesto tiene una validez de 30 días naturales.', 14, finalY);
   
-  doc.save(`Cotizacion_${patient.nombres}_${quotation.fecha}.pdf`);
+  doc.save(`Cotizacion_${patient?.nombres || "Paciente_eliminado"}_${quotation.fecha}.pdf`);
 };
 
 // --- FUNCIÓN: GENERAR EXPEDIENTE COMPLETO ---

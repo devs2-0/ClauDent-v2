@@ -107,12 +107,12 @@ const Cotizaciones: React.FC = () => {
 
   // --- LÓGICA DE FILTRADO ---
   const suggestedPatients = useMemo(() => {
-    const selectedIds = new Set(recentPatients.map((patient) => patient.id));
+    const selectedIds = new Set(recentPatients.filter((recent) => patients.some((patient) => patient.id === recent.id)).map((patient) => patient.id));
     const newestPatients = [...patients]
       .sort((first, second) => second.fechaRegistro.localeCompare(first.fechaRegistro))
       .filter((patient) => !selectedIds.has(patient.id));
 
-    return [...recentPatients, ...newestPatients].slice(0, 5);
+    return [...recentPatients.filter((recent) => patients.some((patient) => patient.id === recent.id)), ...newestPatients].slice(0, 5);
   }, [patients, recentPatients]);
 
   const filteredPatientOptions = useMemo(() => {
@@ -126,7 +126,7 @@ const Cotizaciones: React.FC = () => {
   }, [patients, patientSearch, suggestedPatients]);
 
   const filteredServiceOptions = useMemo(() => {
-    if (!serviceSearch.trim()) return recentServices;
+    if (!serviceSearch.trim()) return recentServices.filter((recent) => services.some((service) => service.id === recent.id && service.estado === "activo"));
     const searchLower = serviceSearch.toLowerCase();
     return services
         .filter(s => 
@@ -355,6 +355,9 @@ const Cotizaciones: React.FC = () => {
     setIsFormLoading(true);
     
     const finalDiscount = Number(formData.descuento) || 0;
+    if (!patients.some((patient) => patient.id === formData.pacienteId) || formData.items.some((item) => item.servicioId && !services.some((service) => service.id === item.servicioId))) {
+      toast.error('Selecciona un paciente y servicios vigentes para guardar la cotización.'); setIsFormLoading(false); return;
+    }
     const finalItems: QuotationItem[] = formData.items.map(item => ({
         servicioId: item.servicioId,
         nombre: item.nombre,
@@ -364,6 +367,7 @@ const Cotizaciones: React.FC = () => {
 
     const payload = {
         pacienteId: formData.pacienteId,
+        pacienteNombre: patients.filter((patient) => patient.id === formData.pacienteId).map((patient) => `${patient.nombres} ${patient.apellidos}`).join(""),
         fecha: formData.fecha,
         items: finalItems,
         descuento: finalDiscount,
@@ -445,7 +449,7 @@ const Cotizaciones: React.FC = () => {
     }
     const patient = patients.find(p => p.id === quotation.pacienteId);
     try {
-      generateQuotationPDF(quotation, patient);
+      generateQuotationPDF(quotation, patient, new Set(quotation.items.filter((item) => item.servicioId && !services.some((service) => service.id === item.servicioId)).map((item) => item.servicioId!)));
     } catch (error) {
       console.error("Error al generar PDF: ", error);
       toast.error("Error al generar el PDF");
@@ -654,10 +658,11 @@ const Cotizaciones: React.FC = () => {
                           />
                         </TableCell>}
                         <TableCell className="whitespace-nowrap">
-                          {patient ? `${patient.nombres} ${patient.apellidos}` : 'Paciente eliminado'}
+                          {patient ? `${patient.nombres} ${patient.apellidos}` : `${quotation.pacienteNombre || 'Paciente'} · Eliminado`}
+                          {!patient && can('patients.record.view') && <Button size="sm" variant="link" onClick={() => navigate(`/pacientes/${quotation.pacienteId}`)}>Ver historial</Button>}
                         </TableCell>
                         <TableCell className="whitespace-nowrap">{formatDate(quotation.fecha)}</TableCell>
-                        <TableCell className="whitespace-nowrap">{quotation.items.length} servicio(s)</TableCell>
+                        <TableCell className="whitespace-nowrap">{quotation.items.length} servicio(s){quotation.items.some((item) => item.servicioId && !services.some((service) => service.id === item.servicioId)) && <Badge variant="secondary" className="ml-2">Servicio eliminado</Badge>}</TableCell>
                         <TableCell className="font-semibold whitespace-nowrap">{formatCurrency(quotation.total)}</TableCell>
                         <TableCell className="whitespace-nowrap">
                           <Badge variant={estadoBadgeVariant(quotation.estado)}>

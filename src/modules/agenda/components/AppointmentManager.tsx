@@ -1,3 +1,4 @@
+import { historicalDoctors, selectedDayLabel } from "../utils/historicalDoctors";
 import { useEffect, useMemo, useState } from "react";
 import { formatTimeRange, normalizeTime, timeToMinutes } from "@/shared/utils/time";
 import {
@@ -324,7 +325,7 @@ const AppointmentManager = ({
 }, [currentUser?.email, currentUser?.uid]);
 
   const activeDoctors = useMemo(() => {
-    return doctors.filter((doctor) => doctor.status === "active");
+    return doctors.filter((doctor) => doctor.status === "active" && !doctor.deletedAt);
   }, [doctors]);
 
   const activeAssistants = useMemo(() => {
@@ -340,7 +341,7 @@ const AppointmentManager = ({
 
     const linkedDoctorId =
       agendaUser?.doctorId ||
-      activeDoctors.find((doctor) => doctor.userUid === currentUser?.uid)?.id;
+      doctors.find((doctor) => doctor.userUid === currentUser?.uid)?.id;
 
     const linkedAssistantId =
       agendaUser?.assistantId ||
@@ -370,6 +371,7 @@ const AppointmentManager = ({
   }, [
     activeAssistants,
     activeDoctors,
+    doctors,
     agendaUser?.assistantId,
     agendaUser?.doctorId,
     canViewAllDoctors,
@@ -380,8 +382,18 @@ const AppointmentManager = ({
     return new Set(visibleDoctors.map((doctor) => doctor.id));
   }, [visibleDoctors]);
 
+  const calendarDoctors = useMemo(() => {
+    const linkedAssistant = assistants.find((assistant) => assistant.id === agendaUser?.assistantId || assistant.userUid === currentUser?.uid);
+    const allowedIds = new Set(visibleDoctors.map((doctor) => doctor.id));
+    if (agendaUser?.doctorId) allowedIds.add(agendaUser.doctorId);
+    doctors.filter((doctor) => doctor.userUid === currentUser?.uid).forEach((doctor) => allowedIds.add(doctor.id));
+    linkedAssistant?.doctorIdsAsignados.forEach((id) => allowedIds.add(id));
+    return historicalDoctors(doctors, appointments, canViewAllDoctors || Boolean(linkedAssistant && linkedAssistant.status === 'active' && linkedAssistant.doctorIdsAsignados.length === 0), allowedIds);
+  }, [doctors, appointments, assistants, agendaUser, currentUser?.uid, visibleDoctors, canViewAllDoctors]);
+  const calendarDoctorIds = useMemo(() => new Set(calendarDoctors.map((doctor) => doctor.id)), [calendarDoctors]);
+
   const canSelectAllVisibleDoctors =
-    canViewAllDoctors || visibleDoctors.length > 1;
+    canViewAllDoctors || calendarDoctors.length > 1;
 
   const visibleAssistants = useMemo(() => {
     if (canViewAllDoctors) {
@@ -415,23 +427,23 @@ const AppointmentManager = ({
   }, [visibleAssistants]);
 
   useEffect(() => {
-    if (visibleDoctors.length === 0) return;
+    if (calendarDoctors.length === 0) return;
 
     const selectedDoctorIsValid =
       selectedDoctorId === "all"
         ? canSelectAllVisibleDoctors
-        : visibleDoctorIds.has(selectedDoctorId);
+        : calendarDoctorIds.has(selectedDoctorId);
 
     if (selectedDoctorIsValid) return;
 
     setSelectedDoctorId(
-      canSelectAllVisibleDoctors ? "all" : visibleDoctors[0].id,
+      canSelectAllVisibleDoctors ? "all" : calendarDoctors[0].id,
     );
   }, [
     canSelectAllVisibleDoctors,
     selectedDoctorId,
-    visibleDoctorIds,
-    visibleDoctors,
+    calendarDoctorIds,
+    calendarDoctors,
   ]);
 
   useEffect(() => {
@@ -447,8 +459,8 @@ const AppointmentManager = ({
   }, [selectedAssistantId, visibleAssistantIds]);
 
   const doctorsById = useMemo(() => {
-    return new Map(doctors.map((doctor) => [doctor.id, doctor]));
-  }, [doctors]);
+    return new Map(calendarDoctors.map((doctor) => [doctor.id, doctor]));
+  }, [calendarDoctors]);
 
   const assistantsById = useMemo(() => {
     return new Map(
@@ -457,7 +469,7 @@ const AppointmentManager = ({
   }, [assistants]);
 
   const doctorFilterOptions = useMemo<SearchableSelectOption[]>(() => {
-    const options = visibleDoctors.map((doctor) => ({
+    const options = calendarDoctors.map((doctor) => ({
       value: doctor.id,
       label: doctor.nombre,
       description: doctor.especialidad || "Sin especialidad",
@@ -484,7 +496,7 @@ const AppointmentManager = ({
       },
       ...options,
     ];
-  }, [canSelectAllVisibleDoctors, canViewAllDoctors, visibleDoctors]);
+  }, [canSelectAllVisibleDoctors, canViewAllDoctors, calendarDoctors]);
 
   const assistantFilterOptions = useMemo<SearchableSelectOption[]>(() => {
     return [
@@ -516,25 +528,24 @@ const AppointmentManager = ({
     : undefined;
 
   const selectedAppointmentDoctor = selectedAppointment
-    ? doctorsById.get(selectedAppointment.doctorId)?.nombre ??
-      "Doctor no encontrado"
+    ? (!doctors.some((doctor) => doctor.id === selectedAppointment.doctorId) && selectedAppointment.doctorName ? `${selectedAppointment.doctorName} · Doctor eliminado` : doctorsById.get(selectedAppointment.doctorId)?.nombre ?? "Doctor eliminado")
     : "";
 
   const selectedAppointmentAssistantNames = selectedAppointment
     ? selectedAppointment.assistantIds
-        .map((assistantId) => assistantsById.get(assistantId)?.nombre)
+        .map((assistantId) => assistantsById.get(assistantId)?.nombre ?? "Asistente eliminado")
         .filter((name): name is string => Boolean(name))
     : [];
 
   const selectedAppointmentWalkInAssistantName =
   selectedAppointment?.walkInAssistantId
-    ? assistantsById.get(selectedAppointment.walkInAssistantId)?.nombre ?? ""
+    ? assistantsById.get(selectedAppointment.walkInAssistantId)?.nombre ?? "Asistente eliminado"
     : "";
 
   const filteredAppointments = useMemo(() => {
     return appointments.filter((appointment) => {
       if (!appointment) return false;
-      if (!visibleDoctorIds.has(appointment.doctorId)) {
+      if (!calendarDoctorIds.has(appointment.doctorId)) {
         return false;
       }
 
@@ -556,13 +567,13 @@ const AppointmentManager = ({
     selectedAssistantId,
     selectedDoctorId,
     selectedStatus,
-    visibleDoctorIds,
+    calendarDoctorIds,
   ]);
 
   const scopedBlocks = useMemo(() => {
     return blocks.filter((block) => {
       if (block.staffType === "doctor") {
-        return visibleDoctorIds.has(block.staffId);
+        return calendarDoctorIds.has(block.staffId);
       }
 
       if (block.staffType === "assistant") {
@@ -575,7 +586,7 @@ const AppointmentManager = ({
 
       return false;
     });
-  }, [blocks, selectedAssistantId, visibleAssistantIds, visibleDoctorIds]);
+  }, [blocks, selectedAssistantId, visibleAssistantIds, calendarDoctorIds]);
 
   const dayAppointments = useMemo(() => {
     return filteredAppointments.filter(
@@ -701,7 +712,7 @@ const AppointmentManager = ({
   };
 
   const getDefaultDoctorId = () => {
-    if (selectedDoctorId !== "all") {
+    if (selectedDoctorId !== "all" && visibleDoctorIds.has(selectedDoctorId)) {
       return selectedDoctorId;
     }
 
@@ -790,6 +801,7 @@ const AppointmentManager = ({
   }, [canCreateAppointment, permissionsLoading, searchParams, setSearchParams]);
 
   const handleSelectCalendarSlot = (slot: CalendarSlotSelection) => {
+    if (!visibleDoctorIds.has(slot.doctorId)) return;
     updateSelectedDate(slot.startDate);
     setSelectedSlot(slot);
     setSlotActionDialogOpen(true);
@@ -970,6 +982,10 @@ const AppointmentManager = ({
   };
 
   const validateAppointment = (ignoreAppointmentId?: string) => {
+    if ((form.patientId && !patients.some((patient) => patient.id === form.patientId) && form.patientId !== editingAppointment?.patientId) ||
+        (form.serviceId && !services.some((service) => service.id === form.serviceId) && form.serviceId !== editingAppointment?.serviceId)) {
+      toast.error("Selecciona un paciente y un servicio disponibles en el catálogo."); return false;
+    }
     const patientName = form.patientName.trim();
     const serviceName = form.serviceName.trim();
 
@@ -1134,6 +1150,7 @@ const AppointmentManager = ({
         serviceId: form.serviceId,
         serviceName: form.serviceName.trim(),
         doctorId: form.doctorId,
+        doctorName: doctorsById.get(form.doctorId)?.nombre ?? "",
         assistantIds: normalizedAssistantIds,
         startDate: form.startDate,
         startTime: form.startTime,
@@ -1177,6 +1194,7 @@ const AppointmentManager = ({
         entityType: "appointment",
         entityId: createdAppointmentId,
         doctorId: form.doctorId,
+        doctorName: doctorsById.get(form.doctorId)?.nombre ?? "",
         patientId: form.patientId,
         patientName: form.patientName.trim(),
         title:
@@ -1196,6 +1214,7 @@ const AppointmentManager = ({
           serviceId: form.serviceId,
           serviceName: form.serviceName.trim(),
           doctorId: form.doctorId,
+          doctorName: doctorsById.get(form.doctorId)?.nombre ?? "",
           assistantIds: normalizedAssistantIds,
           startDate: form.startDate,
           startTime: form.startTime,
@@ -1331,6 +1350,7 @@ const AppointmentManager = ({
         serviceId: form.serviceId,
         serviceName: nextServiceName,
         doctorId: form.doctorId,
+        doctorName: doctorsById.get(form.doctorId)?.nombre ?? "",
         assistantIds: nextAssistantIds,
         startDate: form.startDate,
         startTime: form.startTime,
@@ -1394,6 +1414,7 @@ const AppointmentManager = ({
         entityType: "appointment",
         entityId: previousAppointment.id,
         doctorId: form.doctorId,
+        doctorName: doctorsById.get(form.doctorId)?.nombre ?? "",
         patientId: form.patientId,
         patientName: nextPatientName,
         title:
@@ -1428,6 +1449,7 @@ const AppointmentManager = ({
           serviceId: form.serviceId,
           serviceName: nextServiceName,
           doctorId: form.doctorId,
+          doctorName: doctorsById.get(form.doctorId)?.nombre ?? "",
           assistantIds: nextAssistantIds,
           startDate: form.startDate,
           startTime: form.startTime,
@@ -1565,7 +1587,7 @@ const AppointmentManager = ({
     appointment: Appointment,
     status: AppointmentStatus,
   ): Promise<boolean> => {
-    if (!visibleDoctorIds.has(appointment.doctorId)) {
+    if (!calendarDoctorIds.has(appointment.doctorId)) {
       toast.error("No tienes acceso a esta cita.");
       return false;
     }
@@ -1674,7 +1696,7 @@ const AppointmentManager = ({
 
   return (
     <div className="space-y-4">
-      <p className="text-xs text-muted-foreground">Resumen del día seleccionado · {selectedDate}</p>
+      <p className="text-xs text-muted-foreground">Resumen del día seleccionado · {selectedDayLabel(selectedDate)}</p>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
         <Card>
           <CardContent className="p-3">
@@ -1891,7 +1913,7 @@ const AppointmentManager = ({
           </Card>
         ) : (
           <>
-            {visibleDoctors.length === 0 && (
+            {calendarDoctors.length === 0 && (
               <div className="rounded-lg border border-dashed bg-card p-4 text-sm text-muted-foreground">
                 No hay doctores disponibles.
               </div>
@@ -1901,7 +1923,7 @@ const AppointmentManager = ({
                 selectedDate={selectedDate}
                 appointments={filteredAppointments}
                 blocks={scopedBlocks}
-                doctors={visibleDoctors}
+                doctors={calendarDoctors}
                 onSelectDate={handleSelectDateFromSummaryView}
                 onSelectAppointment={openAppointmentDetails}
               />
@@ -1912,7 +1934,7 @@ const AppointmentManager = ({
                 selectedDate={selectedDate}
                 appointments={filteredAppointments}
                 blocks={scopedBlocks}
-                doctors={visibleDoctors}
+                doctors={calendarDoctors}
                 onSelectDate={handleSelectDateFromSummaryView}
                 onSelectAppointment={openAppointmentDetails}
               />
@@ -1920,7 +1942,7 @@ const AppointmentManager = ({
 
             {viewMode === "doctorDay" && (
               <DailyCalendarView
-                doctors={visibleDoctors}
+                doctors={calendarDoctors}
                 appointments={filteredAppointments}
                 schedules={schedules}
                 blocks={scopedBlocks}
@@ -1942,6 +1964,8 @@ const AppointmentManager = ({
         onOpenChange={handleAppointmentDetailsOpenChange}
         appointment={selectedAppointment}
         doctorName={selectedAppointmentDoctor}
+        patientDeleted={!loading && (canCreateAppointment || canUpdateAppointment) && Boolean(selectedAppointment?.patientId && !patients.some((patient) => patient.id === selectedAppointment.patientId))}
+        serviceDeleted={!loading && (canCreateAppointment || canUpdateAppointment) && Boolean(selectedAppointment?.serviceId && !services.some((service) => service.id === selectedAppointment.serviceId))}
         assistantNames={selectedAppointmentAssistantNames}
         walkInAssistantName={selectedAppointmentWalkInAssistantName}
         canUpdate={canUpdateAppointment}

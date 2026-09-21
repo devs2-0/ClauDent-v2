@@ -446,7 +446,7 @@ const AvailabilityManager = ({
     if (staffType === "doctor") {
       return (
         doctors.find((doctor) => doctor.id === staffId)?.nombre ??
-        "Doctor no encontrado"
+        "Doctor eliminado"
       );
     }
 

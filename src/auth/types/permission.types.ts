@@ -66,6 +66,8 @@ export type PermissionKey =
   | "agenda.availability.view"
   | "agenda.doctors.viewAll"
   | "agenda.doctors.viewOwn"
+  | "agenda.doctors.delete"
+  | "agenda.assistants.delete"
   | "agenda.doctors.manage"
   | "agenda.assistants.manage"
   | "agenda.appointments.create"

@@ -19,6 +19,8 @@ export const usePatientClinicalActivity = (patientIds: string[]) => {
   const canReadAppointments = can("agenda.view");
   const canReadClinicalHistory = can("patients.clinicalHistory.view");
   const patientIdsKey = JSON.stringify([...patientIds].sort());
+  const [historyKey, setHistoryKey] = useState("");
+  const [consultationsKey, setConsultationsKey] = useState("");
   const [historyActivity, setHistoryActivity] = useState<Map<string, string>>(new Map());
   const [appointmentActivity, setAppointmentActivity] = useState<Map<string, string>>(new Map());
   const [consultationActivity, setConsultationActivity] = useState<Map<string, string>>(new Map());
@@ -26,6 +28,7 @@ export const usePatientClinicalActivity = (patientIds: string[]) => {
   const [consultationsUnavailable, setConsultationsUnavailable] = useState(false);
 
   useEffect(() => {
+    setConsultationsKey(patientIdsKey);
     setConsultationActivity(new Map());
     setConsultationsUnavailable(!canReadClinicalHistory);
     const ids: string[] = JSON.parse(patientIdsKey);
@@ -57,6 +60,7 @@ export const usePatientClinicalActivity = (patientIds: string[]) => {
   const [appointmentsUnavailable, setAppointmentsUnavailable] = useState(false);
 
   useEffect(() => {
+    setHistoryKey(patientIdsKey);
     setHistoryActivity(new Map());
     setHistoryUnavailable(!canReadHistory);
     const ids: string[] = JSON.parse(patientIdsKey);
@@ -146,7 +150,7 @@ export const usePatientClinicalActivity = (patientIds: string[]) => {
     consultationActivityByPatient: canReadClinicalHistory ? consultationActivity : new Map<string, string>(),
     patientIdsWithClinicalActivity,
     lastClinicalActivityByPatient,
-    clinicalActivityLoading: !historySettled || !appointmentsSettled || !consultationsSettled,
+    clinicalActivityLoading: historyKey !== patientIdsKey || consultationsKey !== patientIdsKey || !historySettled || !appointmentsSettled || !consultationsSettled,
     clinicalActivityUnavailable: historyUnavailable || appointmentsUnavailable || consultationsUnavailable,
   };
 };

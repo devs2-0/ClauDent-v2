@@ -1,3 +1,4 @@
+import { useEffectivePatientStatus } from "../hooks/useEffectivePatientStatus";
 // RF02-RF05: Patients list (CORREGIDO: BUG DE ALERTDIALOG)
 import React, { useState, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
@@ -51,7 +52,8 @@ const toDateKey = (value?: string) => {
 };
 
 const Pacientes: React.FC = () => {
-  const { patients, addPatient, updatePatient, deletePatient, searchQuery, patientsLoading } = usePatients();
+  const { patients: storedPatients, addPatient, updatePatient, deletePatient, searchQuery, patientsLoading } = usePatients();
+  const patients = useEffectivePatientStatus(storedPatients);
   const { can, loading: permissionsLoading } = useCan();
   const [searchParams, setSearchParams] = useSearchParams();
   const { confirm, confirmationDialog } = useConfirmAction();
@@ -77,6 +79,7 @@ const Pacientes: React.FC = () => {
   const [historyModalState, setHistoryModalState] = useState<{isOpen: boolean; patientId: string | null}>({ isOpen: false, patientId: null });
   const [formData, setFormData] = useState<Omit<Patient, 'id' | 'fechaRegistro'>>(initialFormData);
   const draft = useModalDraft<typeof initialFormData>('new-patient');
+  const patientDraft = draft.read();
   const [draftRecovered, setDraftRecovered] = useState(false);
 
   const closePatientDialog = (discard = false) => {
@@ -171,7 +174,7 @@ const Pacientes: React.FC = () => {
     if (!can(patientId ? "patients.update" : "patients.create")) return;
     setCrearHistorial(false);
     if (patientId) {
-      const patient = patients.find((p) => p.id === patientId);
+      const patient = storedPatients.find((p) => p.id === patientId);
       if (patient) {
         setFormData({ ...patient });
         setEditingPatient(patientId);
@@ -261,7 +264,7 @@ const Pacientes: React.FC = () => {
   ) => {
     if (!can(actionLabel === 'Eliminar' ? 'patients.delete' : 'patients.update')) return;
     const selectedPatients = patients.filter(
-      (patient) => selectedPatientIds.has(patient.id) && patient.estado !== status,
+      (patient) => selectedPatientIds.has(patient.id) && (actionLabel === 'Eliminar' || patient.estado !== status),
     );
     if (selectedPatients.length === 0) {
       toast.info('Los pacientes seleccionados ya tienen ese estado.');
@@ -271,7 +274,7 @@ const Pacientes: React.FC = () => {
     const action = actionLabel.toLocaleLowerCase('es-MX');
     const confirmed = await confirm({
       title: `${actionLabel} pacientes`,
-      description: `Se van a ${action} ${selectedPatients.length} pacientes. Sus datos e historial se conservarán.`,
+      description: actionLabel === 'Eliminar' ? `Se eliminarán los documentos principales de ${selectedPatients.length} pacientes. Las citas y el expediente conservarán sus referencias históricas.` : `Se van a ${action} ${selectedPatients.length} pacientes. Su historial se conservará.`,
       confirmLabel: actionLabel,
       destructive: status === 'inactivo',
     });
@@ -289,7 +292,7 @@ const Pacientes: React.FC = () => {
         ? singular ? 'activado' : 'activados'
         : actionLabel === 'Desactivar'
           ? singular ? 'desactivado' : 'desactivados'
-          : singular ? 'eliminado del listado activo' : 'eliminados del listado activo';
+          : singular ? 'eliminado del listado' : 'eliminados del listado';
       toast.success(`${selectedPatients.length} paciente${singular ? '' : 's'} ${result}.`);
     } catch {
       toast.error('No fue posible actualizar todos los pacientes.');
@@ -302,7 +305,7 @@ const Pacientes: React.FC = () => {
     if (!canDeletePatient) return;
     const confirmed = await confirm({
       title: 'Eliminar paciente',
-      description: `${patient.nombres} ${patient.apellidos} dejará de aparecer entre los pacientes activos. Sus datos e historial se conservarán.`,
+      description: `${patient.nombres} ${patient.apellidos} se eliminará del listado y su documento principal. Las citas y el expediente histórico conservarán sus referencias.`,
       confirmLabel: 'Eliminar',
       destructive: true,
     });
@@ -316,7 +319,7 @@ const Pacientes: React.FC = () => {
         next.delete(patient.id);
         return next;
       });
-      toast.success('Paciente eliminado del listado activo');
+      toast.success('Paciente eliminado del listado');
     } catch {
       toast.error('No fue posible eliminar al paciente.');
     }
@@ -364,7 +367,7 @@ const Pacientes: React.FC = () => {
                       aria-label={`Seleccionar a ${p.nombres} ${p.apellidos}`}
                     />
                   )}
-                  <Badge variant={p.estado === 'activo' ? 'default' : 'secondary'} className="capitalize">{p.estado}</Badge>
+                  <Badge variant={p.estado === 'activo' ? 'default' : 'secondary'} className="capitalize">{p.estado}{p.estado === 'inactivo' && storedPatients.find((patient) => patient.id === p.id)?.estado === 'activo' ? ' por periodo' : ''}</Badge>
                 </div>
             </div>
             
@@ -393,7 +396,7 @@ const Pacientes: React.FC = () => {
             {canUpdatePatient && (
               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(p.id)} title="Editar" aria-label="Editar"><Edit className="h-3.5 w-3.5" /></Button>
             )}
-            {canDeletePatient && p.estado === 'activo' && (
+            {canDeletePatient && (
               <Button
                 variant="ghost"
                 size="icon"
@@ -540,7 +543,24 @@ const Pacientes: React.FC = () => {
       </div>
 
       <div className="flex-1 overflow-y-auto min-h-0 pr-1">
-        {patientsLoading ? (
+        {canCreatePatient && patientDraft && (
+        <article className="rounded-xl border border-dashed bg-card p-4 shadow-sm" aria-label="Borrador de paciente">
+          <button type="button" className="w-full text-left" onClick={() => handleOpenDialog()}>
+            <Badge variant="secondary">Borrador</Badge>
+            <p className="mt-2 font-semibold">{`${patientDraft.nombres || ''} ${patientDraft.apellidos || ''}`.trim() || 'Nuevo paciente'}</p>
+            <p className="text-sm text-muted-foreground">Guardado solo en tu cuenta y este dispositivo. Aún no tiene expediente.</p>
+          </button>
+          <div className="mt-3 flex gap-2">
+            <Button size="sm" onClick={() => handleOpenDialog()}>Continuar</Button>
+            <Button size="sm" variant="outline" onClick={async () => {
+              if (await confirm({ title: 'Descartar borrador', description: 'Se eliminarán los datos capturados en este borrador local.', confirmLabel: 'Descartar', destructive: true })) {
+                draft.discard(); setDraftRecovered(false); setFormData({ ...initialFormData });
+              }
+            }}>Descartar</Button>
+          </div>
+        </article>
+      )}
+      {patientsLoading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {[1,2,3,4,5,6,7,8].map(i => <Skeleton key={i} className="h-40 rounded-xl" />)}
             </div>

@@ -40,21 +40,15 @@ const PatientRecordPage: React.FC = () => {
   const { confirm, confirmationDialog } = useConfirmAction();
   const [activeTab, setActiveTab] = useState("datos");
 
-  const patient = patients.find((item) => item.id === id);
+  const existingPatient = patients.find((item) => item.id === id);
+  const deleted = !existingPatient;
+  const patient = existingPatient ?? { id: id ?? '', nombres: 'Paciente eliminado', apellidos: '', fechaNacimiento: '', sexo: 'X' as const, telefonoPrincipal: '', telefonoContacto: '', correo: '', curp: '', direccion: '', estado: 'inactivo' as const, fechaRegistro: '' };
   const patientName = patient ? `${patient.nombres} ${patient.apellidos}`.trim() : "";
 
   if (!can("patients.record.view")) return <SinPermisosPage />;
   if (patientsLoading) return <p className="py-12 text-center text-muted-foreground">Cargando paciente...</p>;
   if (patientsUnavailable) return <p className="py-12 text-center text-muted-foreground">Información no disponible</p>;
 
-  if (!patient) {
-    return (
-      <div className="py-12 text-center">
-        <p className="mb-4 text-muted-foreground">Paciente no encontrado</p>
-        <Button onClick={() => navigate("/pacientes")}>Volver a Pacientes</Button>
-      </div>
-    );
-  }
 
   const tabs: { value: string; label: string; icon: typeof User; permission: PermissionKey }[] = [
     { value: "datos", label: "Datos", icon: User, permission: "patients.record.view" },
@@ -86,10 +80,10 @@ const PatientRecordPage: React.FC = () => {
     : null;
 
   const handleRemovePatient = async () => {
-    if (!can("patients.delete")) return;
+    if (deleted || !can("patients.delete")) return;
     const confirmed = await confirm({
       title: "Eliminar paciente",
-      description: `${patientName} dejará de aparecer entre los pacientes activos. Sus datos e historial se conservarán.`,
+      description: `${patientName} se eliminará del listado y su documento principal. Las citas y el expediente histórico conservarán sus referencias.`,
       confirmLabel: "Eliminar",
       destructive: true,
     });
@@ -97,7 +91,7 @@ const PatientRecordPage: React.FC = () => {
 
     try {
       await deletePatient(patient.id);
-      toast.success("Paciente eliminado del listado activo");
+      toast.success("Paciente eliminado del listado");
       navigate("/pacientes");
     } catch {
       toast.error("No fue posible eliminar al paciente.");
@@ -112,7 +106,7 @@ const PatientRecordPage: React.FC = () => {
         </Button>
         <div className="min-w-0 flex-1">
           <h1 className="break-words text-2xl font-semibold text-foreground">
-            {patient.nombres} {patient.apellidos}
+            {patient.nombres} {patient.apellidos}{deleted && <Badge variant="secondary" className="ml-2">Eliminado</Badge>}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             {patientDetails.join(" · ")}
@@ -123,7 +117,7 @@ const PatientRecordPage: React.FC = () => {
             </Badge>
           )}
         </div>
-        {can("patients.delete") && patient.estado === "activo" && (
+        {!deleted && can("patients.delete") && (
           <Button
             type="button"
             variant="destructive"
@@ -158,27 +152,27 @@ const PatientRecordPage: React.FC = () => {
 
             <div className="p-4 sm:p-6">
               {visibleTabs.some((item) => item.value === "datos") && (<TabsContent value="datos" className="mt-0">
-                <PatientData patient={patient} />
+                {deleted ? <p className="text-sm text-muted-foreground">El documento principal fue eliminado. El expediente conserva sus registros históricos en modo de consulta.</p> : <PatientData patient={patient} />}
               </TabsContent>)}
 
               {visibleTabs.some((item) => item.value === "antecedentes") && (<TabsContent value="antecedentes" className="mt-0">
-                <PatientAntecedentes />
+                <PatientAntecedentes readOnly={deleted} />
               </TabsContent>)}
 
               {visibleTabs.some((item) => item.value === "historial") && (<TabsContent value="historial" className="mt-0">
-                <PatientHistory patientId={patient.id} />
+                <PatientHistory readOnly={deleted} patientId={patient.id} />
               </TabsContent>)}
 
               {visibleTabs.some((item) => item.value === "odontograma") && (<TabsContent value="odontograma" className="mt-0">
-                <PatientOdontogram patientId={patient.id} />
+                <PatientOdontogram readOnly={deleted} patientId={patient.id} />
               </TabsContent>)}
 
               {visibleTabs.some((item) => item.value === "cotizaciones") && (<TabsContent value="cotizaciones" className="mt-0">
-                <PatientQuotations patientId={patient.id} />
+                <PatientQuotations readOnly={deleted} patientId={patient.id} />
               </TabsContent>)}
 
               {visibleTabs.some((item) => item.value === "pagos") && (<TabsContent value="pagos" className="mt-0">
-                <PatientPayments patientId={patient.id} patientName={patientName} />
+                <PatientPayments readOnly={deleted} patientId={patient.id} patientName={patientName} />
               </TabsContent>)}
             </div>
           </Tabs>

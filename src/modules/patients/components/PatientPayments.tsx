@@ -55,6 +55,7 @@ import { Textarea } from "@/shared/components/ui/textarea";
 import { cn, formatCurrency } from "@/shared/utils/utils";
 
 interface PatientPaymentsProps {
+  readOnly?: boolean;
   patientId: string;
   patientName: string;
 }
@@ -179,7 +180,7 @@ const PaymentSummaryCard = ({
   </Card>
 );
 
-const PatientPayments: React.FC<PatientPaymentsProps> = ({ patientId, patientName }) => {
+const PatientPayments: React.FC<PatientPaymentsProps> = ({ patientId, patientName, readOnly = false }) => {
   const { can } = useCan();
   const cash = useOptionalCash();
   const [scopedPayments, setScopedPayments] = useState<Payment[]>([]);
@@ -187,8 +188,8 @@ const PatientPayments: React.FC<PatientPaymentsProps> = ({ patientId, patientNam
   const [unavailable, setUnavailable] = useState(false);
   const payments = cash?.payments ?? scopedPayments;
   const paymentsLoading = cash?.paymentsLoading ?? scopedLoading;
-  const canCreateAccount = can("sales.create") || can("sales.payments.manage");
-  const canRegisterPayment = can("sales.payments.manage");
+  const canCreateAccount = (!readOnly && can("sales.create")) || (!readOnly && can("sales.payments.manage"));
+  const canRegisterPayment = (!readOnly && can("sales.payments.manage"));
   useEffect(() => {
     if (cash) return;
     setScopedLoading(true);

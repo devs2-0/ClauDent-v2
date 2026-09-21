@@ -61,7 +61,7 @@ const DataViewer: React.FC<{ data: Record<string, any>, title: string }> = ({ da
   );
 };
 
-const PatientAntecedentes: React.FC = () => {
+const PatientAntecedentes: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }) => {
   const { id: patientId } = useParams<{ id: string }>();
   const [historyData, setHistoryData] = useState<IHistoriaClinicaCompleta | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -161,10 +161,10 @@ const PatientAntecedentes: React.FC = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-semibold">Antecedentes y Ficha Clínica</h3>
-        <Can permission="patients.clinicalHistory.update"><Button onClick={() => setIsModalOpen(true)}>
+        {!readOnly && <Can permission="patients.clinicalHistory.update"><Button onClick={() => setIsModalOpen(true)}>
           <Edit className="h-4 w-4 mr-2" />
           Editar
-        </Button></Can>
+        </Button></Can>}
       </div>
 
       <p className="rounded-md border p-3 text-sm">Paciente niega procedimientos: <strong>{historyData.historiaGeneral.paciente_niega_procedimientos == null ? 'Sin registrar' : historyData.historiaGeneral.paciente_niega_procedimientos ? 'Sí' : 'No'}</strong></p>
@@ -235,7 +235,7 @@ const PatientAntecedentes: React.FC = () => {
       {/* El Modal para Editar */}
       {patientId && (
         <InitialHistoryModal
-          isOpen={isModalOpen}
+          isOpen={!readOnly && isModalOpen}
           onClose={() => setIsModalOpen(false)}
           patientId={patientId}
           initialData={historyData} 

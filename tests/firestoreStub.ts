@@ -19,7 +19,7 @@ export const query = (ref: any, ...constraints: any[]) => ({ ...ref, constraints
 export const getDocs = async (ref: any) => {
   const docs = [...records].filter(([path, data]) => {
     if (path.split('/').slice(0, -1).join('/') !== ref.path) return false;
-    return (ref.constraints ?? []).every((filter: any) => filter.operator === 'array-contains'
+    return (ref.constraints ?? []).every((filter: any) => filter.operator === 'order' ? true : filter.operator === 'array-contains'
       ? data[filter.field]?.includes(filter.value) : data[filter.field] === filter.value);
   }).map(([path, value]) => snapshot(path, value));
   return { docs, size: docs.length, empty: docs.length === 0 };
@@ -34,3 +34,6 @@ export const writeBatch = () => {
   const writes: Array<() => Promise<void>> = [];
   return { update: (ref: any, data: any) => writes.push(() => updateDoc(ref, data)), commit: () => Promise.all(writes.map((write) => write())) };
 };
+
+export const orderBy = () => ({ operator: "order" });
+export const addDoc = async (ref: any, data: any) => { const target = doc(ref); await setDoc(target, data); return target; };

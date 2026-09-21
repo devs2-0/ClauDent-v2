@@ -1,5 +1,5 @@
 import React, { createContext, ReactNode, useContext, useEffect, useState } from "react";
-import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, updateDoc, writeBatch } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDoc, onSnapshot, orderBy, query, updateDoc, writeBatch } from "firebase/firestore";
 import { toast } from "sonner";
 import { db } from "@/lib/firebase";
 import { useAuth, useCan } from "@/auth";
@@ -81,12 +81,17 @@ export const PatientsProvider: React.FC<{ children: ReactNode }> = ({ children }
 
   const deletePatient = async (id: string) => {
     if (!can("patients.delete")) throw new Error("No tienes permiso para realizar esta acción.");
-    await updateDoc(doc(db, "pacientes", id), { estado: "inactivo" });
-    await addAuditLog("DELETE", "pacientes", `Paciente desactivado: ${id}`);
+    await deleteDoc(doc(db, "pacientes", id));
+    await addAuditLog("DELETE", "pacientes", `Paciente eliminado: ${id}`);
+  };
+
+  const requireExistingPatient = async (patientId: string) => {
+    if (!(await getDoc(doc(db, "pacientes", patientId))).exists()) throw new Error("Paciente eliminado. Su expediente solo admite consulta.");
   };
 
   const addHistoryEntry = async (patientId: string, entry: Omit<HistoryEntry, "id">) => {
     if (!can("patients.procedures.create")) throw new Error("No tienes permiso para realizar esta acción.");
+    await requireExistingPatient(patientId);
     const id = (await addDoc(collection(db, "pacientes", patientId, "historial"), cleanData({ ...entry, fecha: new Date(entry.fecha + "T00:00:00") }))).id;
     await addAuditLog("CREATE", "historial_clinico", `Entrada clinica creada: Paciente ${patientId} | Fecha: ${entry.fecha}`);
     toast.success("Historial agregado");
@@ -95,6 +100,7 @@ export const PatientsProvider: React.FC<{ children: ReactNode }> = ({ children }
 
   const updateHistoryEntry = async (patientId: string, entryId: string, updates: Partial<HistoryEntry>) => {
     if (!can("patients.procedures.update")) throw new Error("No tienes permiso para realizar esta acción.");
+    await requireExistingPatient(patientId);
     const data = { ...updates };
     if (updates.fecha) data.fecha = new Date(updates.fecha + "T00:00:00") as any;
     await updateDoc(doc(db, "pacientes", patientId, "historial", entryId), cleanData(data));
@@ -103,12 +109,14 @@ export const PatientsProvider: React.FC<{ children: ReactNode }> = ({ children }
 
   const deleteHistoryEntry = async (patientId: string, entryId: string) => {
     if (!can("patients.procedures.delete")) throw new Error("No tienes permiso para realizar esta acción.");
+    await requireExistingPatient(patientId);
     await deleteDoc(doc(db, "pacientes", patientId, "historial", entryId));
     await addAuditLog("DELETE", "historial_clinico", `Entrada clinica eliminada: Paciente ${patientId} | Entrada ${entryId}`);
   };
 
   const addOdontogram = async (patientId: string, tipo: "adulto" | "niño" | "mixto", nombre?: string) => {
     if (!can("patients.odontogram.update")) throw new Error("No tienes permiso para realizar esta acción.");
+    await requireExistingPatient(patientId);
     await addDoc(collection(db, "pacientes", patientId, "odontograma"), {
       fecha: new Date(),
       tipo,
@@ -121,18 +129,21 @@ export const PatientsProvider: React.FC<{ children: ReactNode }> = ({ children }
 
   const updateOdontogramName = async (patientId: string, odontogramId: string, newName: string) => {
     if (!can("patients.odontogram.update")) throw new Error("No tienes permiso para realizar esta acción.");
+    await requireExistingPatient(patientId);
     await updateDoc(doc(db, "pacientes", patientId, "odontograma", odontogramId), { nombre: newName });
     await addAuditLog("UPDATE", "odontograma", `Odontograma renombrado: Paciente ${patientId} | ${newName}`);
   };
 
   const deleteOdontogram = async (patientId: string, odontogramId: string) => {
     if (!can("patients.odontogram.update")) throw new Error("No tienes permiso para realizar esta acción.");
+    await requireExistingPatient(patientId);
     await deleteDoc(doc(db, "pacientes", patientId, "odontograma", odontogramId));
     await addAuditLog("DELETE", "odontograma", `Odontograma eliminado: Paciente ${patientId} | ${odontogramId}`);
   };
 
   const addInitialHistoryForms = async (patientId: string, forms: IHistoriaClinicaCompleta) => {
     if (!can("patients.clinicalHistory.update")) throw new Error("No tienes permiso para realizar esta acción.");
+    await requireExistingPatient(patientId);
     const batch = writeBatch(db);
     const path = `pacientes/${patientId}/historia_clinica`;
 
@@ -146,7 +157,7 @@ export const PatientsProvider: React.FC<{ children: ReactNode }> = ({ children }
     batch.set(doc(db, path, "exploracionCabezaCuello"), cleanData(forms.exploracionCabezaCuello), { merge: true });
     batch.set(doc(db, path, "exploracionAtm"), cleanData(forms.exploracionAtm), { merge: true });
     batch.set(doc(db, path, "cavidadOral"), cleanData(forms.cavidadOral), { merge: true });
-    batch.set(doc(db, `pacientes/${patientId}`), { hasHistorial: true }, { merge: true });
+    batch.update(doc(db, `pacientes/${patientId}`), { hasHistorial: true });
 
     await batch.commit();
     await addAuditLog("CREATE", "historia_clinica", `Historia clinica inicial guardada: Paciente ${patientId}`);

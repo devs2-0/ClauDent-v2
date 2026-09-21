@@ -4,6 +4,7 @@ import { Settings2, ShieldCheck, UserCog, UsersRound } from "lucide-react";
 import { useCan } from "@/auth";
 import RolesPage from "./RolesPage";
 import UsersPage from "./UsersPage";
+import ServiceCategorySettings from "@/modules/services/components/ServiceCategorySettings";
 import PatientInactivitySettings from "@/modules/patients/components/PatientInactivitySettings";
 import { SecurityPage } from "@/modules/security";
 import { SinPermisosPage } from "@/shared";
@@ -47,7 +48,11 @@ const AdminPanelPage = () => {
         label: "Configuración",
         icon: Settings2,
         permission: "settings.view" as const,
-        content: <PatientInactivitySettings />,
+        content: <Tabs defaultValue="pacientes" className="space-y-4">
+          <TabsList><TabsTrigger value="pacientes">Pacientes</TabsTrigger><TabsTrigger value="servicios">Servicios</TabsTrigger></TabsList>
+          <TabsContent value="pacientes"><PatientInactivitySettings /></TabsContent>
+          <TabsContent value="servicios"><ServiceCategorySettings /></TabsContent>
+        </Tabs>,
       },
     ].filter((tab) => can(tab.permission));
   }, [can]);

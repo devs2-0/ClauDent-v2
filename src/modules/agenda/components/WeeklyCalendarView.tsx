@@ -285,7 +285,7 @@ const WeeklyCalendarView = ({
                           <p className="mt-1 inline-flex max-w-full items-center gap-1 text-muted-foreground">
                             <Stethoscope className="h-3 w-3 shrink-0" />
                             <span className="truncate">
-                              {doctor?.nombre ?? "Doctor no encontrado"}
+                              {doctor?.isDeletedReference && appointment.doctorName ? `${appointment.doctorName} · Doctor eliminado` : doctor?.nombre ?? "Doctor eliminado"}
                             </span>
                           </p>
                         </button>
