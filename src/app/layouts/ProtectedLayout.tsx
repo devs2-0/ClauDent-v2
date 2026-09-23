@@ -89,7 +89,7 @@ const AppHeader = () => {
         />
 
         {showResults && searchInput.trim() !== "" && (
-          <div className="absolute left-0 top-full z-50 mt-2 max-h-[300px] w-full overflow-y-auto rounded-lg border bg-popover text-popover-foreground shadow-lg">
+          <div className="absolute left-0 top-full z-50 mt-2 max-h-[min(300px,60dvh)] w-full touch-pan-y overflow-y-auto overscroll-contain rounded-lg border bg-popover text-popover-foreground shadow-lg [-webkit-overflow-scrolling:touch]">
             {filteredPatients.length > 0 ? (
               <ul className="py-1">
                 {filteredPatients.map((patient) => (
