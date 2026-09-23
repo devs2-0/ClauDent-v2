@@ -33,7 +33,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import { Skeleton } from '@/shared/components/ui/skeleton';
 import { generateQuotationPDF } from '@/modules/quotations/services/quotationPdfService'; 
-import { ScrollArea } from '@/shared/components/ui/scroll-area';
 import {
   Command,
   CommandEmpty,
@@ -724,7 +723,7 @@ const Cotizaciones: React.FC = () => {
 
                     <div className="grid gap-2">
                       <Label htmlFor="quotation-patient" className="h-5 leading-5">Paciente *</Label>
-                      <Popover open={openPatientCombobox} onOpenChange={setOpenPatientCombobox}>
+                      <Popover modal open={openPatientCombobox} onOpenChange={setOpenPatientCombobox}>
                         <PopoverTrigger asChild>
                           <Button
                             id="quotation-patient"
@@ -758,7 +757,6 @@ const Cotizaciones: React.FC = () => {
                                     <CommandEmpty>No se encontró paciente.</CommandEmpty>
                                 ) : (
                                     <CommandGroup heading={patientSearch ? "Resultados" : "Pacientes recientes"}>
-                                        <ScrollArea className="h-64">
                                         {filteredPatientOptions.map((patient) => (
                                             <CommandItem
                                             key={patient.id}
@@ -777,7 +775,6 @@ const Cotizaciones: React.FC = () => {
                                             </div>
                                             </CommandItem>
                                         ))}
-                                        </ScrollArea>
                                     </CommandGroup>
                                 )}
                             </CommandList>
@@ -850,8 +847,9 @@ const Cotizaciones: React.FC = () => {
                     <div key={index} className="flex flex-wrap gap-2 items-center border p-2 rounded-md bg-muted/20">
                         {item.servicioId !== null ? (
                           
-                          <Popover 
-                            open={openServiceIndex === index} 
+                          <Popover
+                            modal
+                            open={openServiceIndex === index}
                             onOpenChange={(isOpen) => {
                                 setOpenServiceIndex(isOpen ? index : null);
                                 if(!isOpen) setServiceSearch('');
