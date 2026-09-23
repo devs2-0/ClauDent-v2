@@ -160,7 +160,7 @@ export const ProtectedLayout: React.FC = () => (
     <AppSidebar />
     <SidebarInset className="flex min-h-screen min-w-0 w-full flex-col overflow-x-hidden bg-background transition-all">
       <AppHeader />
-      <main className="app-module-content min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-3 pb-20 max-[360px]:pb-3 sm:p-4 lg:p-5 lg:pb-5">
+      <main className="app-module-content min-w-0 flex-1 overflow-x-hidden overflow-y-auto p-3 sm:p-4 lg:p-5">
         <Outlet />
       </main>
       <div className="block lg:hidden">
