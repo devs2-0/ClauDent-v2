@@ -580,8 +580,9 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId, readOnly = f
                     <div key={index} className="grid min-w-0 grid-cols-[minmax(0,1fr)_5rem_2.5rem] items-center gap-2">
                         
                         {/* BUSCADOR DE SERVICIOS (POPOVER) */}
-                        <Popover 
-                            open={openComboboxIndex === index} 
+                        <Popover
+                            modal
+                            open={openComboboxIndex === index}
                             onOpenChange={(isOpen) => {
                                 setOpenComboboxIndex(isOpen ? index : null);
                                 if(!isOpen) setServiceSearch('');
@@ -705,6 +706,7 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId, readOnly = f
                             <div key={index} className="space-y-3 rounded-md border p-3">
                                 <div className="grid gap-2 lg:grid-cols-[1fr_96px_auto] lg:items-center">
                                     <Popover
+                                        modal
                                         open={openMaterialComboboxIndex === index}
                                         onOpenChange={(isOpen) => {
                                             setOpenMaterialComboboxIndex(isOpen ? index : null);

@@ -738,12 +738,12 @@ const InventarioPage: React.FC = () => {
                 )}
               </Button>
             </PopoverTrigger>
-            <PopoverContent align="end" className="w-[420px] p-0">
+            <PopoverContent align="end" className="w-[420px] overflow-hidden p-0">
               <div className="border-b p-4">
                 <p className="font-semibold">Alertas de inventario</p>
                 <p className="text-sm text-muted-foreground">Stock, productos clasificados y retiros registrados.</p>
               </div>
-              <div className="max-h-[28rem] space-y-4 overflow-auto p-3">
+              <div className="max-h-[min(28rem,65dvh)] touch-pan-y space-y-4 overflow-y-auto overscroll-contain p-3 [-webkit-overflow-scrolling:touch]">
                 {inventoryAlertCount === 0 ? (
                   <div className="p-6 text-center text-sm text-muted-foreground">
                     No hay alertas de inventario por ahora.
@@ -1847,7 +1847,7 @@ const InventarioPage: React.FC = () => {
 
             <div className="rounded-lg border p-4">
               <div className="grid gap-3 lg:grid-cols-[1fr_110px_140px_170px_auto]">
-                <Popover open={isStockEntryProductSearchOpen} onOpenChange={setIsStockEntryProductSearchOpen}>
+                <Popover modal open={isStockEntryProductSearchOpen} onOpenChange={setIsStockEntryProductSearchOpen}>
                   <PopoverTrigger asChild>
                     <Button
                       type="button"

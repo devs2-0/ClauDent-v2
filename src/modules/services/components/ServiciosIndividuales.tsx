@@ -381,7 +381,7 @@ const ServiciosIndividuales: React.FC = () => {
             <fieldset disabled={isFormLoading} className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="categoria">Categoría</Label>
-                <Popover open={categoryComboboxOpen} onOpenChange={setCategoryComboboxOpen}>
+                <Popover modal open={categoryComboboxOpen} onOpenChange={setCategoryComboboxOpen}>
                   <PopoverTrigger asChild>
                     <Button
                       id="categoria"

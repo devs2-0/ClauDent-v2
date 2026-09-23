@@ -156,7 +156,7 @@ const NotificationsPopover = ({
         <TooltipContent>Avisos</TooltipContent>
       </Tooltip>
 
-      <PopoverContent align="end" sideOffset={10} className="z-50 w-[min(23rem,calc(100vw-1.5rem))] p-0">
+      <PopoverContent align="end" sideOffset={10} className="z-50 w-[min(23rem,calc(100vw-1.5rem))] overflow-hidden p-0">
         <div className="flex items-center justify-between border-b px-4 py-3">
           <div>
             <p className="text-sm font-semibold">Avisos</p>
@@ -165,7 +165,7 @@ const NotificationsPopover = ({
           {pendingCount > 0 && <Badge variant="secondary">{pendingCount}</Badge>}
         </div>
 
-        <div className="max-h-[min(26rem,65vh)] overflow-y-auto overscroll-contain p-2">
+        <div className="max-h-[min(26rem,65dvh)] touch-pan-y overflow-y-auto overscroll-contain p-2 [-webkit-overflow-scrolling:touch]">
           {loading ? (
             <p className="px-2 py-6 text-center text-sm text-muted-foreground">Revisando avisos...</p>
           ) : sortedNotifications.length === 0 ? (
