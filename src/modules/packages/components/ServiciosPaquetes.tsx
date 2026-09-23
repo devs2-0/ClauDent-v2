@@ -524,7 +524,7 @@ const ServiciosPaquetes: React.FC = () => {
               <div className="space-y-4 flex flex-col h-full">
                 <Label>Servicios Incluidos ({formData.serviciosIncluidos.reduce((a, b) => a + b.cantidad, 0)}) *</Label>
                 
-                <Popover open={openCombobox} onOpenChange={setOpenCombobox}>
+                <Popover modal open={openCombobox} onOpenChange={setOpenCombobox}>
                   <PopoverTrigger asChild>
                     <Button
                       variant="outline"
