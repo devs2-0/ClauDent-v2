@@ -1,7 +1,7 @@
 // (Archivo MODIFICADO) src/components/ServiciosIndividuales.tsx
 import React, { useState, useMemo } from 'react';
 import { Can, useCan } from '@/auth';
-import { Edit, Plus, Search, Trash2 } from 'lucide-react';
+import { Check, ChevronsUpDown, Edit, Plus, Search, Trash2 } from 'lucide-react';
 import { useDentalServices } from '@/modules/services';
 import { formatCurrency } from '@/shared/utils/utils';
 import { Button } from '@/shared/components/ui/button';
@@ -30,25 +30,44 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { toast } from 'sonner';
 import { Skeleton } from '@/shared/components/ui/skeleton';
 import { Switch } from '@/shared/components/ui/switch';
+import { Popover, PopoverContent, PopoverTrigger } from '@/shared/components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/shared/components/ui/command';
 import { useConfirmAction } from '@/shared/hooks/useConfirmAction';
 import { generateServiceCode } from '@/shared/utils/catalogCodes';
+import type { Service } from '../types/service.types';
+import { categoryKey, normalizeCategory } from '../utils/categories';
 
 type ServiceStatusFilter = 'all' | 'activo' | 'inactivo';
 type ServicePriceOrder = 'default' | 'price_asc' | 'price_desc';
 
 const ServiciosIndividuales: React.FC = () => {
-  const { services, addService, updateService, deleteService, servicesLoading } = useDentalServices();
+  const { categories: configuredCategories, services, addService, updateService, deleteService, servicesLoading } = useDentalServices();
   
   const { can } = useCan();
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState<ServiceStatusFilter>('all');
+  const [statusFilter, setStatusFilter] = useState<ServiceStatusFilter>('activo');
+  const [categoryFilter, setCategoryFilter] = useState('*');
+  const categories = useMemo(() => new Map(configuredCategories.map((category) => [categoryKey(category.name), category.name])), [configuredCategories]);
+  React.useEffect(() => {
+    if (categoryFilter !== '*' && !categories.has(categoryFilter)) setCategoryFilter('*');
+  }, [categories, categoryFilter]);
   const [priceOrder, setPriceOrder] = useState<ServicePriceOrder>('default');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [categoryComboboxOpen, setCategoryComboboxOpen] = useState(false);
   const [editingService, setEditingService] = useState<string | null>(null);
   const [isFormLoading, setIsFormLoading] = useState(false);
   const { confirm, confirmationDialog } = useConfirmAction();
   const canUpdateServices = can('services.update');
   const canSafelyDeleteServices = can('services.delete');
+  const orderedCategoryOptions = useMemo(() => {
+    const usage = new Map<string, number>();
+    services.forEach((service) => {
+      const key = categoryKey(service.categoria);
+      if (key) usage.set(key, (usage.get(key) ?? 0) + 1);
+    });
+    return [...categories].map(([key, label]) => ({ key, label, usage: usage.get(key) ?? 0 }))
+      .sort((first, second) => second.usage - first.usage || first.label.localeCompare(second.label, 'es-MX'));
+  }, [categories, services]);
   
   const [formData, setFormData] = useState<{
     nombre: string;
@@ -65,32 +84,33 @@ const ServiciosIndividuales: React.FC = () => {
   });
 
   const filteredServices = useMemo(() => {
-    const search = searchQuery.trim().toLowerCase();
+    const search = categoryKey(searchQuery);
     return services
       .filter((service) => {
         const matchesSearch = !search || [service.nombre, service.codigo, service.categoria]
-          .some((value) => value?.toLowerCase().includes(search));
+          .some((value) => categoryKey(value).includes(search));
         const matchesStatus = statusFilter === 'all' || service.estado === statusFilter;
-        return matchesSearch && matchesStatus;
+        return matchesSearch && matchesStatus && (categoryFilter === '*' || categoryKey(service.categoria) === categoryFilter);
       })
       .sort((first, second) => {
         if (priceOrder === 'price_asc') return first.precio - second.precio;
         if (priceOrder === 'price_desc') return second.precio - first.precio;
         return first.nombre.localeCompare(second.nombre, 'es', { sensitivity: 'base' });
       });
-  }, [services, searchQuery, statusFilter, priceOrder]);
+  }, [services, searchQuery, statusFilter, priceOrder, categoryFilter]);
 
   const generatedCode = useMemo(() => generateServiceCode(
-    formData.categoria,
+    normalizeCategory(formData.categoria, [...categories.values()]) || "Sin categoría",
     formData.nombre,
     Number(formData.precio),
     services
       .filter((service) => service.id !== editingService)
       .map((service) => service.codigo)
       .filter(Boolean),
-  ), [editingService, formData.categoria, formData.nombre, formData.precio, services]);
+  ), [editingService, formData.categoria, formData.nombre, formData.precio, services, categories]);
 
   const handleOpenDialog = (serviceId?: string) => {
+    setCategoryComboboxOpen(false);
     if (!can(serviceId ? 'services.update' : 'services.create')) return;
     if (serviceId) {
       const service = services.find((s) => s.id === serviceId);
@@ -99,7 +119,7 @@ const ServiciosIndividuales: React.FC = () => {
           nombre: service.nombre,
           descripcion: service.descripcion,
           precio: service.precio,
-          categoria: service.categoria,
+          categoria: categories.get(categoryKey(service.categoria)) ?? '',
           estado: service.estado,
         });
         setEditingService(service.id);
@@ -121,8 +141,8 @@ const ServiciosIndividuales: React.FC = () => {
     e.preventDefault();
     if (!can(editingService ? 'services.update' : 'services.create')) return;
     const finalPrice = formData.precio === '' ? 0 : Number(formData.precio);
-    if (!formData.categoria.trim() || !formData.nombre.trim() || !Number.isFinite(finalPrice)) {
-      toast.error('Completa categoría, nombre y precio.');
+    if (!formData.nombre.trim() || !Number.isFinite(finalPrice)) {
+      toast.error('Completa nombre y precio.');
       return;
     }
     if (!generatedCode) {
@@ -133,6 +153,7 @@ const ServiciosIndividuales: React.FC = () => {
 
     const payload = {
         ...formData,
+        categoria: normalizeCategory(formData.categoria, [...categories.values()]),
         codigo: generatedCode,
         precio: finalPrice,
     };
@@ -159,7 +180,7 @@ const ServiciosIndividuales: React.FC = () => {
     if (!canSafelyDeleteServices) return;
     const confirmed = await confirm({
       title: 'Eliminar servicio',
-      description: 'El servicio quedará inactivo para conservar cotizaciones e historiales existentes.',
+      description: 'El servicio se eliminará del catálogo. Las cotizaciones y los procedimientos conservarán sus referencias históricas con la etiqueta Servicio eliminado.',
       confirmLabel: 'Eliminar',
       destructive: true,
     });
@@ -167,7 +188,8 @@ const ServiciosIndividuales: React.FC = () => {
 
     try {
       await deleteService(id);
-      toast.success('Servicio desactivado');
+      setStatusFilter('activo');
+      toast.success('Servicio eliminado del listado principal');
     } catch (error) {
       console.error(error);
       toast.error('Error al eliminar el servicio');
@@ -215,9 +237,9 @@ const ServiciosIndividuales: React.FC = () => {
   );
 
   return (
-    <div className="flex h-[max(22rem,calc(100dvh-16rem))] min-h-0 flex-col gap-4">
-      <div className="flex shrink-0 flex-wrap items-end justify-between gap-3">
-        <div className="grid w-full gap-2 sm:grid-cols-[minmax(14rem,1fr)_10rem_11rem] lg:max-w-3xl">
+    <div className="flex min-h-0 flex-col gap-4 lg:h-[max(22rem,calc(100dvh-16rem))]">
+      <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
+        <div className="grid w-full gap-2 sm:grid-cols-2 xl:max-w-5xl xl:grid-cols-[minmax(14rem,1fr)_12rem_10rem_11rem]">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -229,6 +251,13 @@ const ServiciosIndividuales: React.FC = () => {
               className="h-9 pl-9"
             />
           </div>
+          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+            <SelectTrigger className="h-9" aria-label="Filtrar por categoría"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="*">Todas las categorías</SelectItem>
+              {orderedCategoryOptions.map(({ key, label }) => <SelectItem key={key} value={key}>{label}</SelectItem>)}
+            </SelectContent>
+          </Select>
           <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value as ServiceStatusFilter)}>
             <SelectTrigger className="h-9" aria-label="Filtrar servicios por estado">
               <SelectValue />
@@ -250,10 +279,10 @@ const ServiciosIndividuales: React.FC = () => {
             </SelectContent>
           </Select>
         </div>
-        <Can permission="services.create"><Button onClick={() => handleOpenDialog()}>
-          <Plus className="h-4 w-4 mr-2" />
-          Nuevo Servicio
-        </Button></Can>
+        {can('services.create') && <Button className="w-full shadow-lg sm:w-auto" onClick={() => handleOpenDialog()}>
+          <Plus className="mr-2 h-4 w-4" />
+          Nuevo servicio
+        </Button>}
       </div>
 
       <Card className="relative isolate z-0 min-h-0 flex-1 flex flex-col overflow-hidden">
@@ -289,7 +318,7 @@ const ServiciosIndividuales: React.FC = () => {
                           <p className="text-sm text-muted-foreground line-clamp-1">{service.descripcion}</p>
                         </div>
                       </TableCell>
-                      <TableCell className="whitespace-nowrap">{service.categoria}</TableCell>
+                      <TableCell className="whitespace-nowrap">{categories.get(categoryKey(service.categoria)) || 'Sin categoría'}</TableCell>
                       <TableCell className="font-semibold whitespace-nowrap">{formatCurrency(service.precio)}</TableCell>
                       <TableCell className="whitespace-nowrap">
                         {canUpdateServices ? (
@@ -340,25 +369,57 @@ const ServiciosIndividuales: React.FC = () => {
       </Card>
 
       <Dialog open={isDialogOpen && can(editingService ? 'services.update' : 'services.create')} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[calc(100dvh-1rem)] max-w-2xl flex-col gap-0 overflow-hidden p-0">
+          <DialogHeader className="shrink-0 px-4 pb-3 pr-12 pt-4 sm:px-6 sm:pt-6">
             <DialogTitle>{editingService ? 'Editar Servicio' : 'Nuevo Servicio'}</DialogTitle>
             <DialogDescription>
               {editingService ? 'Modifica los datos del servicio' : 'Ingresa los datos del nuevo servicio'}
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-2 sm:px-6">
             <fieldset disabled={isFormLoading} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="categoria">Categoría *</Label>
-                <Input
-                  id="categoria"
-                  value={formData.categoria}
-                  onChange={(e) => setFormData({ ...formData, categoria: e.target.value })}
-                  required
-                />
+                <Label htmlFor="categoria">Categoría</Label>
+                <Popover open={categoryComboboxOpen} onOpenChange={setCategoryComboboxOpen}>
+                  <PopoverTrigger asChild>
+                    <Button
+                      id="categoria"
+                      type="button"
+                      variant="outline"
+                      role="combobox"
+                      aria-expanded={categoryComboboxOpen}
+                      className="w-full justify-between font-normal"
+                    >
+                      <span className="truncate">{formData.categoria || 'Sin categoría'}</span>
+                      <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-[var(--radix-popover-trigger-width)] p-0" align="start">
+                    <Command>
+                      <CommandInput placeholder="Buscar categoría..." />
+                      <CommandList>
+                        <CommandEmpty>No se encontraron categorías.</CommandEmpty>
+                        <CommandGroup heading="Categorías">
+                          <CommandItem value="sin categoria" onSelect={() => { setFormData((current) => ({ ...current, categoria: '' })); setCategoryComboboxOpen(false); }}>
+                            <Check className={`mr-2 h-4 w-4 ${formData.categoria ? 'opacity-0' : 'opacity-100'}`} />
+                            Sin categoría
+                          </CommandItem>
+                          {orderedCategoryOptions.map(({ key, label, usage }, index) => (
+                            <CommandItem key={key} value={label} onSelect={() => { setFormData((current) => ({ ...current, categoria: label })); setCategoryComboboxOpen(false); }}>
+                              <Check className={`mr-2 h-4 w-4 ${categoryKey(formData.categoria) === key ? 'opacity-100' : 'opacity-0'}`} />
+                              <span className="flex-1 truncate">{label}</span>
+                              {usage > 0 && <span className="ml-2 text-xs text-muted-foreground">{index === 0 ? 'Más usada · ' : ''}{usage}</span>}
+                            </CommandItem>
+                          ))}
+                        </CommandGroup>
+                      </CommandList>
+                    </Command>
+                  </PopoverContent>
+                </Popover>
               </div>
               <div className="space-y-2">
+
                 <Label htmlFor="nombre">Nombre del Servicio *</Label>
                 <Input
                   id="nombre"
@@ -376,7 +437,7 @@ const ServiciosIndividuales: React.FC = () => {
                   rows={3}
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="precio">Precio (MXN) *</Label>
                   <Input
@@ -406,8 +467,10 @@ const ServiciosIndividuales: React.FC = () => {
                 </div>
               </div>
             </fieldset>
-            <DialogFooter>
+            </div>
+            <DialogFooter className="shrink-0 gap-2 border-t bg-background px-4 py-3 sm:px-6">
               <Button
+                className="w-full sm:w-auto"
                 type="button"
                 variant="outline"
                 onClick={() => setIsDialogOpen(false)}
@@ -415,7 +478,7 @@ const ServiciosIndividuales: React.FC = () => {
               >
                 Cancelar
               </Button>
-              <Button type="submit" disabled={isFormLoading}>
+              <Button className="w-full sm:w-auto" type="submit" disabled={isFormLoading}>
                 {isFormLoading
                   ? 'Guardando...'
                   : editingService

@@ -226,6 +226,9 @@ const ServiciosPaquetes: React.FC = () => {
       return toast.error("Debe incluir al menos un servicio.");
     }
 
+    if (formData.serviciosIncluidos.some((item) => !services.some((service) => service.id === item.id))) {
+      toast.error('El paquete contiene un servicio eliminado. Retíralo o reemplázalo antes de guardar.'); return;
+    }
     setIsFormLoading(true);
     
     const finalPrice = formData.precioTotal === '' ? 0 : Number(formData.precioTotal);
@@ -322,8 +325,8 @@ const ServiciosPaquetes: React.FC = () => {
   );
 
   return (
-    <div className="flex h-[max(22rem,calc(100dvh-16rem))] min-h-0 flex-col gap-4">
-      <div className="flex shrink-0 flex-wrap items-end justify-between gap-3">
+    <div className="flex min-h-0 flex-col gap-4 lg:h-[max(22rem,calc(100dvh-16rem))]">
+      <div className="flex shrink-0 flex-col items-stretch gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between">
         <div className="grid w-full gap-2 sm:grid-cols-[minmax(14rem,1fr)_10rem_11rem] lg:max-w-3xl">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -357,7 +360,7 @@ const ServiciosPaquetes: React.FC = () => {
             </SelectContent>
           </Select>
         </div>
-        <Can permission="packages.create"><Button onClick={() => handleOpenDialog()}>
+        <Can permission="packages.create"><Button className="w-full shadow-lg sm:w-auto" onClick={() => handleOpenDialog()}>
           <Plus className="h-4 w-4 mr-2" />
           Nuevo Paquete
         </Button></Can>
@@ -445,15 +448,16 @@ const ServiciosPaquetes: React.FC = () => {
       </Card>
 
       <Dialog open={isDialogOpen && can(editingPaquete ? 'packages.update' : 'packages.create')} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-4xl">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[calc(100dvh-1rem)] max-w-4xl flex-col gap-0 overflow-hidden p-0">
+          <DialogHeader className="shrink-0 px-4 pb-3 pr-12 pt-4 sm:px-6 sm:pt-6">
             <DialogTitle>{editingPaquete ? 'Editar Paquete' : 'Nuevo Paquete'}</DialogTitle>
             <DialogDescription>
               {editingPaquete ? 'Modifica los datos del paquete' : 'Crea un nuevo paquete promocional'}
             </DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <fieldset disabled={isFormLoading} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-2 sm:px-6">
+            <fieldset disabled={isFormLoading} className="grid grid-cols-1 gap-4 md:grid-cols-2 md:gap-6">
               {/* Columna Izquierda: Detalles del Paquete */}
               <div className="space-y-4">
                 <div className="space-y-2">
@@ -477,7 +481,7 @@ const ServiciosPaquetes: React.FC = () => {
                     required
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="paquete-inicio">Fecha Inicio *</Label>
                     <Input
@@ -526,16 +530,16 @@ const ServiciosPaquetes: React.FC = () => {
                       variant="outline"
                       role="combobox"
                       aria-expanded={openCombobox}
-                      className="w-full justify-between text-muted-foreground"
+                      className="w-full min-w-0 justify-between text-muted-foreground"
                     >
-                      <span>
+                      <span className="min-w-0 truncate">
                         <Plus className="h-4 w-4 inline mr-2" />
                         Buscar y añadir servicio...
                       </span>
                       <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent className="w-[300px] p-0" align="start">
+                  <PopoverContent className="w-[min(300px,calc(100vw-2rem))] p-0" align="start">
                     <Command shouldFilter={false}>
                       <CommandInput 
                         placeholder="Buscar servicio..." 
@@ -553,9 +557,9 @@ const ServiciosPaquetes: React.FC = () => {
                                         value={service.nombre}
                                         onSelect={() => addServicio(service)}
                                     >
-                                        <div className="flex justify-between w-full">
-                                            <span>{service.nombre}</span>
-                                            <span className="text-xs text-muted-foreground">{formatCurrency(service.precio)}</span>
+                                        <div className="flex min-w-0 w-full justify-between gap-2">
+                                            <span className="min-w-0 truncate">{service.nombre}{!services.some((item) => item.id === service.id) ? " · Servicio eliminado" : ""}</span>
+                                            <span className="shrink-0 text-xs text-muted-foreground">{formatCurrency(service.precio)}</span>
                                         </div>
                                         <Plus className="ml-auto h-4 w-4 text-muted-foreground" />
                                     </CommandItem>
@@ -582,7 +586,7 @@ const ServiciosPaquetes: React.FC = () => {
                                         className="flex items-center justify-between p-2 rounded-md border bg-background shadow-sm"
                                     >
                                         <div className="flex flex-col min-w-0 flex-1 mr-2">
-                                            <span className="text-sm font-medium truncate">{service.nombre}</span>
+                                            <span className="text-sm font-medium truncate">{service.nombre}{!services.some((item) => item.id === service.id) ? " · Servicio eliminado" : ""}</span>
                                             <span className="text-xs text-muted-foreground">{formatCurrency(service.precio)}</span>
                                         </div>
 
@@ -627,8 +631,10 @@ const ServiciosPaquetes: React.FC = () => {
                 </Card>
               </div>
             </fieldset>
-            <DialogFooter>
+            </div>
+            <DialogFooter className="shrink-0 gap-2 border-t bg-background px-4 py-3 sm:px-6">
               <Button
+                className="w-full sm:w-auto"
                 type="button"
                 variant="outline"
                 onClick={() => setIsDialogOpen(false)}
@@ -636,7 +642,7 @@ const ServiciosPaquetes: React.FC = () => {
               >
                 Cancelar
               </Button>
-              <Button type="submit" disabled={isFormLoading}>
+              <Button className="w-full sm:w-auto" type="submit" disabled={isFormLoading}>
                 {isFormLoading
                   ? 'Guardando...'
                   : editingPaquete

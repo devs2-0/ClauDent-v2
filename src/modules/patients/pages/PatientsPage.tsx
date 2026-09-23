@@ -1,12 +1,14 @@
+import { useEffectivePatientStatus } from "../hooks/useEffectivePatientStatus";
 // RF02-RF05: Patients list (CORREGIDO: BUG DE ALERTDIALOG)
 import React, { useState, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Plus, Search, Edit, Eye, Filter, User, Phone, ChevronLeft, ChevronRight, ClipboardCheck, Trash2, UserCheck, UserX } from 'lucide-react';
+import { Plus, Search, Edit, Eye, Filter, User, ChevronLeft, ChevronRight, ClipboardCheck, Trash2, UserCheck, UserX } from 'lucide-react';
 import { useCan } from '@/auth';
 import { Patient, usePatients } from '@/modules/patients';
 import { usePatientClinicalHistoryStatuses } from '@/modules/patients/hooks/usePatientClinicalHistoryStatuses';
 import {
   calculatePatientAge,
+  getPatientSexLabel,
   hasKnownMaritalStatus,
   MARITAL_STATUS_OPTIONS,
   normalizePatientName,
@@ -25,6 +27,7 @@ import { Skeleton } from '@/shared/components/ui/skeleton';
 import { Checkbox } from '@/shared/components/ui/checkbox';
 import { SectionHelp } from '@/shared/components/SectionHelp';
 import { useConfirmAction } from '@/shared/hooks/useConfirmAction';
+import { useModalDraft } from '@/shared/hooks/useModalDraft';
 import InitialHistoryModal from '@/modules/patients/components/InitialHistoryModal';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -49,7 +52,8 @@ const toDateKey = (value?: string) => {
 };
 
 const Pacientes: React.FC = () => {
-  const { patients, addPatient, updatePatient, searchQuery, patientsLoading } = usePatients();
+  const { patients: storedPatients, addPatient, updatePatient, deletePatient, searchQuery, patientsLoading } = usePatients();
+  const patients = useEffectivePatientStatus(storedPatients);
   const { can, loading: permissionsLoading } = useCan();
   const [searchParams, setSearchParams] = useSearchParams();
   const { confirm, confirmationDialog } = useConfirmAction();
@@ -74,6 +78,22 @@ const Pacientes: React.FC = () => {
   
   const [historyModalState, setHistoryModalState] = useState<{isOpen: boolean; patientId: string | null}>({ isOpen: false, patientId: null });
   const [formData, setFormData] = useState<Omit<Patient, 'id' | 'fechaRegistro'>>(initialFormData);
+  const draft = useModalDraft<typeof initialFormData>('new-patient');
+  const patientDraft = draft.read();
+  const [draftRecovered, setDraftRecovered] = useState(false);
+
+  const closePatientDialog = (discard = false) => {
+    if (!editingPatient) {
+      const hasChanges = Object.entries(initialFormData).some(([key, value]) =>
+        String(formData[key as keyof typeof initialFormData] ?? '').trim() !== String(value));
+      if (discard || !hasChanges) draft.discard();
+      else {
+        const persisted = draft.save(formData);
+        toast.info(persisted ? 'Borrador guardado en este dispositivo.' : 'Borrador conservado durante esta sesión.');
+      }
+    }
+    setIsDialogOpen(false);
+  };
 
   const filteredPatients = useMemo(() => {
     const matchingPatients = patients.filter((patient) => {
@@ -146,17 +166,23 @@ const Pacientes: React.FC = () => {
     setCurrentPage(1);
   }, [localSearch, filterStatus, sortOrder]);
 
+  React.useEffect(() => {
+    setCurrentPage((page) => Math.min(page, Math.max(1, totalPages)));
+  }, [totalPages]);
+
   const handleOpenDialog = (patientId?: string) => {
     if (!can(patientId ? "patients.update" : "patients.create")) return;
     setCrearHistorial(false);
     if (patientId) {
-      const patient = patients.find((p) => p.id === patientId);
+      const patient = storedPatients.find((p) => p.id === patientId);
       if (patient) {
         setFormData({ ...patient });
         setEditingPatient(patientId);
       }
     } else {
-      setFormData(initialFormData);
+      const recovered = draft.read();
+      setFormData({ ...initialFormData, ...recovered });
+      setDraftRecovered(Boolean(recovered));
       setEditingPatient(null);
     }
     setIsDialogOpen(true);
@@ -173,10 +199,12 @@ const Pacientes: React.FC = () => {
     if (!canCreatePatient) return;
 
     setCrearHistorial(false);
-    setFormData(initialFormData);
+    const recovered = draft.read();
+    setFormData({ ...initialFormData, ...recovered });
+    setDraftRecovered(Boolean(recovered));
     setEditingPatient(null);
     setIsDialogOpen(true);
-  }, [canCreatePatient, permissionsLoading, searchParams, setSearchParams]);
+  }, [canCreatePatient, permissionsLoading, searchParams, setSearchParams, draft]);
 
   const handleRequestSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -200,6 +228,7 @@ const Pacientes: React.FC = () => {
         toast.success('Paciente actualizado');
       } else {
         const newId = await addPatient(normalizedFormData);
+        draft.discard();
         toast.success('Paciente creado');
         if (crearHistorial && can("patients.clinicalHistory.update")) setHistoryModalState({ isOpen: true, patientId: newId });
       }
@@ -235,7 +264,7 @@ const Pacientes: React.FC = () => {
   ) => {
     if (!can(actionLabel === 'Eliminar' ? 'patients.delete' : 'patients.update')) return;
     const selectedPatients = patients.filter(
-      (patient) => selectedPatientIds.has(patient.id) && patient.estado !== status,
+      (patient) => selectedPatientIds.has(patient.id) && (actionLabel === 'Eliminar' || patient.estado !== status),
     );
     if (selectedPatients.length === 0) {
       toast.info('Los pacientes seleccionados ya tienen ese estado.');
@@ -245,7 +274,7 @@ const Pacientes: React.FC = () => {
     const action = actionLabel.toLocaleLowerCase('es-MX');
     const confirmed = await confirm({
       title: `${actionLabel} pacientes`,
-      description: `Se van a ${action} ${selectedPatients.length} pacientes. Sus datos e historial se conservarán.`,
+      description: actionLabel === 'Eliminar' ? `Se eliminarán los documentos principales de ${selectedPatients.length} pacientes. Las citas y el expediente conservarán sus referencias históricas.` : `Se van a ${action} ${selectedPatients.length} pacientes. Su historial se conservará.`,
       confirmLabel: actionLabel,
       destructive: status === 'inactivo',
     });
@@ -254,15 +283,16 @@ const Pacientes: React.FC = () => {
     setIsBulkUpdating(true);
     try {
       await Promise.all(
-        selectedPatients.map((patient) => updatePatient(patient.id, { estado: status })),
+        selectedPatients.map((patient) => actionLabel === 'Eliminar' ? deletePatient(patient.id) : updatePatient(patient.id, { estado: status })),
       );
+      if (actionLabel === 'Eliminar') setFilterStatus('activo');
       setSelectedPatientIds(new Set());
       const singular = selectedPatients.length === 1;
       const result = actionLabel === 'Activar'
         ? singular ? 'activado' : 'activados'
         : actionLabel === 'Desactivar'
           ? singular ? 'desactivado' : 'desactivados'
-          : singular ? 'eliminado del listado activo' : 'eliminados del listado activo';
+          : singular ? 'eliminado del listado' : 'eliminados del listado';
       toast.success(`${selectedPatients.length} paciente${singular ? '' : 's'} ${result}.`);
     } catch {
       toast.error('No fue posible actualizar todos los pacientes.');
@@ -275,20 +305,21 @@ const Pacientes: React.FC = () => {
     if (!canDeletePatient) return;
     const confirmed = await confirm({
       title: 'Eliminar paciente',
-      description: `${patient.nombres} ${patient.apellidos} dejará de aparecer entre los pacientes activos. Sus datos e historial se conservarán.`,
+      description: `${patient.nombres} ${patient.apellidos} se eliminará del listado y su documento principal. Las citas y el expediente histórico conservarán sus referencias.`,
       confirmLabel: 'Eliminar',
       destructive: true,
     });
     if (!confirmed) return;
 
     try {
-      await updatePatient(patient.id, { estado: 'inactivo' });
+      await deletePatient(patient.id);
+      setFilterStatus('activo');
       setSelectedPatientIds((current) => {
         const next = new Set(current);
         next.delete(patient.id);
         return next;
       });
-      toast.success('Paciente eliminado del listado activo');
+      toast.success('Paciente eliminado del listado');
     } catch {
       toast.error('No fue posible eliminar al paciente.');
     }
@@ -311,14 +342,14 @@ const Pacientes: React.FC = () => {
     }[clinicalHistoryStatus];
 
     return (
-      <div className="bg-card border rounded-xl p-4 hover:shadow-md transition-all flex flex-col justify-between gap-4 h-full">
+      <div className="flex h-full min-w-0 flex-col justify-between gap-4 rounded-xl border bg-card p-3 transition-all hover:shadow-md sm:p-4">
         <div>
-            <div className="flex justify-between items-start mb-3">
-                <div className="flex gap-3 items-center">
+            <div className="mb-3 flex min-w-0 items-start justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-3">
                     <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold shrink-0">
                         {p.nombres[0]}{p.apellidos[0]}
                     </div>
-                    <div>
+                    <div className="min-w-0">
                         <h3 className="font-semibold text-base leading-tight line-clamp-1" title={`${p.nombres} ${p.apellidos}`}>
                             {p.nombres} {p.apellidos}
                         </h3>
@@ -336,20 +367,20 @@ const Pacientes: React.FC = () => {
                       aria-label={`Seleccionar a ${p.nombres} ${p.apellidos}`}
                     />
                   )}
-                  <Badge variant={p.estado === 'activo' ? 'default' : 'secondary'} className="capitalize">{p.estado}</Badge>
+                  <Badge variant={p.estado === 'activo' ? 'default' : 'secondary'} className="max-w-28 truncate capitalize">{p.estado}{p.estado === 'inactivo' && storedPatients.find((patient) => patient.id === p.id)?.estado === 'activo' ? ' por periodo' : ''}</Badge>
                 </div>
             </div>
             
             <div className="space-y-1.5 text-sm text-muted-foreground">
                  <div className="flex items-center gap-2">
-                    <Phone className="h-3 w-3" /> 
-                    {p.telefonoPrincipal ? p.telefonoPrincipal : <span className="italic text-xs">Sin teléfono</span>}
+                    <User className="h-3 w-3" />
+                    Género: {getPatientSexLabel(p.sexo)}
                  </div>
                  {can("patients.clinicalHistory.view") && <div className="flex items-center gap-2">
                     <ClipboardCheck className="h-3 w-3" />
                     <Badge variant="outline" className={`font-normal ${clinicalHistoryClassName}`}>
                       {clinicalHistoryStatusesLoading && !clinicalHistoryStatuses.has(p.id)
-                        ? 'Sin historial'
+                        ? 'Consultando historial…'
                         : clinicalHistoryLabel}
                     </Badge>
                  </div>}
@@ -365,7 +396,7 @@ const Pacientes: React.FC = () => {
             {canUpdatePatient && (
               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleOpenDialog(p.id)} title="Editar" aria-label="Editar"><Edit className="h-3.5 w-3.5" /></Button>
             )}
-            {canDeletePatient && p.estado === 'activo' && (
+            {canDeletePatient && (
               <Button
                 variant="ghost"
                 size="icon"
@@ -383,7 +414,7 @@ const Pacientes: React.FC = () => {
   };
 
   return (
-    <div className="space-y-4 h-[calc(100vh-6rem)] flex flex-col">
+    <div className="flex min-h-0 flex-col space-y-4 lg:h-[calc(100dvh-7rem)]">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shrink-0">
         <div>
           <div className="flex items-center gap-1">
@@ -395,7 +426,7 @@ const Pacientes: React.FC = () => {
           <p className="text-muted-foreground">Directorio completo</p>
         </div>
         {canCreatePatient && (
-          <Button onClick={() => handleOpenDialog()} size="lg" className="shadow-lg">
+          <Button onClick={() => handleOpenDialog()} size="lg" className="w-full shadow-lg sm:w-auto">
             <Plus className="h-5 w-5 mr-2" /> Nuevo Paciente
           </Button>
         )}
@@ -449,7 +480,7 @@ const Pacientes: React.FC = () => {
             </div>
       </div>
 
-      <div className="flex shrink-0 flex-wrap items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2">
+      <div className="flex shrink-0 flex-col items-stretch gap-2 rounded-lg border bg-muted/30 px-3 py-2 sm:flex-row sm:flex-wrap sm:items-center">
         <div className="flex items-center gap-1 text-sm text-muted-foreground">
           <ClipboardCheck className="h-4 w-4" />
           <span>Estado del historial</span>
@@ -462,7 +493,7 @@ const Pacientes: React.FC = () => {
 
         {selectedPatientIds.size > 0 && (
           <>
-            <Badge variant="secondary" className="ml-auto">
+            <Badge variant="secondary" className="self-start sm:ml-auto sm:self-auto">
               {selectedPatientIds.size} seleccionados
             </Badge>
             {canUpdatePatient && (
@@ -470,6 +501,7 @@ const Pacientes: React.FC = () => {
                 type="button"
                 variant="outline"
                 size="sm"
+                className="w-full sm:w-auto"
                 onClick={() => void updateSelectedPatientsStatus('activo', 'Activar')}
                 disabled={isBulkUpdating}
               >
@@ -481,6 +513,7 @@ const Pacientes: React.FC = () => {
                 type="button"
                 variant="outline"
                 size="sm"
+                className="w-full sm:w-auto"
                 onClick={() => void updateSelectedPatientsStatus('inactivo', 'Desactivar')}
                 disabled={isBulkUpdating}
               >
@@ -492,6 +525,7 @@ const Pacientes: React.FC = () => {
                 type="button"
                 variant="destructive"
                 size="sm"
+                className="w-full sm:w-auto"
                 onClick={() => void updateSelectedPatientsStatus('inactivo', 'Eliminar')}
                 disabled={isBulkUpdating}
               >
@@ -502,6 +536,7 @@ const Pacientes: React.FC = () => {
               type="button"
               variant="ghost"
               size="sm"
+              className="w-full sm:w-auto"
               onClick={() => setSelectedPatientIds(new Set())}
               disabled={isBulkUpdating}
             >
@@ -512,7 +547,24 @@ const Pacientes: React.FC = () => {
       </div>
 
       <div className="flex-1 overflow-y-auto min-h-0 pr-1">
-        {patientsLoading ? (
+        {canCreatePatient && patientDraft && (
+        <article className="rounded-xl border border-dashed bg-card p-4 shadow-sm" aria-label="Borrador de paciente">
+          <button type="button" className="w-full text-left" onClick={() => handleOpenDialog()}>
+            <Badge variant="secondary">Borrador</Badge>
+            <p className="mt-2 font-semibold">{`${patientDraft.nombres || ''} ${patientDraft.apellidos || ''}`.trim() || 'Nuevo paciente'}</p>
+            <p className="text-sm text-muted-foreground">Guardado solo en tu cuenta y este dispositivo. Aún no tiene expediente.</p>
+          </button>
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+            <Button className="w-full sm:w-auto" size="sm" onClick={() => handleOpenDialog()}>Continuar</Button>
+            <Button className="w-full sm:w-auto" size="sm" variant="outline" onClick={async () => {
+              if (await confirm({ title: 'Descartar borrador', description: 'Se eliminarán los datos capturados en este borrador local.', confirmLabel: 'Descartar', destructive: true })) {
+                draft.discard(); setDraftRecovered(false); setFormData({ ...initialFormData });
+              }
+            }}>Descartar</Button>
+          </div>
+        </article>
+      )}
+      {patientsLoading ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
                 {[1,2,3,4,5,6,7,8].map(i => <Skeleton key={i} className="h-40 rounded-xl" />)}
             </div>
@@ -560,13 +612,15 @@ const Pacientes: React.FC = () => {
       )}
 
       {/* Modal de Formulario */}
-      <Dialog open={isDialogOpen && can(editingPatient ? "patients.update" : "patients.create")} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+      <Dialog open={isDialogOpen && can(editingPatient ? "patients.update" : "patients.create")} onOpenChange={(open) => { if (!open) closePatientDialog(); }}>
+        <DialogContent className="flex max-h-[calc(100dvh-1rem)] max-w-2xl flex-col gap-0 overflow-hidden p-0">
+          <DialogHeader className="shrink-0 px-4 pb-3 pr-12 pt-4 sm:px-6 sm:pt-6">
             <DialogTitle>{editingPatient ? 'Editar Paciente' : 'Registrar Nuevo Paciente'}</DialogTitle>
             <DialogDescription>Los campos marcados con * son obligatorios.</DialogDescription>
           </DialogHeader>
-          <form onSubmit={handleRequestSubmit} className="space-y-6 pt-2">
+          {!editingPatient && draftRecovered && <p role="status" className="shrink-0 px-4 text-sm text-muted-foreground sm:px-6">Se recuperó tu borrador. Cancelar lo descarta.</p>}
+          <form onSubmit={handleRequestSubmit} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain px-4 py-2 sm:px-6">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="nombres">Nombres *</Label>
@@ -627,6 +681,19 @@ const Pacientes: React.FC = () => {
                   </div>
               </div>
 
+              <details className="rounded-lg border p-4">
+                <summary className="cursor-pointer text-sm font-medium">Dirección (opcional)</summary>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  {([
+                    ['calle', 'Calle'], ['numeroExterior', 'Número exterior'], ['numeroInterior', 'Número interior'],
+                    ['colonia', 'Colonia'], ['municipio', 'Municipio'], ['estadoDireccion', 'Estado'], ['direccion', 'Referencia o dirección adicional'],
+                  ] as const).map(([field, label]) => <div key={field} className="space-y-2">
+                    <Label htmlFor={field}>{label}</Label>
+                    <Input id={field} value={formData[field] ?? ''} onChange={handleFormChange} />
+                  </div>)}
+                </div>
+              </details>
+
               {!editingPatient && can("patients.clinicalHistory.update") && (
                   <div className="flex items-center space-x-2 bg-primary/5 p-3 rounded-md border border-primary/20">
                     <Checkbox id="crearHistorial" checked={crearHistorial} onCheckedChange={(c) => setCrearHistorial(!!c)} />
@@ -634,9 +701,10 @@ const Pacientes: React.FC = () => {
                   </div>
               )}
 
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
-              <Button type="submit">{editingPatient ? 'Guardar Cambios' : 'Registrar Paciente'}</Button>
+            </div>
+            <DialogFooter className="shrink-0 gap-2 border-t bg-background px-4 py-3 sm:px-6">
+              <Button className="w-full sm:w-auto" type="button" variant="outline" disabled={isFormLoading} onClick={() => closePatientDialog(true)}>Cancelar</Button>
+              <Button className="w-full sm:w-auto" type="submit" disabled={isFormLoading}>{editingPatient ? 'Guardar Cambios' : 'Registrar Paciente'}</Button>
             </DialogFooter>
           </form>
         </DialogContent>

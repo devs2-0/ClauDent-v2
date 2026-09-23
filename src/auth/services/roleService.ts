@@ -10,7 +10,7 @@ import {
   updateDoc,
   where,
   writeBatch,
-  type Timestamp,
+  Timestamp,
 } from "firebase/firestore";
 
 import { db } from "@/lib/firebase";
@@ -19,6 +19,8 @@ import { permissionKeys } from "../constants/permissionCatalog";
 import type { PermissionKey } from "../types/permission.types";
 import type { AppUser } from "../types/user.types";
 import type { Role, RoleStatus } from "../types/role.types";
+import { addDuration, isValidDuration, type DurationUnit } from "@/shared/utils/duration";
+import { isRoleExpired, withRoleLifetime } from "../utils/roleLifetime";
 
 interface RoleFormPayload {
   name: string;
@@ -26,9 +28,12 @@ interface RoleFormPayload {
   color?: string;
   icon?: string;
   permissions: PermissionKey[];
+  temporary?: boolean;
+  durationValue?: number;
+  durationUnit?: DurationUnit;
 }
 
-const normalizeRole = (id: string, data: any): Role => ({
+export const normalizeRole = (id: string, data: any): Role => withRoleLifetime({
   id,
   name: data.name ?? "",
   description: data.description ?? "",
@@ -38,11 +43,23 @@ const normalizeRole = (id: string, data: any): Role => ({
   isSystem: data.isSystem === true,
   isAdmin: data.isAdmin === true,
   status: data.status ?? "active",
+  temporary: data.temporary === true,
+  durationValue: data.durationValue ?? null,
+  durationUnit: data.durationUnit ?? null,
+  expiresAt: data.expiresAt ?? null,
   createdAt: data.createdAt ?? null,
   updatedAt: data.updatedAt ?? null,
   createdBy: data.createdBy ?? null,
   updatedBy: data.updatedBy ?? null,
 });
+
+const roleTiming = (payload: Partial<RoleFormPayload>) => {
+  if (payload.temporary === undefined) return {};
+  if (!payload.temporary) return { temporary: false, durationValue: null, durationUnit: null, expiresAt: null };
+  const duration = { value: payload.durationValue!, unit: payload.durationUnit! };
+  if (!isValidDuration(duration)) throw new Error("Indica una duración válida para el rol temporal.");
+  return { temporary: true, durationValue: duration.value, durationUnit: duration.unit, expiresAt: Timestamp.fromDate(addDuration(new Date(), duration)) };
+};
 
 const normalizeUser = (id: string, data: any): AppUser => ({
   uid: data.uid ?? id,
@@ -99,8 +116,19 @@ const calculateEffectivePermissions = (
 };
 
 export const roleService = {
-  listRoles: async (): Promise<Role[]> => {
+  listRoles: async (options?: { processExpired?: boolean; actorUid?: string }): Promise<Role[]> => {
     const snap = await getDocs(collection(db, "roles"));
+
+    // Only callers with roles.update opt into persisting expiration and refreshing
+    // cached user permissions. Ordinary reads stay read-only.
+    if (options?.processExpired) {
+      for (const roleDoc of snap.docs) {
+        const role = normalizeRole(roleDoc.id, roleDoc.data());
+        if (roleDoc.data().status === 'active' && isRoleExpired(role)) {
+          await roleService.updateRole(role.id, { status: 'archived' }, options.actorUid);
+        }
+      }
+    }
 
     return snap.docs
       .map((roleDoc) => normalizeRole(roleDoc.id, roleDoc.data()))
@@ -132,6 +160,7 @@ export const roleService = {
       isSystem: false,
       isAdmin: false,
       status: "active",
+      ...roleTiming(payload),
       createdAt: now,
       updatedAt: now,
       createdBy: actorUid ?? null,
@@ -149,16 +178,21 @@ export const roleService = {
     payload: Partial<RoleFormPayload> & { status?: RoleStatus },
     actorUid?: string | null,
   ): Promise<void> => {
-    if (payload.status === "archived") {
-      const role = await roleService.getRole(roleId);
-      if (role?.isSystem || role?.isAdmin) {
+    const role = await roleService.getRole(roleId);
+    if (!role) throw new Error("El rol no existe.");
+    if (payload.status === "archived" || payload.temporary) {
+      if (role.isSystem || role.isAdmin) {
         throw new Error("No se puede desactivar un rol protegido del sistema.");
       }
+    }
+    if (payload.status === 'active' && isRoleExpired(role) && payload.temporary === undefined) {
+      throw new Error("Edita la duración del rol vencido antes de activarlo.");
     }
 
     const updatePayload: Record<string, unknown> = {
       updatedAt: serverTimestamp(),
       updatedBy: actorUid ?? null,
+      ...(!(role.isSystem || role.isAdmin) ? roleTiming(payload) : {}),
     };
 
     if (payload.name !== undefined) {

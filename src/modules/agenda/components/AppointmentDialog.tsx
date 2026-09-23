@@ -376,14 +376,15 @@ const AppointmentDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-3xl flex-col gap-0 overflow-hidden p-0 sm:max-h-[90dvh]">
+        <DialogHeader className="shrink-0 px-4 pb-3 pr-12 pt-4 sm:px-6 sm:pt-6">
           <DialogTitle>{title}</DialogTitle>
           <DialogDescription>{description}</DialogDescription>
         </DialogHeader>
 
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 py-2 sm:px-6">
         {(selectedDoctor || form.startDate) && (
-          <div className="rounded-xl border bg-muted/30 p-4">
+          <div className="rounded-xl border bg-muted/30 p-3 sm:p-4">
             <div className="flex flex-wrap items-center gap-2">
               {selectedDoctor && (
                 <p className="text-sm font-medium">{selectedDoctor.nombre}</p>
@@ -407,6 +408,7 @@ const AppointmentDialog = ({
           </div>
         )}
 
+        {form.doctorId && !doctors.some((doctor) => doctor.id === form.doctorId) && <p role="status" className="rounded-lg border bg-muted p-3 text-sm text-muted-foreground">Doctor eliminado o inactivo. La cita conserva su referencia histórica. Selecciona un doctor activo para guardar los cambios.</p>}
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="space-y-2 lg:col-span-2">
             <Label htmlFor="appointment-type">Tipo de registro</Label>
@@ -596,7 +598,7 @@ const AppointmentDialog = ({
                       <CircleHelp className="h-4 w-4" />
                     </Button>
                   </PopoverTrigger>
-                  <PopoverContent align="start" className="w-72 space-y-2">
+                  <PopoverContent align="start" className="w-[min(18rem,calc(100vw-2rem))] space-y-2">
                     <p className="text-sm font-medium">Horario de {selectedDoctor.nombre}</p>
                     {selectedDoctorSchedule.length > 0 ? (
                       <ul className="space-y-1 text-sm text-muted-foreground">
@@ -639,7 +641,7 @@ const AppointmentDialog = ({
               </p>
             </div>
           ) : (
-            <div className="grid grid-cols-3 gap-3 lg:col-span-2">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:col-span-2">
               <div className="space-y-2">
                 <Label htmlFor="appointment-date">Fecha</Label>
                 <Input
@@ -751,9 +753,11 @@ const AppointmentDialog = ({
             />
           </div>
         </div>
+        </div>
 
-        <DialogFooter>
+        <DialogFooter className="shrink-0 gap-2 border-t bg-background px-4 py-3 sm:px-6">
           <Button
+            className="w-full sm:w-auto"
             variant="outline"
             onClick={() => onOpenChange(false)}
             disabled={saving}
@@ -761,7 +765,7 @@ const AppointmentDialog = ({
             Cancelar
           </Button>
 
-          <Button onClick={() => void onSubmit()} disabled={saving}>
+          <Button className="w-full sm:w-auto" onClick={() => void onSubmit()} disabled={saving}>
             {isWalkIn ? (
               <UserPlus className="mr-2 h-4 w-4" />
             ) : (

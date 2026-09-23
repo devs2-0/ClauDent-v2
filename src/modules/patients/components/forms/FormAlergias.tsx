@@ -17,7 +17,7 @@ const FormAlergias: React.FC<Props> = ({ formData, setFormData }) => {
   return (
     <div className="space-y-4 p-4">
       <p className="text-sm font-medium">¿Es alérgico a alguno de los siguientes?</p>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-4">
         <div className="flex items-center space-x-2">
           <Checkbox id="antibioticos" checked={formData.antibioticos} onCheckedChange={(v) => handleCheckboxChange('antibioticos', !!v)} />
           <Label htmlFor="antibioticos">Antibióticos</Label>

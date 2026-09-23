@@ -43,7 +43,7 @@ const CalendarSlotActionDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-md overflow-y-auto overscroll-contain">
         <DialogHeader>
           <DialogTitle>¿Qué deseas agregar?</DialogTitle>
           <DialogDescription>
@@ -71,7 +71,7 @@ const CalendarSlotActionDialog = ({
           >
             <CalendarPlus className="h-5 w-5" />
 
-            <span>
+            <span className="min-w-0 whitespace-normal">
               <span className="block font-medium">Nueva cita</span>
               <span className="block text-xs text-muted-foreground">
                 Agenda un paciente en este horario.
@@ -87,7 +87,7 @@ const CalendarSlotActionDialog = ({
           >
             <Ban className="h-5 w-5" />
 
-            <span>
+            <span className="min-w-0 whitespace-normal">
               <span className="block font-medium">Bloquear horario</span>
               <span className="block text-xs text-muted-foreground">
                 Marca este espacio como no disponible.
@@ -102,7 +102,7 @@ const CalendarSlotActionDialog = ({
           >
             <Sparkles className="h-5 w-5" />
 
-            <span>
+            <span className="min-w-0 whitespace-normal">
               <span className="block font-medium">Horario especial</span>
               <span className="block text-xs text-muted-foreground">
                 Próximamente: cambiar entrada/salida solo para este día.

@@ -1,5 +1,5 @@
 // RF03: Patient clinical history (BUSCADOR + EDITABLE + FIX FECHA)
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { AlertTriangle, PackageMinus, Plus, Check, ChevronsUpDown, X, Edit, Trash2 } from 'lucide-react';
 import { Can, usePermissions } from '@/auth';
 import { usePatients, HistoryEntry } from '@/modules/patients';
@@ -19,6 +19,8 @@ import { collection, query, onSnapshot, orderBy, QuerySnapshot, DocumentData } f
 import { db } from '@/lib/firebase';
 import { Skeleton } from '@/shared/components/ui/skeleton';
 import { useConfirmAction } from '@/shared/hooks/useConfirmAction';
+import { useModalDraft } from '@/shared/hooks/useModalDraft';
+import { Checkbox } from '@/shared/components/ui/checkbox';
 import { ScrollArea } from '@/shared/components/ui/scroll-area';
 import {
   Command,
@@ -36,10 +38,11 @@ import {
 import { cn } from "@/shared/utils/utils"
 
 interface PatientHistoryProps {
+  readOnly?: boolean;
   patientId: string;
 }
 
-const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
+const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId, readOnly = false }) => {
   const { services } = useDentalServices();
   const { addHistoryEntry, updateHistoryEntry, deleteHistoryEntry } = usePatients();
   const inventory = useOptionalInventory();
@@ -47,7 +50,7 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
   const registerMovement = inventory?.registerMovement;
   const { hasPermission } = usePermissions();
   const { confirm, confirmationDialog } = useConfirmAction();
-  const canRegisterClinicalMaterials = hasPermission('inventory.usage.create') && hasPermission('patients.procedures.update') && Boolean(registerMovement);
+  const canRegisterClinicalMaterials = (!readOnly && hasPermission('inventory.usage.create')) && (!readOnly && hasPermission('patients.procedures.update')) && Boolean(registerMovement);
   
   const [historial, setHistorial] = useState<HistoryEntry[]>([]);
   const [unavailable, setUnavailable] = useState(false);
@@ -61,7 +64,7 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
 
   const [formData, setFormData] = useState({
     fecha: new Date().toISOString().split('T')[0],
-    servicios: [] as { servicioId: string; cantidad: number }[],
+    servicios: [] as HistoryEntry["servicios"],
     materialesClinicos: [] as {
       productoId: string;
       cantidad: number;
@@ -70,6 +73,25 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
     }[],
     notas: '',
   });
+  const draft = useModalDraft<typeof formData>(`procedure-history.${patientId}.${editingEntryId ?? 'new'}`);
+  const draftBaseline = useRef(formData);
+  const pendingDraftKey = useRef(false);
+  const [draftRecovered, setDraftRecovered] = useState(false);
+  useEffect(() => {
+    if (!isDialogOpen || !pendingDraftKey.current) return;
+    pendingDraftKey.current = false;
+    const recovered = draft.read();
+    if (recovered) setFormData((current) => ({ ...current, ...recovered }));
+    setDraftRecovered(Boolean(recovered));
+  }, [draft, isDialogOpen]);
+  const closeHistoryDialog = (discard = false) => {
+    if (discard || JSON.stringify(formData) === JSON.stringify(draftBaseline.current)) draft.discard();
+    else {
+      const persisted = draft.save(formData);
+      toast.info(persisted ? 'Borrador guardado en este dispositivo.' : 'Borrador conservado durante esta sesión.');
+    }
+    setIsDialogOpen(false);
+  };
 
   // --- Lógica de Buscador de Servicios ---
   const [openComboboxIndex, setOpenComboboxIndex] = useState<number | null>(null);
@@ -79,7 +101,7 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
   const [materialSearch, setMaterialSearch] = useState('');
 
   const filteredServiceOptions = useMemo(() => {
-    if (!serviceSearch.trim()) return recentServices;
+    if (!serviceSearch.trim()) return recentServices.filter((recent) => services.some((service) => service.id === recent.id && service.estado === "activo"));
     const searchLower = serviceSearch.toLowerCase();
     return services.filter(s => 
         s.nombre.toLowerCase().includes(searchLower) || 
@@ -114,7 +136,7 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
 
   const handleSelectService = (index: number, service: Service) => {
     const newServicios = [...formData.servicios];
-    newServicios[index] = { ...newServicios[index], servicioId: service.id };
+    newServicios[index] = { ...newServicios[index], servicioId: service.id, nombre: service.nombre, precioUnitario: service.precio };
     setFormData({ ...formData, servicios: newServicios });
     
     // Agregar a recientes
@@ -173,24 +195,26 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
   }, [patientId]);
 
   const handleOpenDialog = (entry?: HistoryEntry) => {
-    if (!hasPermission(entry ? "patients.procedures.update" : "patients.procedures.create")) return;
+    if (readOnly || !hasPermission(entry ? "patients.procedures.update" : "patients.procedures.create")) return;
+    pendingDraftKey.current = true;
     if (entry) {
         setEditingEntryId(entry.id);
-        setFormData({
+        draftBaseline.current = {
             fecha: entry.fecha,
             servicios: entry.servicios,
             materialesClinicos: [],
             notas: entry.notas || '',
-        });
+        };
     } else {
         setEditingEntryId(null);
-        setFormData({
+        draftBaseline.current = {
             fecha: new Date().toISOString().split('T')[0],
             servicios: [],
             materialesClinicos: [],
             notas: '',
-        });
+        };
     }
+    setFormData(draftBaseline.current);
     setIsDialogOpen(true);
   };
 
@@ -261,7 +285,7 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!hasPermission(editingEntryId ? "patients.procedures.update" : "patients.procedures.create")) return;
+    if (readOnly || !hasPermission(editingEntryId ? "patients.procedures.update" : "patients.procedures.create")) return;
     if (formData.servicios.length === 0) {
       toast.error('Debe agregar al menos un servicio');
       return;
@@ -333,21 +357,26 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
       }
     }
 
+    if (formData.servicios.some((item) => !services.some((service) => service.id === item.servicioId))) {
+      toast.error('Hay servicios eliminados. Retíralos o selecciona servicios disponibles antes de guardar.'); return;
+    }
     setIsFormLoading(true);
     const payload = {
         fecha: formData.fecha,
-        servicios: formData.servicios,
+        servicios: formData.servicios.map((item) => ({ ...item, nombre: item.nombre || services.find((service) => service.id === item.servicioId)?.nombre || 'Servicio eliminado', precioUnitario: item.precioUnitario ?? services.find((service) => service.id === item.servicioId)?.precio ?? 0 })),
         notas: formData.notas,
         total: calculateTotal(),
         ...(!editingEntryId ? { materialesClinicos: [] } : {}),
     };
 
+    let createdEntryId: string | null = null;
     try {
       if (editingEntryId) {
         await updateHistoryEntry(patientId, editingEntryId, payload);
         toast.success('Entrada actualizada');
       } else {
         const historyEntryId = await addHistoryEntry(patientId, payload);
+        createdEntryId = historyEntryId;
         const materialesRegistrados = [];
 
         for (const material of formData.materialesClinicos) {
@@ -383,17 +412,23 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
         }
         toast.success('Entrada agregada');
       }
+      draft.discard();
       setIsDialogOpen(false);
     } catch (error) {
       console.error(error);
-      toast.error('Error al guardar');
+      if (createdEntryId) {
+        // A persisted entry must not be recovered as a new draft and submitted twice.
+        draft.discard();
+        setIsDialogOpen(false);
+        toast.error('La entrada se guardó, pero el registro de materiales quedó incompleto. Revisa la entrada antes de continuar.');
+      } else toast.error('Error al guardar');
     } finally {
       setIsFormLoading(false);
     }
   };
 
   const handleDelete = async (entryId: string) => {
-    if (!hasPermission("patients.procedures.delete")) return;
+    if (readOnly || !hasPermission("patients.procedures.delete")) return;
     const confirmed = await confirm({
       title: 'Eliminar entrada del historial',
       description: 'La entrada clinica se eliminara. Los movimientos de inventario ya registrados se conservaran.',
@@ -427,12 +462,12 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h3 className="text-lg font-semibold">Historial de Procedimientos</h3>
-        <Can permission="patients.procedures.create"><Button onClick={() => handleOpenDialog()} disabled={historialLoading}>
+        {!readOnly && <Can permission="patients.procedures.create"><Button onClick={() => handleOpenDialog()} disabled={historialLoading}>
           <Plus className="h-4 w-4 mr-2" />
           Nueva Entrada
-        </Button></Can>
+        </Button></Can>}
       </div>
 
       <div className="space-y-4">
@@ -456,13 +491,13 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
                         <CardTitle className="text-base">{formatDate(entry.fecha)}</CardTitle>
                         <CardDescription>Total: {formatCurrency(entry.total)}</CardDescription>
                     </div>
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <Can permission="patients.procedures.update"><Button variant="ghost" size="icon" aria-label="Editar" onClick={() => handleOpenDialog(entry)}>
+                    <div className="flex gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+                        {!readOnly && <Can permission="patients.procedures.update"><Button variant="ghost" size="icon" aria-label="Editar" onClick={() => handleOpenDialog(entry)}>
                             <Edit className="h-4 w-4" />
-                        </Button></Can>
-                        <Can permission="patients.procedures.delete"><Button variant="ghost" size="icon" onClick={() => handleDelete(entry.id)} className="text-destructive hover:text-destructive">
+                        </Button></Can>}
+                        {!readOnly && <Can permission="patients.procedures.delete"><Button variant="ghost" size="icon" onClick={() => handleDelete(entry.id)} className="text-destructive hover:text-destructive">
                             <Trash2 className="h-4 w-4" />
-                        </Button></Can>
+                        </Button></Can>}
                     </div>
                 </div>
               </CardHeader>
@@ -474,7 +509,7 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
                       const service = services.find((s) => s.id === item.servicioId);
                       return (
                         <li key={idx} className="text-sm text-muted-foreground">
-                          {service?.nombre || 'Servicio no encontrado'} x{item.cantidad}
+                          {item.nombre || service?.nombre || 'Servicio eliminado'}{!service && item.nombre ? ' · Servicio eliminado' : ''} x{item.cantidad}
                         </li>
                       );
                     })}
@@ -511,14 +546,15 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
         )}
       </div>
 
-      <Dialog open={isDialogOpen && hasPermission(editingEntryId ? "patients.procedures.update" : "patients.procedures.create")} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+      <Dialog open={isDialogOpen && (!readOnly && hasPermission(editingEntryId ? "patients.procedures.update" : "patients.procedures.create"))} onOpenChange={(open) => { if (!open) closeHistoryDialog(); }}>
+        <DialogContent className="max-h-[calc(100dvh-1rem)] max-w-2xl flex flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>{editingEntryId ? 'Editar Entrada' : 'Nueva Entrada en Historial'}</DialogTitle>
             <DialogDescription>Registra los servicios aplicados al paciente</DialogDescription>
           </DialogHeader>
           
-          <div className="flex-1 overflow-y-auto -mx-6 px-6 py-4">
+          <div className="-mx-4 min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:-mx-6 sm:px-6">
+            {draftRecovered && <p role="status" className="mb-3 text-sm text-muted-foreground">Se recuperó tu borrador. Cancelar lo descarta.</p>}
             <form id="history-form" onSubmit={handleSubmit} className="space-y-4">
                 <fieldset disabled={isFormLoading} className="space-y-4">
                 <div className="space-y-2">
@@ -541,7 +577,7 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
                     </Button>
                     </div>
                     {formData.servicios.map((item, index) => (
-                    <div key={index} className="flex gap-2 items-center">
+                    <div key={index} className="grid min-w-0 grid-cols-[minmax(0,1fr)_5rem_2.5rem] items-center gap-2">
                         
                         {/* BUSCADOR DE SERVICIOS (POPOVER) */}
                         <Popover 
@@ -556,7 +592,7 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
                                     variant="outline"
                                     role="combobox"
                                     className={cn(
-                                        "flex-1 justify-between text-left font-normal",
+                                        "w-full min-w-0 justify-between text-left font-normal",
                                         !item.servicioId && "text-muted-foreground"
                                     )}
                                 >
@@ -568,7 +604,7 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
                                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
                             </PopoverTrigger>
-                            <PopoverContent className="w-[300px] p-0" align="start">
+                            <PopoverContent className="w-[min(300px,calc(100vw-2rem))] p-0" align="start">
                                 <Command shouldFilter={false}>
                                     <CommandInput 
                                         placeholder="Buscar servicio..." 
@@ -654,7 +690,7 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
                     )}
                     {!editingEntryId && !canRegisterClinicalMaterials && (
                         <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-                            Tu rol puede guardar historial clinico, pero necesita inventory.usage.create para descontar materiales de inventario.
+                            Tu rol puede guardar historial clinico, pero necesita permiso para registrar consumos y descontar materiales de inventario.
                         </div>
                     )}
                     {formData.materialesClinicos.map((material, index) => {
@@ -693,7 +729,7 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
                                                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                             </Button>
                                         </PopoverTrigger>
-                                        <PopoverContent className="w-[360px] p-0" align="start">
+                                        <PopoverContent className="w-[min(360px,calc(100vw-2rem))] p-0" align="start">
                                             <Command shouldFilter={false}>
                                                 <CommandInput
                                                     placeholder="Buscar producto, marca o categoria..."
@@ -813,7 +849,7 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId }) => {
           </div>
 
           <DialogFooter className="pt-4 border-t">
-            <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isFormLoading}>
+            <Button type="button" variant="outline" onClick={() => closeHistoryDialog(true)} disabled={isFormLoading}>
               Cancelar
             </Button>
             <Button type="submit" form="history-form" disabled={isFormLoading}>

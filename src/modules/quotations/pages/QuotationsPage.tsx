@@ -107,12 +107,12 @@ const Cotizaciones: React.FC = () => {
 
   // --- LÓGICA DE FILTRADO ---
   const suggestedPatients = useMemo(() => {
-    const selectedIds = new Set(recentPatients.map((patient) => patient.id));
+    const selectedIds = new Set(recentPatients.filter((recent) => patients.some((patient) => patient.id === recent.id)).map((patient) => patient.id));
     const newestPatients = [...patients]
       .sort((first, second) => second.fechaRegistro.localeCompare(first.fechaRegistro))
       .filter((patient) => !selectedIds.has(patient.id));
 
-    return [...recentPatients, ...newestPatients].slice(0, 5);
+    return [...recentPatients.filter((recent) => patients.some((patient) => patient.id === recent.id)), ...newestPatients].slice(0, 5);
   }, [patients, recentPatients]);
 
   const filteredPatientOptions = useMemo(() => {
@@ -126,7 +126,7 @@ const Cotizaciones: React.FC = () => {
   }, [patients, patientSearch, suggestedPatients]);
 
   const filteredServiceOptions = useMemo(() => {
-    if (!serviceSearch.trim()) return recentServices;
+    if (!serviceSearch.trim()) return recentServices.filter((recent) => services.some((service) => service.id === recent.id && service.estado === "activo"));
     const searchLower = serviceSearch.toLowerCase();
     return services
         .filter(s => 
@@ -355,6 +355,9 @@ const Cotizaciones: React.FC = () => {
     setIsFormLoading(true);
     
     const finalDiscount = Number(formData.descuento) || 0;
+    if (!patients.some((patient) => patient.id === formData.pacienteId) || formData.items.some((item) => item.servicioId && !services.some((service) => service.id === item.servicioId))) {
+      toast.error('Selecciona un paciente y servicios vigentes para guardar la cotización.'); setIsFormLoading(false); return;
+    }
     const finalItems: QuotationItem[] = formData.items.map(item => ({
         servicioId: item.servicioId,
         nombre: item.nombre,
@@ -364,6 +367,7 @@ const Cotizaciones: React.FC = () => {
 
     const payload = {
         pacienteId: formData.pacienteId,
+        pacienteNombre: patients.filter((patient) => patient.id === formData.pacienteId).map((patient) => `${patient.nombres} ${patient.apellidos}`).join(""),
         fecha: formData.fecha,
         items: finalItems,
         descuento: finalDiscount,
@@ -445,7 +449,7 @@ const Cotizaciones: React.FC = () => {
     }
     const patient = patients.find(p => p.id === quotation.pacienteId);
     try {
-      generateQuotationPDF(quotation, patient);
+      generateQuotationPDF(quotation, patient, new Set(quotation.items.filter((item) => item.servicioId && !services.some((service) => service.id === item.servicioId)).map((item) => item.servicioId!)));
     } catch (error) {
       console.error("Error al generar PDF: ", error);
       toast.error("Error al generar el PDF");
@@ -481,7 +485,7 @@ const Cotizaciones: React.FC = () => {
   );
 
   return (
-    <div className="flex h-[calc(100dvh-7rem)] min-h-0 flex-col space-y-4">
+    <div className="flex min-h-0 flex-col space-y-4 lg:h-[calc(100dvh-7rem)]">
       <div className="flex shrink-0 flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="flex items-center gap-2">
@@ -497,7 +501,7 @@ const Cotizaciones: React.FC = () => {
           </div>
         </div>
         {canCreateQuotation && (
-          <Button onClick={() => handleOpenDialog()}>
+          <Button className="w-full shadow-lg sm:w-auto" onClick={() => handleOpenDialog()}>
             <Plus className="mr-2 h-4 w-4" />
             Nueva Cotización
           </Button>
@@ -589,7 +593,7 @@ const Cotizaciones: React.FC = () => {
       </div>
 
       {canSelectQuotations && filteredQuotations.length > 0 && (
-        <div className="flex shrink-0 flex-wrap items-center gap-2 rounded-lg border bg-card p-2">
+        <div className="flex shrink-0 flex-col items-stretch gap-2 rounded-lg border bg-card p-2 sm:flex-row sm:flex-wrap sm:items-center [&>button]:w-full sm:[&>button]:w-auto">
           <div className="flex items-center gap-2 px-1 text-sm text-muted-foreground">
             <Checkbox
               checked={allVisibleSelected ? true : selectedVisibleIds.length > 0 ? 'indeterminate' : false}
@@ -654,10 +658,11 @@ const Cotizaciones: React.FC = () => {
                           />
                         </TableCell>}
                         <TableCell className="whitespace-nowrap">
-                          {patient ? `${patient.nombres} ${patient.apellidos}` : 'Paciente eliminado'}
+                          {patient ? `${patient.nombres} ${patient.apellidos}` : `${quotation.pacienteNombre || 'Paciente'} · Eliminado`}
+                          {!patient && can('patients.record.view') && <Button size="sm" variant="link" onClick={() => navigate(`/pacientes/${quotation.pacienteId}`)}>Ver historial</Button>}
                         </TableCell>
                         <TableCell className="whitespace-nowrap">{formatDate(quotation.fecha)}</TableCell>
-                        <TableCell className="whitespace-nowrap">{quotation.items.length} servicio(s)</TableCell>
+                        <TableCell className="whitespace-nowrap">{quotation.items.length} servicio(s){quotation.items.some((item) => item.servicioId && !services.some((service) => service.id === item.servicioId)) && <Badge variant="secondary" className="ml-2">Servicio eliminado</Badge>}</TableCell>
                         <TableCell className="font-semibold whitespace-nowrap">{formatCurrency(quotation.total)}</TableCell>
                         <TableCell className="whitespace-nowrap">
                           <Badge variant={estadoBadgeVariant(quotation.estado)}>
@@ -704,7 +709,7 @@ const Cotizaciones: React.FC = () => {
       </Card>
 
       <Dialog open={isDialogOpen && can(editingQuotationId ? "quotations.update" : "quotations.create")} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+        <DialogContent className="flex max-h-[calc(100dvh-1rem)] max-w-4xl flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>{editingQuotationId ? 'Editar Cotización' : 'Nueva Cotización'}</DialogTitle>
             <DialogDescription>
@@ -712,7 +717,7 @@ const Cotizaciones: React.FC = () => {
             </DialogDescription>
           </DialogHeader>
           
-          <div className="-mx-6 flex-1 overflow-y-auto px-6">
+          <div className="-mx-4 min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 sm:-mx-6 sm:px-6">
             <form id="quotation-form" onSubmit={handleSubmit} className="space-y-4 py-3 pb-8">
                 <fieldset disabled={isFormLoading} className="space-y-4">
                 <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
@@ -857,7 +862,7 @@ const Cotizaciones: React.FC = () => {
                                 variant="outline"
                                 role="combobox"
                                 className={cn(
-                                  "flex-[2] min-w-[200px] justify-between",
+                                  "w-full min-w-0 justify-between sm:flex-[2] sm:min-w-[200px]",
                                   !item.nombre && "text-muted-foreground"
                                 )}
                               >
@@ -865,7 +870,7 @@ const Cotizaciones: React.FC = () => {
                                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                               </Button>
                             </PopoverTrigger>
-                            <PopoverContent className="w-[300px] p-0" align="start">
+                            <PopoverContent className="w-[min(300px,calc(100vw-2rem))] p-0" align="start">
                               <Command shouldFilter={false}>
                                 <CommandInput 
                                     placeholder="Escribe para buscar..." 
@@ -911,7 +916,7 @@ const Cotizaciones: React.FC = () => {
                             value={item.nombre}
                             onChange={(e) => handleItemChange(index, 'nombre', e.target.value)}
                             placeholder="Nombre servicio personalizado"
-                            className="flex-[2] min-w-[200px]"
+                            className="w-full min-w-0 sm:flex-[2] sm:min-w-[200px]"
                             />
                             <Input
                             type="number"
@@ -948,7 +953,7 @@ const Cotizaciones: React.FC = () => {
                     {formErrors.items && <p className="text-xs text-destructive">{formErrors.items}</p>}
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <div className="space-y-2">
                     <Label htmlFor="descuento">Descuento (%)</Label>
                     <Input
@@ -1008,11 +1013,11 @@ const Cotizaciones: React.FC = () => {
                 </div>
           </div>
 
-          <DialogFooter className="pt-2">
-            <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isFormLoading}>
+          <DialogFooter className="shrink-0 gap-2 pt-2">
+            <Button className="w-full sm:w-auto" type="button" variant="outline" onClick={() => setIsDialogOpen(false)} disabled={isFormLoading}>
               Cancelar
             </Button>
-            <Button type="submit" form="quotation-form" disabled={isFormLoading}>
+            <Button className="w-full sm:w-auto" type="submit" form="quotation-form" disabled={isFormLoading}>
               {isFormLoading ? 'Guardando...' : (editingQuotationId ? 'Actualizar' : 'Crear Cotización')}
             </Button>
           </DialogFooter>

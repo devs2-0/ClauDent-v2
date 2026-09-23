@@ -1,6 +1,7 @@
 import {
   collection,
   doc,
+  deleteDoc,
   getDoc,
   getDocs,
   query,
@@ -10,6 +11,8 @@ import {
   where,
 } from "firebase/firestore";
 
+import { isRoleExpired } from "../utils/roleLifetime";
+import { roleService } from "./roleService";
 import { db } from "@/lib/firebase";
 import { addAuditLog } from "@/modules/audit/services/auditService";
 import type { AppUserStatus, Role } from "@/auth";
@@ -60,7 +63,7 @@ export const normalizeInvitationEmail = (email: string) => {
 const calculateEffectivePermissions = (roleIds: string[], roles: Role[]) => {
   const activeRolesById = new Map(
     roles
-      .filter((role) => role.status === "active")
+      .filter((role) => role.status === "active" && !isRoleExpired(role))
       .map((role) => [role.id, role]),
   );
 
@@ -182,7 +185,11 @@ export const userInvitationService = {
       }
     }
 
-    const effective = calculateEffectivePermissions(roleIds, roles);
+    const latestRoles = await roleService.listRoles();
+    if (roleIds.some((id) => !latestRoles.some((role) => role.id === id && role.status === "active"))) {
+      throw new Error("Selecciona únicamente roles activos y vigentes.");
+    }
+    const effective = calculateEffectivePermissions(roleIds, latestRoles);
 
     await setDoc(invitationRef, {
       email,
@@ -243,7 +250,7 @@ export const userInvitationService = {
     await addAuditLog("UPDATE", "usuarios", `Invitacion cancelada: ${normalizedEmail}`);
   },
 
-  softDeleteUserAccess: async (uid: string, actorUid?: string | null) => {
+  deleteUserAccess: async (uid: string, actorUid?: string | null) => {
     if (actorUid && uid === actorUid) {
       throw new Error("No puedes quitar el acceso de tu propia cuenta.");
     }
@@ -265,19 +272,7 @@ export const userInvitationService = {
       }
     }
 
-    await updateDoc(doc(db, "usuarios", uid), {
-      status: "blocked",
-      roleIds: [],
-      primaryRoleId: null,
-      permissions: [],
-      isAdmin: false,
-      visible: false,
-      deletedAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-      deletedBy: actorUid ?? null,
-      updatedBy: actorUid ?? null,
-      deletedFromAuth: false,
-    });
+    await deleteDoc(doc(db, "usuarios", uid));
     await addAuditLog("DELETE", "usuarios", `Acceso eliminado: ${uid}`);
   },
 };

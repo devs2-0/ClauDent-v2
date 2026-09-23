@@ -3,6 +3,7 @@ import type { Timestamp } from "firebase/firestore";
 export type ClinicalStaffStatus = "active" | "inactive";
 
 export interface Doctor {
+  isDeletedReference?: boolean;
   id: string;
   nombre: string;
   email?: string;
@@ -132,6 +133,7 @@ export type AppointmentStatus =
 export type AppointmentType = "scheduled" | "walk_in";
 
 export interface Appointment {
+  doctorName?: string;
   id: string;
   patientId: string | null;
   patientName: string;

@@ -35,8 +35,8 @@ const Servicios: React.FC = () => {
 
       <Tabs value={activeTab} onValueChange={setSelectedTab} className="min-h-0">
         <TabsList className={`grid w-full max-w-md ${canViewServices && canViewPackages ? "grid-cols-2" : "grid-cols-1"}`}>
-          {canViewServices && <TabsTrigger value="servicios">Servicios individuales</TabsTrigger>}
-          {canViewPackages && <TabsTrigger value="paquetes">Paquetes</TabsTrigger>}
+          {canViewServices && <TabsTrigger value="servicios" className="min-w-0 px-2 text-xs sm:px-3 sm:text-sm"><span className="truncate">Servicios individuales</span></TabsTrigger>}
+          {canViewPackages && <TabsTrigger value="paquetes" className="min-w-0 px-2 text-xs sm:px-3 sm:text-sm"><span className="truncate">Paquetes</span></TabsTrigger>}
         </TabsList>
         
         {canViewServices && <TabsContent value="servicios" className="mt-6">

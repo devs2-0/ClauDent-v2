@@ -29,6 +29,8 @@ interface AppointmentDetailsDialogProps {
   onOpenChange: (open: boolean) => void;
   appointment: Appointment | null;
   doctorName: string;
+  patientDeleted?: boolean;
+  serviceDeleted?: boolean;
   assistantNames: string[];
   walkInAssistantName?: string;
   canUpdate: boolean;
@@ -62,6 +64,8 @@ const AppointmentDetailsDialog = ({
   onOpenChange,
   appointment,
   doctorName,
+  patientDeleted = false,
+  serviceDeleted = false,
   assistantNames,
   walkInAssistantName,
   canUpdate,
@@ -79,8 +83,8 @@ const AppointmentDetailsDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
-        <DialogHeader>
+      <DialogContent className="flex max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-2xl flex-col gap-0 overflow-hidden p-0 sm:max-h-[90dvh]">
+        <DialogHeader className="shrink-0 px-4 pb-3 pr-12 pt-4 sm:px-6 sm:pt-6">
           <DialogTitle>
             {isWalkIn ? "Detalle sin cita" : "Detalle de cita"}
           </DialogTitle>
@@ -89,8 +93,8 @@ const AppointmentDetailsDialog = ({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4">
-          <div className="rounded-xl border bg-muted/30 p-4">
+        <div className="min-h-0 flex-1 space-y-4 overflow-y-auto overscroll-contain px-4 py-2 sm:px-6">
+          <div className="rounded-xl border bg-muted/30 p-3 sm:p-4">
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant={getStatusVariant(appointment.status)}>
                 {statusLabels[appointment.status]}
@@ -109,12 +113,12 @@ const AppointmentDetailsDialog = ({
               </span>
             </div>
 
-            <h3 className="mt-3 text-lg font-semibold">
-              {appointment.patientName}
+            <h3 className="mt-3 break-words text-lg font-semibold">
+              {appointment.patientName}{patientDeleted && <Badge variant="secondary" className="ml-2">Paciente eliminado</Badge>}
             </h3>
 
-            <p className="mt-1 text-sm text-muted-foreground">
-              {appointment.serviceName || appointment.reason || "Sin servicio"}
+            <p className="mt-1 break-words text-sm text-muted-foreground">
+              {appointment.serviceName || appointment.reason || "Sin servicio"}{serviceDeleted && <Badge variant="secondary" className="ml-2">Servicio eliminado</Badge>}
             </p>
 
             {appointment.reason && appointment.serviceName && (
@@ -158,7 +162,7 @@ const AppointmentDetailsDialog = ({
                 Asistentes
               </p>
 
-              <p className="text-sm text-muted-foreground">
+              <p className="break-words text-sm text-muted-foreground">
                 {assistantNames.length > 0
                   ? assistantNames.join(", ")
                   : "Sin asistentes asignados"}
@@ -215,8 +219,9 @@ const AppointmentDetailsDialog = ({
           )}
         </div>
 
-        <DialogFooter className="flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-between">
+        <DialogFooter className="shrink-0 flex-col gap-2 border-t bg-background px-4 py-3 sm:flex-row sm:flex-wrap sm:justify-between sm:px-6">
           <Button
+            className="w-full sm:w-auto"
             variant="outline"
             onClick={() => onOpenChange(false)}
             disabled={saving}
@@ -224,7 +229,7 @@ const AppointmentDetailsDialog = ({
             Cerrar
           </Button>
 
-          <div className="flex flex-wrap gap-2">
+          <div className="grid w-full grid-cols-1 gap-2 min-[420px]:grid-cols-2 sm:flex sm:w-auto sm:flex-wrap">
             {canUpdate && appointment.status !== "cancelled" && (
               <Button
                 variant="outline"

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2,
   CheckCheck,
@@ -52,6 +52,8 @@ import {
   SelectValue,
 } from "@/shared/components/ui/select";
 import { Textarea } from "@/shared/components/ui/textarea";
+import { durationUnitLabels, type DurationUnit } from "@/shared/utils/duration";
+import { isRoleExpired, roleExpirationDate, withRoleLifetime } from "../utils/roleLifetime";
 import { useConfirmAction } from "@/shared/hooks/useConfirmAction";
 
 interface RoleFormState {
@@ -61,6 +63,9 @@ interface RoleFormState {
   color: string;
   icon: string;
   permissions: PermissionKey[];
+  temporary: boolean;
+  durationValue: string;
+  durationUnit: DurationUnit;
 }
 
 const emptyForm: RoleFormState = {
@@ -69,6 +74,9 @@ const emptyForm: RoleFormState = {
   color: DEFAULT_ROLE_COLOR,
   icon: DEFAULT_ROLE_EMOJI,
   permissions: [],
+  temporary: false,
+  durationValue: "1",
+  durationUnit: "days",
 };
 
 const visibleRolePermissionKeySet = new Set<PermissionKey>(rolePermissionKeys);
@@ -117,7 +125,7 @@ const RolesPage = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("active");
   const [selectedRoleIds, setSelectedRoleIds] = useState<string[]>([]);
   const [bulkSaving, setBulkSaving] = useState(false);
   const { confirm, confirmationDialog } = useConfirmAction();
@@ -195,11 +203,11 @@ const RolesPage = () => {
     });
   };
 
-  const loadRoles = async () => {
+  const loadRoles = useCallback(async () => {
     setLoading(true);
 
     try {
-      const data = await roleService.listRoles();
+      const data = await roleService.listRoles({ processExpired: can("roles.update"), actorUid: currentUser?.uid });
       setRoles(data);
     } catch (error) {
       console.error(error);
@@ -207,19 +215,35 @@ const RolesPage = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [can, currentUser?.uid]);
 
   useEffect(() => {
-    loadRoles();
-  }, []);
+    void loadRoles();
+  }, [loadRoles]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const expiredActive = roles.some((role) => role.status === 'active' && isRoleExpired(role));
+      if (!expiredActive || loading) return;
+      if (can('roles.update')) void loadRoles();
+      else setRoles((current) => current.map((role) => withRoleLifetime(role)));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [roles, can, loading, loadRoles]);
+
+  const [activatingRole, setActivatingRole] = useState(false);
 
   const openCreateDialog = () => {
+    if (!can('roles.create')) return;
+    setActivatingRole(false);
     setEditingRole(null);
     setForm(emptyForm);
     setDialogOpen(true);
   };
 
   const openEditDialog = (role: Role) => {
+    if (!can('roles.update')) return;
+    setActivatingRole(false);
     setEditingRole(role);
     setForm({
       id: role.id,
@@ -228,6 +252,9 @@ const RolesPage = () => {
       color: role.color ?? DEFAULT_ROLE_COLOR,
       icon: getRoleEmoji(role.icon),
       permissions: role.permissions ?? [],
+      temporary: role.temporary === true,
+      durationValue: String(role.durationValue ?? 1),
+      durationUnit: role.durationUnit ?? "days",
     });
     setDialogOpen(true);
   };
@@ -237,6 +264,7 @@ const RolesPage = () => {
 
     blurActiveElement();
     setDialogOpen(false);
+    setActivatingRole(false);
     setEditingRole(null);
     setForm(emptyForm);
   };
@@ -303,11 +331,17 @@ const RolesPage = () => {
         await roleService.updateRole(
           editingRole.id,
           {
+            ...(activatingRole ? { status: "active" as const } : {}),
             name,
             description: form.description,
             color: form.color,
             icon: form.icon,
             permissions: sanitizeVisiblePermissions(form.permissions),
+            ...(!editingRole || !isProtectedRole(editingRole) ? {
+              temporary: form.temporary,
+              durationValue: Number(form.durationValue),
+              durationUnit: form.durationUnit,
+            } : {}),
           },
           currentUser?.uid,
         );
@@ -321,6 +355,11 @@ const RolesPage = () => {
             color: form.color,
             icon: form.icon,
             permissions: sanitizeVisiblePermissions(form.permissions),
+            ...(!editingRole || !isProtectedRole(editingRole) ? {
+              temporary: form.temporary,
+              durationValue: Number(form.durationValue),
+              durationUnit: form.durationUnit,
+            } : {}),
           },
           currentUser?.uid,
         );
@@ -328,7 +367,10 @@ const RolesPage = () => {
         toast.success("Rol creado correctamente.");
       }
 
-      closeDialog();
+      setDialogOpen(false);
+      setActivatingRole(false);
+      setEditingRole(null);
+      setForm(emptyForm);
       await loadRoles();
     } catch (error) {
       console.error(error);
@@ -353,6 +395,11 @@ const RolesPage = () => {
       return;
     }
 
+    if (role.status !== "active" && role.temporary) {
+      openEditDialog(role);
+      setActivatingRole(true);
+      return;
+    }
     const nextStatus = role.status === "active" ? "archived" : "active";
 
     const confirmed = await confirm({
@@ -398,18 +445,20 @@ const RolesPage = () => {
       return;
     }
 
-    const usageCount = await roleService.getRoleUsageCount(role.id);
-
-    if (usageCount > 0) {
-      toast.error(
-        `No se puede eliminar este rol porque está asignado a ${usageCount} usuario(s).`,
-      );
+    try {
+      const usageCount = await roleService.getRoleUsageCount(role.id);
+      if (usageCount > 0) {
+        toast.error(`No se puede eliminar este rol porque está asignado a ${usageCount} usuario(s).`);
+        return;
+      }
+    } catch {
+      toast.error('No se pudo comprobar el uso del rol. Intenta de nuevo.');
       return;
     }
 
     const confirmed = await confirm({
       title: "Eliminar rol",
-      description: `Se eliminará el rol ${role.name}. Esta acción no se puede deshacer.`,
+      description: `Se eliminará el rol ${role.name}. Los registros históricos conservarán sus referencias. Esta acción no se puede deshacer.`,
       confirmLabel: "Eliminar rol",
       destructive: true,
     });
@@ -418,6 +467,7 @@ const RolesPage = () => {
 
     try {
       await roleService.deleteRole(role.id);
+      setRoles((current) => current.filter((item) => item.id !== role.id));
       setSelectedRoleIds((current) => current.filter((id) => id !== role.id));
       toast.success("Rol eliminado correctamente.");
       await loadRoles();
@@ -464,6 +514,10 @@ const RolesPage = () => {
       return;
     }
 
+    if (action === "activate" && targets.some((role) => role.temporary)) {
+      toast.info("Activa los roles temporales individualmente para elegir su nueva vigencia.");
+      return;
+    }
     if (action === "delete") {
       try {
         const usage = await Promise.all(
@@ -501,7 +555,7 @@ const RolesPage = () => {
       },
       delete: {
         title: "Eliminar roles",
-        description: `Se eliminarán ${targets.length} rol(es) sin usuarios asignados.`,
+        description: `Se eliminarán ${targets.length} rol(es) sin usuarios asignados. Los registros históricos conservarán sus referencias.`,
         confirmLabel: "Eliminar",
       },
     } as const;
@@ -556,14 +610,14 @@ const RolesPage = () => {
           </div>
         </div>
 
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={loadRoles} disabled={loading}>
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+          <Button className="w-full sm:w-auto" variant="outline" onClick={loadRoles} disabled={loading}>
             <RefreshCw className="mr-2 h-4 w-4" />
             Actualizar
           </Button>
 
           <Can permission="roles.create">
-            <Button onClick={openCreateDialog}>
+            <Button className="w-full shadow-lg sm:w-auto" onClick={openCreateDialog}>
               <Plus className="mr-2 h-4 w-4" />
               Nuevo rol
             </Button>
@@ -601,7 +655,7 @@ const RolesPage = () => {
 
         <CardContent className="space-y-3">
           {canSelectRoles && (
-            <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/20 p-2">
+            <div className="flex flex-col items-stretch gap-2 rounded-lg border bg-muted/20 p-2 sm:flex-row sm:flex-wrap sm:items-center [&>button]:w-full sm:[&>button]:w-auto">
               <Button type="button" variant="outline" size="sm" onClick={toggleVisibleRoles} disabled={selectableVisibleRoleIds.length === 0 || bulkSaving}>
                 <CheckCheck className="mr-2 h-4 w-4" />
                 {allVisibleRolesSelected ? "Quitar visibles" : "Seleccionar visibles"}
@@ -659,8 +713,8 @@ const RolesPage = () => {
                       title={isProtectedRole(role) ? "Rol protegido del sistema" : "Seleccionar rol"}
                     />
                   )}
-                  <div className="flex flex-col gap-4 pr-8 md:flex-row md:items-start md:justify-between">
-                    <div className="space-y-2">
+                  <div className="flex min-w-0 flex-col gap-4 pr-8 md:flex-row md:items-start md:justify-between">
+                    <div className="min-w-0 space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
                         <div className="flex items-center gap-3">
                           <span
@@ -696,7 +750,7 @@ const RolesPage = () => {
                             role.status === "active" ? "outline" : "secondary"
                           }
                         >
-                          {role.status === "active" ? "Activo" : "Inactivo"}
+                          {isRoleExpired(role) ? "Vencido" : role.status === "active" ? "Activo" : "Inactivo"}
                         </Badge>
                       </div>
 
@@ -706,6 +760,7 @@ const RolesPage = () => {
 
                       <p className="text-xs text-muted-foreground">
                         {role.permissions.length} permiso(s) asignado(s)
+                        {role.temporary && roleExpirationDate(role) && <span className="mt-1 block">Expira: {roleExpirationDate(role)!.toLocaleString('es-MX')}</span>}
                       </p>
                     </div>
 
@@ -758,7 +813,7 @@ const RolesPage = () => {
       {confirmationDialog}
 
       <Dialog
-        open={dialogOpen}
+        open={dialogOpen && can(editingRole ? 'roles.update' : 'roles.create')}
         onOpenChange={(open) => {
           if (open) {
             setDialogOpen(true);
@@ -769,14 +824,14 @@ const RolesPage = () => {
         }}
       >
         <DialogContent
-          className="max-h-[90vh] max-w-4xl overflow-y-auto"
+          className="max-h-[calc(100dvh-1rem)] max-w-4xl overflow-y-auto overscroll-contain"
           onCloseAutoFocus={handleDialogCloseAutoFocus}
           onEscapeKeyDown={blurActiveElement}
           onPointerDownOutside={blurActiveElement}
         >
           <DialogHeader>
             <DialogTitle>
-              {editingRole ? "Editar rol" : "Crear rol personalizado"}
+              {activatingRole ? "Activar rol y renovar vigencia" : editingRole ? "Editar rol" : "Crear rol personalizado"}
             </DialogTitle>
             <DialogDescription>
               Selecciona la apariencia y los permisos que tendrá este rol. Los
@@ -824,6 +879,21 @@ const RolesPage = () => {
                 />
               </div>
 
+              {(!editingRole || !isProtectedRole(editingRole)) && <div className="space-y-3 rounded-lg border p-3 md:col-span-2">
+                <div className="flex items-center gap-2">
+                  <Checkbox id="temporary-role" checked={form.temporary} onCheckedChange={(checked) => setForm((current) => ({ ...current, temporary: checked === true }))} />
+                  <Label htmlFor="temporary-role">Rol temporal</Label>
+                  {activatingRole && <p className="text-sm text-muted-foreground">La vigencia comienza al activar. Elige una duración nueva o desmarca temporal para activar sin vencimiento.</p>}
+                </div>
+                {form.temporary && <>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-2"><Label htmlFor="role-duration">Duración</Label><Input id="role-duration" type="number" min={1} max={3650} step={1} value={form.durationValue} onChange={(event) => setForm((current) => ({ ...current, durationValue: event.target.value }))} /></div>
+                    <div className="space-y-2"><Label htmlFor="role-duration-unit">Unidad</Label><Select value={form.durationUnit} onValueChange={(value) => setForm((current) => ({ ...current, durationUnit: value as DurationUnit }))}><SelectTrigger id="role-duration-unit"><SelectValue /></SelectTrigger><SelectContent>{Object.entries(durationUnitLabels).map(([value, label]) => <SelectItem key={value} value={value}>{label}</SelectItem>)}</SelectContent></Select></div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">La duración comienza al guardar. Al vencer se considera inactivo y se conserva su registro. Si ya está inactivo, podrás activarlo después de guardar una nueva duración.</p>
+                </>}
+              </div>}
+
               <div className="space-y-5 md:col-span-2">
                 <div className="rounded-xl border bg-muted/30 p-4">
                   <Label>Vista previa</Label>
@@ -851,7 +921,7 @@ const RolesPage = () => {
                 <div className="space-y-2">
                   <Label>Emoji del rol</Label>
 
-                  <div className="grid grid-cols-6 gap-2 sm:grid-cols-8 md:grid-cols-11">
+                  <div className="grid grid-cols-[repeat(auto-fit,minmax(2.5rem,1fr))] gap-2">
                     {ROLE_EMOJIS.map((emoji) => {
                       const selected = form.icon === emoji;
 
@@ -866,7 +936,7 @@ const RolesPage = () => {
                             }))
                           }
                           className={[
-                            "flex h-11 w-11 items-center justify-center rounded-xl border text-xl transition-all",
+                            "flex h-10 w-full min-w-0 items-center justify-center rounded-xl border text-xl transition-all sm:h-11",
                             selected
                               ? "border-primary bg-primary/10 ring-2 ring-primary"
                               : "hover:bg-muted",
@@ -883,7 +953,7 @@ const RolesPage = () => {
                 <div className="space-y-2">
                   <Label>Color del rol</Label>
 
-                  <div className="grid grid-cols-8 gap-2 sm:grid-cols-11 md:grid-cols-12">
+                  <div className="grid grid-cols-[repeat(auto-fit,minmax(2.25rem,1fr))] gap-2">
                     {ROLE_COLORS.map((color) => {
                       const selected = form.color === color;
 
@@ -898,7 +968,7 @@ const RolesPage = () => {
                             }))
                           }
                           className={[
-                            "h-9 w-9 rounded-full border-2 transition-transform",
+                            "mx-auto h-9 w-9 max-w-full rounded-full border-2 transition-transform",
                             selected
                               ? "scale-110 border-foreground ring-2 ring-ring"
                               : "border-transparent hover:scale-105",
@@ -991,7 +1061,7 @@ const RolesPage = () => {
                                   }
                                 />
 
-                                <div className="space-y-1">
+                                <div className="min-w-0 space-y-1">
                                   <div className="flex flex-wrap items-center gap-2">
                                     <span className="text-sm font-medium">
                                       {permission.label}
@@ -1004,7 +1074,7 @@ const RolesPage = () => {
                                     )}
                                   </div>
 
-                                  <p className="text-xs text-muted-foreground">
+                                  <p className="break-words text-xs text-muted-foreground">
                                     {permission.description}
                                   </p>
                                   {disabled && <p className="text-xs text-muted-foreground">Activa primero: {getPermissionDependencies(permission.key).filter((parent) => !form.permissions.includes(parent)).map((parent) => permissionCatalog.find((item) => item.key === parent)?.label).join(", ")}</p>}
@@ -1031,7 +1101,7 @@ const RolesPage = () => {
             </Button>
 
             <Button onClick={handleSubmit} disabled={saving}>
-              {saving ? "Guardando..." : "Guardar rol"}
+              {saving ? "Guardando..." : activatingRole ? "Activar rol" : "Guardar rol"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,3 +1,8 @@
+import {
+  historicalDoctors,
+  isInactiveCalendarDoctor,
+  selectedDayLabel,
+} from "../utils/historicalDoctors";
 import { useEffect, useMemo, useState } from "react";
 import { formatTimeRange, normalizeTime, timeToMinutes } from "@/shared/utils/time";
 import {
@@ -32,6 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/shared/components/ui/select";
+import { Switch } from "@/shared/components/ui/switch";
 import { useConfirmAction } from "@/shared/hooks/useConfirmAction";
 
 import AgendaBlockDialog, {
@@ -86,6 +92,7 @@ import {
 type CalendarViewMode = "month" | "week" | "doctorDay";
 
 const AGENDA_DEFAULT_VIEW_KEY = "claudent.agenda.defaultView";
+const AGENDA_SHOW_INACTIVE_DOCTORS_KEY = "claudent.agenda.showInactiveDoctors";
 
 const readDefaultView = (): CalendarViewMode => {
   if (typeof window === "undefined") return "month";
@@ -97,6 +104,16 @@ const readDefaultView = (): CalendarViewMode => {
       : "month";
   } catch {
     return "month";
+  }
+};
+
+const readShowInactiveDoctors = () => {
+  if (typeof window === "undefined") return true;
+
+  try {
+    return window.localStorage.getItem(AGENDA_SHOW_INACTIVE_DOCTORS_KEY) !== "false";
+  } catch {
+    return true;
   }
 };
 
@@ -195,6 +212,7 @@ const AppointmentManager = ({
   const [selectedDate, setSelectedDate] = useState(today);
   const [viewMode, setViewMode] = useState<CalendarViewMode>(readDefaultView);
   const [defaultViewMode, setDefaultViewMode] = useState<CalendarViewMode>(readDefaultView);
+  const [showInactiveDoctors, setShowInactiveDoctors] = useState(readShowInactiveDoctors);
   const [selectedDoctorId, setSelectedDoctorId] = useState("all");
   const [selectedAssistantId, setSelectedAssistantId] = useState("all");
   const [selectedStatus, setSelectedStatus] =
@@ -241,6 +259,19 @@ const AppointmentManager = ({
       return;
     }
     toast.success("Vista predeterminada actualizada.");
+  };
+
+  const updateShowInactiveDoctors = (checked: boolean) => {
+    setShowInactiveDoctors(checked);
+
+    try {
+      window.localStorage.setItem(
+        AGENDA_SHOW_INACTIVE_DOCTORS_KEY,
+        String(checked),
+      );
+    } catch {
+      toast.error("No se pudo guardar el filtro de doctores en este navegador.");
+    }
   };
 
   const canViewAllDoctors =
@@ -324,7 +355,7 @@ const AppointmentManager = ({
 }, [currentUser?.email, currentUser?.uid]);
 
   const activeDoctors = useMemo(() => {
-    return doctors.filter((doctor) => doctor.status === "active");
+    return doctors.filter((doctor) => doctor.status === "active" && !doctor.deletedAt);
   }, [doctors]);
 
   const activeAssistants = useMemo(() => {
@@ -340,7 +371,7 @@ const AppointmentManager = ({
 
     const linkedDoctorId =
       agendaUser?.doctorId ||
-      activeDoctors.find((doctor) => doctor.userUid === currentUser?.uid)?.id;
+      doctors.find((doctor) => doctor.userUid === currentUser?.uid)?.id;
 
     const linkedAssistantId =
       agendaUser?.assistantId ||
@@ -370,6 +401,7 @@ const AppointmentManager = ({
   }, [
     activeAssistants,
     activeDoctors,
+    doctors,
     agendaUser?.assistantId,
     agendaUser?.doctorId,
     canViewAllDoctors,
@@ -380,8 +412,47 @@ const AppointmentManager = ({
     return new Set(visibleDoctors.map((doctor) => doctor.id));
   }, [visibleDoctors]);
 
+  const calendarDoctors = useMemo(() => {
+    const linkedAssistant = assistants.find((assistant) => assistant.id === agendaUser?.assistantId || assistant.userUid === currentUser?.uid);
+    const allowedIds = new Set(visibleDoctors.map((doctor) => doctor.id));
+    if (agendaUser?.doctorId) allowedIds.add(agendaUser.doctorId);
+    doctors.filter((doctor) => doctor.userUid === currentUser?.uid).forEach((doctor) => allowedIds.add(doctor.id));
+    linkedAssistant?.doctorIdsAsignados.forEach((id) => allowedIds.add(id));
+    return historicalDoctors(doctors, appointments, canViewAllDoctors || Boolean(linkedAssistant && linkedAssistant.status === 'active' && linkedAssistant.doctorIdsAsignados.length === 0), allowedIds);
+  }, [doctors, appointments, assistants, agendaUser, currentUser?.uid, visibleDoctors, canViewAllDoctors]);
+
+  const inactiveDoctorCount = useMemo(
+    () => calendarDoctors.filter(isInactiveCalendarDoctor).length,
+    [calendarDoctors],
+  );
+
+  const displayedCalendarDoctors = useMemo(() => {
+    const visibleCalendarDoctors = showInactiveDoctors
+      ? calendarDoctors
+      : calendarDoctors.filter((doctor) => !isInactiveCalendarDoctor(doctor));
+
+    return visibleCalendarDoctors.map((doctor) => {
+      if (doctor.status === "active" || doctor.isDeletedReference || doctor.deletedAt) {
+        return doctor;
+      }
+
+      return {
+        ...doctor,
+        nombre: doctor.nombre.includes("Doctor inactivo")
+          ? doctor.nombre
+          : `${doctor.nombre} · Doctor inactivo`,
+        color: "#6B7280",
+      };
+    });
+  }, [calendarDoctors, showInactiveDoctors]);
+
+  const calendarDoctorIds = useMemo(
+    () => new Set(displayedCalendarDoctors.map((doctor) => doctor.id)),
+    [displayedCalendarDoctors],
+  );
+
   const canSelectAllVisibleDoctors =
-    canViewAllDoctors || visibleDoctors.length > 1;
+    canViewAllDoctors || displayedCalendarDoctors.length > 1;
 
   const visibleAssistants = useMemo(() => {
     if (canViewAllDoctors) {
@@ -415,23 +486,26 @@ const AppointmentManager = ({
   }, [visibleAssistants]);
 
   useEffect(() => {
-    if (visibleDoctors.length === 0) return;
+    if (displayedCalendarDoctors.length === 0) {
+      setSelectedDoctorId("all");
+      return;
+    }
 
     const selectedDoctorIsValid =
       selectedDoctorId === "all"
         ? canSelectAllVisibleDoctors
-        : visibleDoctorIds.has(selectedDoctorId);
+        : calendarDoctorIds.has(selectedDoctorId);
 
     if (selectedDoctorIsValid) return;
 
     setSelectedDoctorId(
-      canSelectAllVisibleDoctors ? "all" : visibleDoctors[0].id,
+      canSelectAllVisibleDoctors ? "all" : displayedCalendarDoctors[0].id,
     );
   }, [
     canSelectAllVisibleDoctors,
     selectedDoctorId,
-    visibleDoctorIds,
-    visibleDoctors,
+    calendarDoctorIds,
+    displayedCalendarDoctors,
   ]);
 
   useEffect(() => {
@@ -447,8 +521,8 @@ const AppointmentManager = ({
   }, [selectedAssistantId, visibleAssistantIds]);
 
   const doctorsById = useMemo(() => {
-    return new Map(doctors.map((doctor) => [doctor.id, doctor]));
-  }, [doctors]);
+    return new Map(calendarDoctors.map((doctor) => [doctor.id, doctor]));
+  }, [calendarDoctors]);
 
   const assistantsById = useMemo(() => {
     return new Map(
@@ -457,7 +531,7 @@ const AppointmentManager = ({
   }, [assistants]);
 
   const doctorFilterOptions = useMemo<SearchableSelectOption[]>(() => {
-    const options = visibleDoctors.map((doctor) => ({
+    const options = displayedCalendarDoctors.map((doctor) => ({
       value: doctor.id,
       label: doctor.nombre,
       description: doctor.especialidad || "Sin especialidad",
@@ -484,7 +558,7 @@ const AppointmentManager = ({
       },
       ...options,
     ];
-  }, [canSelectAllVisibleDoctors, canViewAllDoctors, visibleDoctors]);
+  }, [canSelectAllVisibleDoctors, canViewAllDoctors, displayedCalendarDoctors]);
 
   const assistantFilterOptions = useMemo<SearchableSelectOption[]>(() => {
     return [
@@ -516,25 +590,24 @@ const AppointmentManager = ({
     : undefined;
 
   const selectedAppointmentDoctor = selectedAppointment
-    ? doctorsById.get(selectedAppointment.doctorId)?.nombre ??
-      "Doctor no encontrado"
+    ? (!doctors.some((doctor) => doctor.id === selectedAppointment.doctorId) && selectedAppointment.doctorName ? `${selectedAppointment.doctorName} · Doctor eliminado` : doctorsById.get(selectedAppointment.doctorId)?.nombre ?? "Doctor eliminado")
     : "";
 
   const selectedAppointmentAssistantNames = selectedAppointment
     ? selectedAppointment.assistantIds
-        .map((assistantId) => assistantsById.get(assistantId)?.nombre)
+        .map((assistantId) => assistantsById.get(assistantId)?.nombre ?? "Asistente eliminado")
         .filter((name): name is string => Boolean(name))
     : [];
 
   const selectedAppointmentWalkInAssistantName =
   selectedAppointment?.walkInAssistantId
-    ? assistantsById.get(selectedAppointment.walkInAssistantId)?.nombre ?? ""
+    ? assistantsById.get(selectedAppointment.walkInAssistantId)?.nombre ?? "Asistente eliminado"
     : "";
 
   const filteredAppointments = useMemo(() => {
     return appointments.filter((appointment) => {
       if (!appointment) return false;
-      if (!visibleDoctorIds.has(appointment.doctorId)) {
+      if (!calendarDoctorIds.has(appointment.doctorId)) {
         return false;
       }
 
@@ -556,13 +629,13 @@ const AppointmentManager = ({
     selectedAssistantId,
     selectedDoctorId,
     selectedStatus,
-    visibleDoctorIds,
+    calendarDoctorIds,
   ]);
 
   const scopedBlocks = useMemo(() => {
     return blocks.filter((block) => {
       if (block.staffType === "doctor") {
-        return visibleDoctorIds.has(block.staffId);
+        return calendarDoctorIds.has(block.staffId);
       }
 
       if (block.staffType === "assistant") {
@@ -575,7 +648,7 @@ const AppointmentManager = ({
 
       return false;
     });
-  }, [blocks, selectedAssistantId, visibleAssistantIds, visibleDoctorIds]);
+  }, [blocks, selectedAssistantId, visibleAssistantIds, calendarDoctorIds]);
 
   const dayAppointments = useMemo(() => {
     return filteredAppointments.filter(
@@ -701,7 +774,7 @@ const AppointmentManager = ({
   };
 
   const getDefaultDoctorId = () => {
-    if (selectedDoctorId !== "all") {
+    if (selectedDoctorId !== "all" && visibleDoctorIds.has(selectedDoctorId)) {
       return selectedDoctorId;
     }
 
@@ -790,6 +863,7 @@ const AppointmentManager = ({
   }, [canCreateAppointment, permissionsLoading, searchParams, setSearchParams]);
 
   const handleSelectCalendarSlot = (slot: CalendarSlotSelection) => {
+    if (!visibleDoctorIds.has(slot.doctorId)) return;
     updateSelectedDate(slot.startDate);
     setSelectedSlot(slot);
     setSlotActionDialogOpen(true);
@@ -970,6 +1044,10 @@ const AppointmentManager = ({
   };
 
   const validateAppointment = (ignoreAppointmentId?: string) => {
+    if ((form.patientId && !patients.some((patient) => patient.id === form.patientId) && form.patientId !== editingAppointment?.patientId) ||
+        (form.serviceId && !services.some((service) => service.id === form.serviceId) && form.serviceId !== editingAppointment?.serviceId)) {
+      toast.error("Selecciona un paciente y un servicio disponibles en el catálogo."); return false;
+    }
     const patientName = form.patientName.trim();
     const serviceName = form.serviceName.trim();
 
@@ -1134,6 +1212,7 @@ const AppointmentManager = ({
         serviceId: form.serviceId,
         serviceName: form.serviceName.trim(),
         doctorId: form.doctorId,
+        doctorName: doctorsById.get(form.doctorId)?.nombre ?? "",
         assistantIds: normalizedAssistantIds,
         startDate: form.startDate,
         startTime: form.startTime,
@@ -1177,6 +1256,7 @@ const AppointmentManager = ({
         entityType: "appointment",
         entityId: createdAppointmentId,
         doctorId: form.doctorId,
+        doctorName: doctorsById.get(form.doctorId)?.nombre ?? "",
         patientId: form.patientId,
         patientName: form.patientName.trim(),
         title:
@@ -1196,6 +1276,7 @@ const AppointmentManager = ({
           serviceId: form.serviceId,
           serviceName: form.serviceName.trim(),
           doctorId: form.doctorId,
+          doctorName: doctorsById.get(form.doctorId)?.nombre ?? "",
           assistantIds: normalizedAssistantIds,
           startDate: form.startDate,
           startTime: form.startTime,
@@ -1331,6 +1412,7 @@ const AppointmentManager = ({
         serviceId: form.serviceId,
         serviceName: nextServiceName,
         doctorId: form.doctorId,
+        doctorName: doctorsById.get(form.doctorId)?.nombre ?? "",
         assistantIds: nextAssistantIds,
         startDate: form.startDate,
         startTime: form.startTime,
@@ -1394,6 +1476,7 @@ const AppointmentManager = ({
         entityType: "appointment",
         entityId: previousAppointment.id,
         doctorId: form.doctorId,
+        doctorName: doctorsById.get(form.doctorId)?.nombre ?? "",
         patientId: form.patientId,
         patientName: nextPatientName,
         title:
@@ -1428,6 +1511,7 @@ const AppointmentManager = ({
           serviceId: form.serviceId,
           serviceName: nextServiceName,
           doctorId: form.doctorId,
+          doctorName: doctorsById.get(form.doctorId)?.nombre ?? "",
           assistantIds: nextAssistantIds,
           startDate: form.startDate,
           startTime: form.startTime,
@@ -1565,7 +1649,7 @@ const AppointmentManager = ({
     appointment: Appointment,
     status: AppointmentStatus,
   ): Promise<boolean> => {
-    if (!visibleDoctorIds.has(appointment.doctorId)) {
+    if (!calendarDoctorIds.has(appointment.doctorId)) {
       toast.error("No tienes acceso a esta cita.");
       return false;
     }
@@ -1674,14 +1758,77 @@ const AppointmentManager = ({
 
   return (
     <div className="space-y-4">
+      <p className="text-xs text-muted-foreground">Resumen del día seleccionado · {selectedDayLabel(selectedDate)}</p>
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(8rem,1fr))] gap-2 sm:grid-cols-3 xl:grid-cols-5">
+        <Card>
+          <CardContent className="p-3">
+            <p className="text-xs text-muted-foreground">Total</p>
+            <p className="mt-1 text-2xl font-semibold">{daySummary.total}</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-3">
+            <p className="text-xs text-muted-foreground">Programadas</p>
+            <p className="mt-1 text-2xl font-semibold">
+              {daySummary.scheduledAppointments}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-3">
+            <p className="text-xs text-muted-foreground">Sin cita</p>
+            <p className="mt-1 text-2xl font-semibold">{daySummary.walkIns}</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-3">
+            <p className="text-xs text-muted-foreground">Atendidas</p>
+            <p className="mt-1 text-2xl font-semibold">{daySummary.completed}</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-3">
+            <p className="text-xs text-muted-foreground">Canceladas</p>
+            <p className="mt-1 text-2xl font-semibold">{daySummary.cancelled}</p>
+          </CardContent>
+        </Card>
+      </div>
+
       <Card className="relative z-20 overflow-visible border bg-card shadow-sm">
         <CardContent className="p-3 sm:p-4">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <h2 className="text-base font-semibold">Filtros del calendario</h2>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+              <div className="flex w-full min-w-0 items-center justify-between gap-3 rounded-lg border bg-muted/30 px-3 py-2 sm:w-auto">
+                <div className="min-w-0">
+                  <Label
+                    htmlFor="agenda-show-inactive-doctors"
+                    className="cursor-pointer text-sm font-medium"
+                  >
+                    Mostrar doctores inactivos
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    {inactiveDoctorCount === 0
+                      ? "Sin referencias históricas"
+                      : `${inactiveDoctorCount} ${inactiveDoctorCount === 1 ? "referencia histórica" : "referencias históricas"}`}
+                  </p>
+                </div>
+                <Switch
+                  id="agenda-show-inactive-doctors"
+                  checked={showInactiveDoctors}
+                  onCheckedChange={updateShowInactiveDoctors}
+                  aria-label="Mostrar doctores inactivos"
+                  disabled={inactiveDoctorCount === 0}
+                />
+              </div>
+
               {canCreateAppointment && (
-                <Button onClick={openManualAppointmentDialog}>
+                <Button className="w-full shadow-lg sm:w-auto" onClick={openManualAppointmentDialog}>
                   <Plus className="mr-2 h-4 w-4" />
                   Nueva cita
                 </Button>
@@ -1777,7 +1924,7 @@ const AppointmentManager = ({
               aria-label="Fecha del calendario"
             />
 
-            <div className="flex w-fit rounded-lg border bg-muted/30 p-1">
+            <div className="grid w-full grid-cols-3 rounded-lg border bg-muted/30 p-1 sm:w-fit">
               <Button
                 type="button"
                 size="sm"
@@ -1807,7 +1954,7 @@ const AppointmentManager = ({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
             <Button variant="outline" size="sm" onClick={goToToday}>
               Hoy
             </Button>
@@ -1851,9 +1998,11 @@ const AppointmentManager = ({
           </Card>
         ) : (
           <>
-            {visibleDoctors.length === 0 && (
+            {displayedCalendarDoctors.length === 0 && (
               <div className="rounded-lg border border-dashed bg-card p-4 text-sm text-muted-foreground">
-                No hay doctores disponibles.
+                {calendarDoctors.length > 0
+                  ? "No hay doctores activos visibles. Activa ‘Mostrar doctores inactivos’ para consultar el historial."
+                  : "No hay doctores disponibles."}
               </div>
             )}
             {viewMode === "month" && (
@@ -1861,7 +2010,7 @@ const AppointmentManager = ({
                 selectedDate={selectedDate}
                 appointments={filteredAppointments}
                 blocks={scopedBlocks}
-                doctors={visibleDoctors}
+                doctors={displayedCalendarDoctors}
                 onSelectDate={handleSelectDateFromSummaryView}
                 onSelectAppointment={openAppointmentDetails}
               />
@@ -1872,7 +2021,7 @@ const AppointmentManager = ({
                 selectedDate={selectedDate}
                 appointments={filteredAppointments}
                 blocks={scopedBlocks}
-                doctors={visibleDoctors}
+                doctors={displayedCalendarDoctors}
                 onSelectDate={handleSelectDateFromSummaryView}
                 onSelectAppointment={openAppointmentDetails}
               />
@@ -1880,7 +2029,7 @@ const AppointmentManager = ({
 
             {viewMode === "doctorDay" && (
               <DailyCalendarView
-                doctors={visibleDoctors}
+                doctors={displayedCalendarDoctors}
                 appointments={filteredAppointments}
                 schedules={schedules}
                 blocks={scopedBlocks}
@@ -1895,157 +2044,6 @@ const AppointmentManager = ({
         </div>
       </section>
 
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
-        <Card>
-          <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">Total</p>
-            <p className="mt-1 text-2xl font-semibold">{daySummary.total}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">Programadas</p>
-            <p className="mt-1 text-2xl font-semibold">
-              {daySummary.scheduledAppointments}
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">Sin cita</p>
-            <p className="mt-1 text-2xl font-semibold">{daySummary.walkIns}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">Atendidas</p>
-            <p className="mt-1 text-2xl font-semibold">{daySummary.completed}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-3">
-            <p className="text-xs text-muted-foreground">Canceladas</p>
-            <p className="mt-1 text-2xl font-semibold">{daySummary.cancelled}</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card className="overflow-hidden">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Pacientes del día</CardTitle>
-        </CardHeader>
-
-        <CardContent>
-          {loading ? (
-            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-              Cargando citas...
-            </div>
-          ) : dayAppointments.length === 0 ? (
-            <div className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-              No hay citas para este día.
-            </div>
-          ) : (
-            <div className="grid gap-3">
-              {dayAppointments.map((appointment) => {
-                const doctor = doctorsById.get(appointment.doctorId);
-                const appointmentAssistants = appointment.assistantIds
-                  .map((assistantId) => assistantsById.get(assistantId)?.nombre)
-                  .filter(Boolean);
-                const doctorColor = doctor?.color || "#2563EB";
-
-                return (
-                  <div
-                    key={appointment.id}
-                    className="rounded-lg border bg-muted/20 p-3 transition-colors hover:bg-muted/30"
-                    style={{
-                      borderLeftWidth: 5,
-                      borderLeftColor: doctorColor,
-                      backgroundColor: `${doctorColor}0D`,
-                    }}
-                  >
-                    <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="space-y-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Badge
-                            variant={
-                              appointment.status === "cancelled"
-                                ? "destructive"
-                                : appointment.status === "completed"
-                                  ? "secondary"
-                                  : "outline"
-                            }
-                          >
-                            {statusLabels[appointment.status]}
-                          </Badge>
-
-                          {appointment.appointmentType === "walk_in" && (
-                            <Badge variant="secondary">Sin cita</Badge>
-                          )}
-
-                          <span className="inline-flex items-center gap-1 text-sm text-muted-foreground">
-                            <Clock className="h-4 w-4" />
-                            {formatTimeRange(appointment?.startTime, appointment?.endTime)}
-                          </span>
-                        </div>
-
-                        <h3 className="font-semibold">
-                          {appointment.patientName}
-                        </h3>
-
-                        <p className="text-sm text-muted-foreground">
-                          {appointment.serviceName || appointment.reason}
-                        </p>
-
-                        {appointment.appointmentType === "walk_in" && (
-                          <p className="text-xs text-muted-foreground">
-                            Llegada: {appointment.arrivalTime || "No registrada"}
-                            {appointment.waitMinutes != null
-                              ? ` · Espera: ${appointment.waitMinutes} min`
-                              : ""}
-                          </p>
-                        )}
-
-                        <p className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-                          <Stethoscope className="h-4 w-4" />
-                          {doctor?.nombre ?? "Doctor no encontrado"}
-                        </p>
-
-                        {appointmentAssistants.length > 0 && (
-                          <p className="inline-flex items-center gap-2 text-sm text-muted-foreground">
-                            <UserCheck className="h-4 w-4" />
-                            {appointmentAssistants.join(", ")}
-                          </p>
-                        )}
-
-                        {appointment.notes && (
-                          <p className="text-xs text-muted-foreground">
-                            {appointment.notes}
-                          </p>
-                        )}
-                      </div>
-
-                      <div className="flex flex-wrap gap-2">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => openAppointmentDetails(appointment)}
-                        >
-                          Ver detalles
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
       {confirmationDialog}
 
       <AppointmentDetailsDialog
@@ -2053,6 +2051,8 @@ const AppointmentManager = ({
         onOpenChange={handleAppointmentDetailsOpenChange}
         appointment={selectedAppointment}
         doctorName={selectedAppointmentDoctor}
+        patientDeleted={!loading && (canCreateAppointment || canUpdateAppointment) && Boolean(selectedAppointment?.patientId && !patients.some((patient) => patient.id === selectedAppointment.patientId))}
+        serviceDeleted={!loading && (canCreateAppointment || canUpdateAppointment) && Boolean(selectedAppointment?.serviceId && !services.some((service) => service.id === selectedAppointment.serviceId))}
         assistantNames={selectedAppointmentAssistantNames}
         walkInAssistantName={selectedAppointmentWalkInAssistantName}
         canUpdate={canUpdateAppointment}

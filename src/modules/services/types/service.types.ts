@@ -5,5 +5,6 @@ export interface Service {
   descripcion: string;
   precio: number;
   categoria: string;
+  categoriaId?: string | null;
   estado: "activo" | "inactivo";
 }

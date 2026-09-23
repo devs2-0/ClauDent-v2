@@ -148,6 +148,8 @@ const AgendaPage = () => {
   const [assistantForm, setAssistantForm] =
     useState<AssistantFormState>(emptyAssistantForm);
 
+  const canDeleteDoctors = can("agenda.doctors.delete");
+  const canDeleteAssistants = can("agenda.assistants.delete");
   const canManageDoctors = can("agenda.doctors.manage");
   const canManageAssistants = can("agenda.assistants.manage");
   const canManageAvailability = can("agenda.availability.view");
@@ -445,21 +447,21 @@ const AgendaPage = () => {
   };
 
   const handleDeleteDoctor = async (doctor: Doctor) => {
-    if (!canManageDoctors) {
+    if (!canDeleteDoctors) {
       toast.error("No tienes permiso para gestionar doctores.");
       return;
     }
 
     const confirmed = await confirm({
       title: "Eliminar doctor",
-      description: `${doctor.nombre} dejará de aparecer en la administración y en la agenda. Sus citas existentes se conservarán.`,
+      description: `${doctor.nombre} se eliminará del catálogo. En la agenda conservará sus referencias con la etiqueta Eliminado. Sus citas existentes se conservarán.`,
       confirmLabel: "Eliminar",
       destructive: true,
     });
     if (!confirmed) return;
 
     try {
-      await doctorService.deactivateDoctor(doctor.id, currentUser?.uid);
+      await doctorService.deleteDoctor(doctor.id, currentUser?.uid);
       setSelectedDoctorIds((current) => current.filter((id) => id !== doctor.id));
       toast.success("Doctor eliminado correctamente.");
       await loadData();
@@ -623,18 +625,18 @@ const AgendaPage = () => {
   };
 
   const handleDeleteAssistant = async (assistant: Assistant) => {
-    if (!canManageAssistants) return;
+    if (!canDeleteAssistants) return;
 
     const confirmed = await confirm({
       title: "Eliminar asistente",
-      description: `${assistant.nombre} dejará de aparecer en la administración y en la agenda. Sus registros existentes se conservarán.`,
+      description: `${assistant.nombre} se eliminará del catálogo. En la agenda conservará sus referencias con la etiqueta Eliminado. Sus registros existentes se conservarán.`,
       confirmLabel: "Eliminar",
       destructive: true,
     });
     if (!confirmed) return;
 
     try {
-      await assistantService.deactivateAssistant(assistant.id, currentUser?.uid);
+      await assistantService.deleteAssistant(assistant.id, currentUser?.uid);
       setSelectedAssistantIds((current) => current.filter((id) => id !== assistant.id));
       toast.success("Asistente eliminado correctamente.");
       await loadData();
@@ -677,7 +679,7 @@ const AgendaPage = () => {
   };
 
   const handleDoctorBulkAction = async (action: "activate" | "deactivate" | "delete") => {
-    if (!canManageDoctors || selectedDoctorIds.length === 0) return;
+    if (!(action === "delete" ? canDeleteDoctors : canManageDoctors) || selectedDoctorIds.length === 0) return;
 
     const labels = {
       activate: { title: "Activar doctores", verb: "activar", confirmLabel: "Activar" },
@@ -697,7 +699,7 @@ const AgendaPage = () => {
     try {
       await Promise.all(selectedDoctorIds.map((doctorId) =>
         action === "delete"
-          ? doctorService.deactivateDoctor(doctorId, currentUser?.uid)
+          ? doctorService.deleteDoctor(doctorId, currentUser?.uid)
           : doctorService.updateDoctor(doctorId, {
               status: action === "activate" ? "active" : "inactive",
               visibleEnAgenda: action === "activate",
@@ -716,7 +718,7 @@ const AgendaPage = () => {
   };
 
   const handleAssistantBulkAction = async (action: "activate" | "deactivate" | "delete") => {
-    if (!canManageAssistants || selectedAssistantIds.length === 0) return;
+    if (!(action === "delete" ? canDeleteAssistants : canManageAssistants) || selectedAssistantIds.length === 0) return;
 
     const labels = {
       activate: { title: "Activar asistentes", verb: "activar", confirmLabel: "Activar" },
@@ -736,7 +738,7 @@ const AgendaPage = () => {
     try {
       await Promise.all(selectedAssistantIds.map((assistantId) =>
         action === "delete"
-          ? assistantService.deactivateAssistant(assistantId, currentUser?.uid)
+          ? assistantService.deleteAssistant(assistantId, currentUser?.uid)
           : assistantService.updateAssistant(assistantId, {
               status: action === "activate" ? "active" : "inactive",
               visibleEnAgenda: action === "activate",
@@ -775,7 +777,7 @@ const AgendaPage = () => {
     <main className="space-y-4">
       <section className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-semibold text-foreground">Agenda</h1>
             <SectionHelp title="Acerca de Agenda">
               <p>
@@ -807,12 +809,12 @@ const AgendaPage = () => {
       </section>
 
       <Tabs value={activeTab} onValueChange={setSelectedTab}>
-        <TabsList className="h-auto w-full flex-nowrap justify-start overflow-x-auto p-1">
+        <TabsList className="h-auto w-full max-w-full flex-nowrap justify-start overflow-x-auto overscroll-x-contain p-1">
           {visibleTabs.map((tab) => {
             const Icon = tab.icon;
 
             return (
-              <TabsTrigger key={tab.value} value={tab.value} className="gap-2">
+              <TabsTrigger key={tab.value} value={tab.value} className="shrink-0 gap-2">
                 <Icon className="h-4 w-4" />
                 {tab.label}
               </TabsTrigger>
@@ -839,7 +841,7 @@ const AgendaPage = () => {
               </div>
 
               {canManageDoctors && (
-                <Button onClick={openCreateDoctorDialog}>
+                <Button className="shadow-lg" onClick={openCreateDoctorDialog}>
                   <Stethoscope className="mr-2 h-4 w-4" />
                   Nuevo doctor
                 </Button>
@@ -874,7 +876,7 @@ const AgendaPage = () => {
                 </Select>
               </div>
 
-              {canManageDoctors && (
+              {(canManageDoctors || canDeleteDoctors) && (
                 <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/20 p-2">
                   <Button type="button" variant="outline" size="sm" onClick={toggleVisibleDoctors} disabled={visibleDoctorIds.length === 0 || saving}>
                     <CheckCheck className="mr-2 h-4 w-4" />
@@ -887,16 +889,16 @@ const AgendaPage = () => {
                   <span className="mr-auto text-sm text-muted-foreground">
                     {selectedDoctorIds.length} seleccionados
                   </span>
-                  <Button type="button" variant="outline" size="sm" onClick={() => void handleDoctorBulkAction("activate")} disabled={selectedDoctorIds.length === 0 || saving}>
+                  {canManageDoctors && <Button type="button" variant="outline" size="sm" onClick={() => void handleDoctorBulkAction("activate")} disabled={selectedDoctorIds.length === 0 || saving}>
                     Activar
-                  </Button>
-                  <Button type="button" variant="outline" size="sm" onClick={() => void handleDoctorBulkAction("deactivate")} disabled={selectedDoctorIds.length === 0 || saving}>
+                  </Button>}
+                  {canManageDoctors && <Button type="button" variant="outline" size="sm" onClick={() => void handleDoctorBulkAction("deactivate")} disabled={selectedDoctorIds.length === 0 || saving}>
                     Desactivar
-                  </Button>
-                  <Button type="button" variant="destructive" size="sm" onClick={() => void handleDoctorBulkAction("delete")} disabled={selectedDoctorIds.length === 0 || saving}>
+                  </Button>}
+                  {canDeleteDoctors && <Button type="button" variant="destructive" size="sm" onClick={() => void handleDoctorBulkAction("delete")} disabled={selectedDoctorIds.length === 0 || saving}>
                     <Trash2 className="mr-2 h-4 w-4" />
                     Eliminar
-                  </Button>
+                  </Button>}
                 </div>
               )}
 
@@ -917,7 +919,7 @@ const AgendaPage = () => {
                       key={doctor.id}
                       className="relative rounded-lg border bg-muted/20 p-3"
                     >
-                      {canManageDoctors && (
+                      {(canManageDoctors || canDeleteDoctors) && (
                         <Checkbox
                           checked={selectedDoctorIds.includes(doctor.id)}
                           onCheckedChange={() => toggleDoctorSelection(doctor.id)}
@@ -982,7 +984,7 @@ const AgendaPage = () => {
                           Editar
                         </Button>)}
 
-                        {canManageDoctors && (<Button
+                        {canDeleteDoctors && (<Button
                           variant="outline"
                           size="sm"
                           className="text-destructive hover:text-destructive"
@@ -1030,7 +1032,7 @@ const AgendaPage = () => {
               </div>
 
               {canManageAssistants && (
-                <Button onClick={openCreateAssistantDialog}>
+                <Button className="shadow-lg" onClick={openCreateAssistantDialog}>
                   <UsersRound className="mr-2 h-4 w-4" />
                   Nuevo asistente
                 </Button>
@@ -1065,7 +1067,7 @@ const AgendaPage = () => {
                 </Select>
               </div>
 
-              {canManageAssistants && (
+              {(canManageAssistants || canDeleteAssistants) && (
                 <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/20 p-2">
                   <Button type="button" variant="outline" size="sm" onClick={toggleVisibleAssistants} disabled={visibleAssistantIds.length === 0 || saving}>
                     <CheckCheck className="mr-2 h-4 w-4" />
@@ -1078,16 +1080,16 @@ const AgendaPage = () => {
                   <span className="mr-auto text-sm text-muted-foreground">
                     {selectedAssistantIds.length} seleccionados
                   </span>
-                  <Button type="button" variant="outline" size="sm" onClick={() => void handleAssistantBulkAction("activate")} disabled={selectedAssistantIds.length === 0 || saving}>
+                  {canManageAssistants && <Button type="button" variant="outline" size="sm" onClick={() => void handleAssistantBulkAction("activate")} disabled={selectedAssistantIds.length === 0 || saving}>
                     Activar
-                  </Button>
-                  <Button type="button" variant="outline" size="sm" onClick={() => void handleAssistantBulkAction("deactivate")} disabled={selectedAssistantIds.length === 0 || saving}>
+                  </Button>}
+                  {canManageAssistants && <Button type="button" variant="outline" size="sm" onClick={() => void handleAssistantBulkAction("deactivate")} disabled={selectedAssistantIds.length === 0 || saving}>
                     Desactivar
-                  </Button>
-                  <Button type="button" variant="destructive" size="sm" onClick={() => void handleAssistantBulkAction("delete")} disabled={selectedAssistantIds.length === 0 || saving}>
+                  </Button>}
+                  {canDeleteAssistants && <Button type="button" variant="destructive" size="sm" onClick={() => void handleAssistantBulkAction("delete")} disabled={selectedAssistantIds.length === 0 || saving}>
                     <Trash2 className="mr-2 h-4 w-4" />
                     Eliminar
-                  </Button>
+                  </Button>}
                 </div>
               )}
 
@@ -1108,7 +1110,7 @@ const AgendaPage = () => {
                       .map(
                         (doctorId) =>
                           doctors.find((doctor) => doctor.id === doctorId)
-                            ?.nombre,
+                            ?.nombre ?? "Doctor eliminado",
                       )
                       .filter(Boolean);
 
@@ -1117,7 +1119,7 @@ const AgendaPage = () => {
                         key={assistant.id}
                         className="relative rounded-lg border bg-muted/20 p-3"
                       >
-                        {canManageAssistants && (
+                        {(canManageAssistants || canDeleteAssistants) && (
                           <Checkbox
                             checked={selectedAssistantIds.includes(assistant.id)}
                             onCheckedChange={() => toggleAssistantSelection(assistant.id)}
@@ -1182,7 +1184,7 @@ const AgendaPage = () => {
                             Editar
                           </Button>)}
 
-                          {canManageAssistants && (<Button
+                          {canDeleteAssistants && (<Button
                             variant="outline"
                             size="sm"
                             className="text-destructive hover:text-destructive"
@@ -1239,7 +1241,7 @@ const AgendaPage = () => {
       {confirmationDialog}
 
       <Dialog open={doctorDialogOpen} onOpenChange={setDoctorDialogOpen}>
-        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-2xl overflow-y-auto overscroll-contain">
           <DialogHeader>
             <DialogTitle>
               {editingDoctor ? "Editar doctor" : "Nuevo doctor"}
@@ -1373,7 +1375,7 @@ const AgendaPage = () => {
         open={assistantDialogOpen}
         onOpenChange={setAssistantDialogOpen}
       >
-        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-2xl overflow-y-auto overscroll-contain">
           <DialogHeader>
             <DialogTitle>
               {editingAssistant ? "Editar asistente" : "Nuevo asistente"}
@@ -1508,7 +1510,7 @@ const AgendaPage = () => {
                           key={doctor.id}
                           className="flex cursor-pointer items-center gap-3 rounded-md border bg-card p-2"
                         >
-                          <Checkbox
+                            <Checkbox
                             checked={assistantForm.doctorIdsAsignados.includes(doctor.id)}
                             onCheckedChange={() => toggleAssistantDoctor(doctor.id)}
                           />

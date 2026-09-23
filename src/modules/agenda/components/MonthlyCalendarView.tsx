@@ -2,7 +2,7 @@ import { CalendarDays, Clock, UserPlus } from "lucide-react";
 import { formatTime } from "@/shared/utils/time";
 
 import { Badge } from "@/shared/components/ui/badge";
-import { Button } from "@/shared/components/ui/button";
+
 import {
   Card,
   CardContent,
@@ -115,13 +115,13 @@ const MonthlyCalendarView = ({
         </CardTitle>
       </CardHeader>
 
-      <CardContent className="p-3 sm:p-4">
-        <div className="overflow-hidden rounded-2xl border bg-background shadow-sm">
+      <CardContent className="p-1.5 sm:p-3 md:p-4">
+        <div className="min-w-0 overflow-hidden rounded-xl border bg-background shadow-sm sm:rounded-2xl">
           <div className="grid grid-cols-7 border-b bg-muted/40">
             {weekdayLabels.map((label) => (
               <div
                 key={label}
-                className="border-r p-2 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground last:border-r-0 sm:p-3"
+                className="min-w-0 border-r px-0.5 py-2 text-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground last:border-r-0 sm:p-3 sm:text-[11px]"
               >
                 {label}
               </div>
@@ -162,25 +162,31 @@ const MonthlyCalendarView = ({
               return (
                 <div
                   key={day}
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`Seleccionar día ${date.getDate()} ${date.toLocaleDateString('es-MX', { month: 'long', year: 'numeric' })}`}
+                  onClick={(event) => { event.stopPropagation(); onSelectDate(day); }}
+                  onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onSelectDate(day); } }}
                   className={[
-                    "group min-h-[150px] border-b border-r p-2 align-top transition-colors duration-200 hover:bg-muted/20",
+                    "group min-h-[68px] min-w-0 cursor-pointer border-b border-r p-1 align-top transition-colors duration-200 hover:bg-muted/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary sm:min-h-[92px] sm:p-2 md:min-h-[150px]",
                     !isCurrentMonth ? "bg-muted/10 text-muted-foreground" : "",
                     isSelected ? "ring-2 ring-primary ring-inset" : "",
                   ].join(" ")}
                 >
-                  <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center justify-center gap-1 md:mb-2 md:justify-between md:gap-2">
                     <button
                       type="button"
                       className={[
-                        "flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold transition-all duration-200 hover:scale-105 hover:bg-muted",
+                        "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold transition-all duration-200 hover:scale-105 hover:bg-muted",
                         isToday ? "bg-primary text-primary-foreground shadow-sm" : "",
                       ].join(" ")}
-                      onClick={() => onSelectDate(day)}
+                      onClick={(event) => { event.stopPropagation(); onSelectDate(day); }}
+                      aria-label={`Seleccionar dÃ­a ${date.getDate()}`}
                     >
                       {date.getDate()}
                     </button>
 
-                    <div className="flex flex-wrap justify-end gap-1">
+                    <div className="hidden flex-wrap justify-end gap-1 md:flex">
                       {walkInCount > 0 && (
                         <Badge
                           variant="secondary"
@@ -199,7 +205,16 @@ const MonthlyCalendarView = ({
                     </div>
                   </div>
 
-                  <div className="space-y-1.5">
+                  {(dayAppointments.length > 0 || dayBlocks.length > 0) && (
+                    <div className="mt-1 flex items-center justify-center gap-1 md:hidden" aria-hidden="true">
+                      <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                      <span className="max-w-full truncate text-[10px] font-semibold text-muted-foreground">
+                        {dayAppointments.length + dayBlocks.length}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="hidden space-y-1.5 md:block">
                     {visibleBlocks.map((block) => {
                       const doctor =
                         block.staffType === "doctor"
@@ -211,7 +226,7 @@ const MonthlyCalendarView = ({
                           key={block.id}
                           type="button"
                           className="w-full rounded-lg border border-dashed bg-muted/40 px-2 py-1.5 text-left text-xs transition-all duration-200 hover:bg-muted hover:shadow-sm"
-                          onClick={() => onSelectDate(day)}
+                          onClick={(event) => { event.stopPropagation(); onSelectDate(day); }}
                         >
                           <div className="flex items-center gap-1.5">
                             <Badge
@@ -265,7 +280,7 @@ const MonthlyCalendarView = ({
                             borderLeftWidth: 4,
                             borderLeftColor: doctorColor,
                           }}
-                          onClick={() => onSelectAppointment(appointment)}
+                          onClick={(event) => { event.stopPropagation(); onSelectAppointment(appointment); }}
                         >
                           <div className="flex items-center gap-1.5">
                             <Badge
@@ -296,7 +311,7 @@ const MonthlyCalendarView = ({
                               style={{ backgroundColor: doctorColor }}
                             />
                             <p className="truncate">
-                              {doctor?.nombre ?? "Sin doctor"}
+                              {doctor?.isDeletedReference && appointment.doctorName ? `${appointment.doctorName} · Doctor eliminado` : doctor?.nombre ?? "Doctor eliminado"}
                             </p>
                           </div>
                         </button>
@@ -307,7 +322,7 @@ const MonthlyCalendarView = ({
                       <button
                         type="button"
                         className="rounded-md px-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                        onClick={() => onSelectDate(day)}
+                        onClick={(event) => { event.stopPropagation(); onSelectDate(day); }}
                       >
                         +{hiddenCount} más
                       </button>
@@ -319,11 +334,7 @@ const MonthlyCalendarView = ({
           </div>
         </div>
 
-        <div className="mt-4">
-          <Button variant="outline" size="sm" onClick={() => onSelectDate(selectedDate)}>
-            Ver día seleccionado
-          </Button>
-        </div>
+
       </CardContent>
     </Card>
   );

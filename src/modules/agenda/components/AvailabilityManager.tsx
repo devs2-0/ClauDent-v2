@@ -446,7 +446,7 @@ const AvailabilityManager = ({
     if (staffType === "doctor") {
       return (
         doctors.find((doctor) => doctor.id === staffId)?.nombre ??
-        "Doctor no encontrado"
+        "Doctor eliminado"
       );
     }
 
@@ -973,7 +973,7 @@ const AvailabilityManager = ({
   }
 
   return (
-    <div className="grid gap-4 xl:grid-cols-2">
+    <div className="grid min-w-0 gap-4 xl:grid-cols-2">
       {scheduleView === "weekly" && (
       <Card className="order-1 xl:col-span-2">
         <CardHeader>
@@ -985,7 +985,7 @@ const AvailabilityManager = ({
 
         <CardContent className="space-y-5">
           {canManageSchedules && (
-            <div className="rounded-xl border bg-muted/20 p-4">
+            <div className="rounded-xl border bg-muted/20 p-3 sm:p-4">
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="schedule-staff-type">Tipo</Label>
@@ -1085,7 +1085,7 @@ const AvailabilityManager = ({
                   </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="schedule-start">Inicio</Label>
 
@@ -1121,7 +1121,7 @@ const AvailabilityManager = ({
               </div>
 
               <div className="mt-4">
-                <Button onClick={handleCreateSchedule} disabled={saving || !canManageStaffSchedule(scheduleForm.staffType)}>
+                <Button className="w-full sm:w-auto" onClick={handleCreateSchedule} disabled={saving || !canManageStaffSchedule(scheduleForm.staffType)}>
                   <Plus className="mr-2 h-4 w-4" />
                   {saving ? "Guardando..." : "Agregar horario"}
                 </Button>
@@ -1198,7 +1198,7 @@ const AvailabilityManager = ({
           </CardHeader>
 
           <CardContent className="space-y-5">
-            <div className="rounded-xl border bg-muted/20 p-4">
+            <div className="rounded-xl border bg-muted/20 p-3 sm:p-4">
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="special-staff-type">Tipo</Label>
@@ -1270,7 +1270,7 @@ const AvailabilityManager = ({
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="special-start-time">Inicio</Label>
 
@@ -1338,7 +1338,7 @@ const AvailabilityManager = ({
               </div>
 
               <div className="mt-4">
-                <Button onClick={handleCreateSpecialSchedule} disabled={saving || !canManageStaffSchedule(specialScheduleForm.staffType)}>
+                <Button className="w-full sm:w-auto" onClick={handleCreateSpecialSchedule} disabled={saving || !canManageStaffSchedule(specialScheduleForm.staffType)}>
                   <Plus className="mr-2 h-4 w-4" />
                   {saving ? "Guardando..." : "Agregar horario especial"}
                 </Button>
@@ -1411,7 +1411,7 @@ const AvailabilityManager = ({
 
         <CardContent className="space-y-5">
           {canCreateBlocks && (
-            <div className="rounded-xl border bg-muted/20 p-4">
+            <div className="rounded-xl border bg-muted/20 p-3 sm:p-4">
               <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label htmlFor="block-staff-type">Tipo</Label>
@@ -1505,7 +1505,7 @@ const AvailabilityManager = ({
                 </label>
 
                 {!blockForm.allDay && (
-                  <div className="grid grid-cols-2 gap-3 md:col-span-2">
+                  <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 md:col-span-2">
                     <div className="space-y-2">
                       <Label htmlFor="block-start-time">Inicio</Label>
 
@@ -1575,6 +1575,7 @@ const AvailabilityManager = ({
 
               <div className="mt-4">
                 <Button
+                  className="w-full sm:w-auto"
                   variant="destructive"
                   onClick={handleCreateBlock}
                   disabled={saving}

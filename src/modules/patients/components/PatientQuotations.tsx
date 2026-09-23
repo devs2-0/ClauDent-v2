@@ -13,10 +13,11 @@ import { Skeleton } from '@/shared/components/ui/skeleton';
 import { generateQuotationPDF } from '@/modules/quotations/services/quotationPdfService';
 
 interface PatientQuotationsProps {
+  readOnly?: boolean;
   patientId: string;
 }
 
-const PatientQuotations: React.FC<PatientQuotationsProps> = ({ patientId }) => {
+const PatientQuotations: React.FC<PatientQuotationsProps> = ({ patientId, readOnly = false }) => {
   const { can } = useCan();
   const navigate = useNavigate();
   const { patients } = usePatients();
@@ -33,7 +34,7 @@ const PatientQuotations: React.FC<PatientQuotationsProps> = ({ patientId }) => {
   }, [patientId, quotations]);
 
   const handleEditClick = (quotation: Quotation) => {
-    if (!can("quotations.update")) return;
+    if (readOnly || !can("quotations.update")) return;
     navigate("/cotizaciones", {
       state: {
         editQuotationId: quotation.id,
@@ -82,12 +83,12 @@ const PatientQuotations: React.FC<PatientQuotationsProps> = ({ patientId }) => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h3 className="text-lg font-semibold">Cotizaciones del Paciente</h3>
-        <Can permission="quotations.create"><Link to="/cotizaciones">
+        {!readOnly && <Can permission="quotations.create"><Link to="/cotizaciones">
           <Button>
             <Plus className="h-4 w-4 mr-2" />
             Ir a Gestión Completa
           </Button>
-        </Link></Can>
+        </Link></Can>}
       </div>
 
       {quotationsLoading ? (
@@ -106,8 +107,8 @@ const PatientQuotations: React.FC<PatientQuotationsProps> = ({ patientId }) => {
           {patientQuotations.map((quotation) => (
             <Card 
                 key={quotation.id} 
-                className={can("quotations.update") ? "cursor-pointer transition-shadow hover:shadow-md" : undefined}
-                onClick={can("quotations.update") ? () => handleEditClick(quotation) : undefined}
+                className={(!readOnly && can("quotations.update")) ? "cursor-pointer transition-shadow hover:shadow-md" : undefined}
+                onClick={(!readOnly && can("quotations.update")) ? () => handleEditClick(quotation) : undefined}
             >
               <CardHeader>
                 <div className="flex items-start justify-between">
@@ -133,10 +134,10 @@ const PatientQuotations: React.FC<PatientQuotationsProps> = ({ patientId }) => {
                     <div className="text-xl font-bold text-foreground">
                         {formatCurrency(quotation.total)}
                     </div>
-                    <Can permission="quotations.pdf.generate"><Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handlePrint(quotation); }}>
+                    {!readOnly && <Can permission="quotations.pdf.generate"><Button variant="ghost" size="icon" onClick={(e) => { e.stopPropagation(); handlePrint(quotation); }}>
                         <Printer className="h-4 w-4 text-muted-foreground" />
-                    </Button></Can>
-                    <Can permission="quotations.update"><Button
+                    </Button></Can>}
+                    {!readOnly && <Can permission="quotations.update"><Button
                       variant="ghost"
                       size="icon"
                       aria-label="Editar"
@@ -146,7 +147,7 @@ const PatientQuotations: React.FC<PatientQuotationsProps> = ({ patientId }) => {
                       }}
                     >
                       <Edit className="h-4 w-4" />
-                    </Button></Can>
+                    </Button></Can>}
                   </div>
                 </div>
               </CardContent>

@@ -15,7 +15,7 @@ const FormSignosVitales: React.FC<Props> = ({ formData, setFormData }) => {
   };
 
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 gap-6 p-4">
+    <div className="grid grid-cols-1 gap-4 p-3 sm:grid-cols-2 sm:p-4 md:grid-cols-4 md:gap-6">
       <div className="space-y-2">
         <Label htmlFor="peso_kg">Peso (kg)</Label>
         <Input id="peso_kg" value={formData.peso_kg} onChange={handleChange} placeholder="Ej. 70.5" />

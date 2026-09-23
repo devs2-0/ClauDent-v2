@@ -1,12 +1,15 @@
 import {
   collection,
   getDocs,
+  getDoc,
+  doc,
   orderBy,
   query,
   type DocumentData,
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
 
+import { legacyCategories, resolveServiceCategory } from "@/modules/services/utils/categoryCatalog";
 import { db } from "@/lib/firebase";
 
 export interface ServiceLookup {
@@ -58,6 +61,13 @@ export const serviceLookupService = {
       query(servicesCollection, orderBy("nombre")),
     );
 
-    return snapshot.docs.map(toServiceLookup);
+    // A configuration read failure must not hide appointments or service lookups.
+    const catalog = await getDoc(doc(db, 'configuracionModulos', 'servicios')).catch(() => null);
+    const categories = !catalog ? [] : catalog.exists() ? catalog.data().categories ?? [] : legacyCategories(snapshot.docs.map((item) => item.data().categoria ?? ''));
+    return snapshot.docs.map((item) => {
+      const service = toServiceLookup(item);
+      const category = resolveServiceCategory({ categoria: service.categoria, categoriaId: item.data().categoriaId }, categories);
+      return { ...service, categoria: category?.name ?? '', searchText: [service.codigo, service.nombre, service.descripcion, category?.name ?? '', service.precio].join(' ') };
+    });
   },
 };

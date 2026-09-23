@@ -57,7 +57,7 @@ const getDoctorName = (doctors: Doctor[], doctorId?: string | null) => {
 
   return (
     doctors.find((doctor) => doctor.id === doctorId)?.nombre ??
-    "Doctor no encontrado"
+    "Doctor eliminado"
   );
 };
 
@@ -97,7 +97,7 @@ const AgendaHistoryPanel = ({
   const groupedHistory = useMemo(() => {
     return history.map((item) => ({
       ...item,
-      doctorName: getDoctorName(doctors, item.doctorId),
+      doctorName: doctors.some((doctor) => doctor.id === item.doctorId) ? getDoctorName(doctors, item.doctorId) : `${item.doctorName || "Doctor"} · Eliminado`,
       createdAtLabel: formatCreatedAt(item.createdAt),
       actionLabel: actionLabels[item.action] ?? "Movimiento de agenda",
     }));

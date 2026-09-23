@@ -17,12 +17,15 @@ import { Skeleton } from '@/shared/components/ui/skeleton';
 import { Edit } from 'lucide-react';
 
 import InitialHistoryModal from '@/modules/patients/components/InitialHistoryModal';
+import { clinicalFieldLabels } from '../utils/clinicalFieldLabels';
 
 // ¡CORREGIDO! Componente DataViewer
 const DataViewer: React.FC<{ data: Record<string, any>, title: string }> = ({ data, title }) => {
   // ¡CORREGIDO! El filtro ahora solo oculta 'null' o 'undefined',
   // pero SÍ permite 'false' (para los checkbox) y '""' (para texto vacío).
-  const entries = Object.entries(data ?? {}).filter(([_, value]) => value !== null && value !== undefined);
+  const entries = Object.entries(data ?? {}).filter(([key, value]) =>
+    !['auxiliares_opciones', 'auxiliares_otros', 'paciente_niega_procedimientos'].includes(key) && value !== null && value !== undefined,
+  );
 
   if (entries.length === 0) {
     return (
@@ -33,7 +36,10 @@ const DataViewer: React.FC<{ data: Record<string, any>, title: string }> = ({ da
   }
 
   // ¡NUEVO! Función para mostrar el valor correctamente
-  const getDisplayValue = (value: any): string => {
+  const getDisplayValue = (key: string, value: any): string => {
+    if (key === 'padecimientos' && value === 'denied') {
+      return 'Paciente niega padecimientos';
+    }
     if (typeof value === 'boolean') {
       return value ? 'Sí' : 'No';
     }
@@ -47,10 +53,10 @@ const DataViewer: React.FC<{ data: Record<string, any>, title: string }> = ({ da
     <div className="p-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-2">
       {entries.map(([key, value]) => (
         <div key={key} className="flex flex-col">
-          <span className="text-xs font-medium text-muted-foreground capitalize">{key.replace(/_/g, ' ')}</span>
+          <span className="text-xs font-medium text-muted-foreground">{clinicalFieldLabels[key] ?? 'Información adicional'}</span>
           {/* ¡CORREGIDO! Usamos la nueva función para mostrar el valor */}
           <span className="text-sm font-semibold">
-            {getDisplayValue(value)}
+            {getDisplayValue(key, value)}
           </span>
         </div>
       ))}
@@ -58,7 +64,7 @@ const DataViewer: React.FC<{ data: Record<string, any>, title: string }> = ({ da
   );
 };
 
-const PatientAntecedentes: React.FC = () => {
+const PatientAntecedentes: React.FC<{ readOnly?: boolean }> = ({ readOnly = false }) => {
   const { id: patientId } = useParams<{ id: string }>();
   const [historyData, setHistoryData] = useState<IHistoriaClinicaCompleta | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -66,7 +72,7 @@ const PatientAntecedentes: React.FC = () => {
 
   // ¡MODIFICADO! Este useEffect ahora mapea correctamente los IDs de la BD
   useEffect(() => {
-    if (!patientId) return;
+    if (!patientId || isModalOpen) return;
 
     const fetchHistoryData = async () => {
       setIsLoading(true);
@@ -156,12 +162,12 @@ const PatientAntecedentes: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h3 className="text-lg font-semibold">Antecedentes y Ficha Clínica</h3>
-        <Can permission="patients.clinicalHistory.update"><Button onClick={() => setIsModalOpen(true)}>
+        {!readOnly && <Can permission="patients.clinicalHistory.update"><Button onClick={() => setIsModalOpen(true)}>
           <Edit className="h-4 w-4 mr-2" />
           Editar
-        </Button></Can>
+        </Button></Can>}
       </div>
 
       <Accordion type="multiple" className="w-full">
@@ -230,7 +236,7 @@ const PatientAntecedentes: React.FC = () => {
       {/* El Modal para Editar */}
       {patientId && (
         <InitialHistoryModal
-          isOpen={isModalOpen}
+          isOpen={!readOnly && isModalOpen}
           onClose={() => setIsModalOpen(false)}
           patientId={patientId}
           initialData={historyData} 

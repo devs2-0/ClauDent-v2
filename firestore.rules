@@ -898,7 +898,7 @@ service cloud.firestore {
         || (hasModulePermission("agenda", "agenda.doctors.manage") && hasPermission("agenda.doctors.view"))
         || canLinkDoctorByInvitation(doctorId);
 
-      allow delete: if isAdmin();
+      allow delete: if hasModulePermission("agenda", "agenda.doctors.delete") && hasPermission("agenda.doctors.view");
     }
 
     match /asistentes/{assistantId} {
@@ -913,7 +913,7 @@ service cloud.firestore {
         || (hasModulePermission("agenda", "agenda.assistants.manage") && hasPermission("agenda.assistants.view"))
         || canLinkAssistantByInvitation(assistantId);
 
-      allow delete: if isAdmin();
+      allow delete: if hasModulePermission("agenda", "agenda.assistants.delete") && hasPermission("agenda.assistants.view");
     }
 
     match /pacientes/{patientId} {
@@ -960,9 +960,21 @@ service cloud.firestore {
       }
     }
 
+    match /configuracionModulos/servicios {
+      allow read: if hasPermission("settings.view") || hasPermission("services.view")
+        || hasModulePermission("packages", "packages.create") || hasModulePermission("packages", "packages.update")
+        || hasPatientSectionPermission("procedures", "patients.procedures.view")
+        || hasModulePermission("agenda", "agenda.appointments.create") || hasModulePermission("agenda", "agenda.appointments.update")
+        || hasPermission("quotations.view") || hasPermission("sales.view");
+      allow create, update: if hasPermission("settings.view") && hasPermission("settings.update")
+        && request.resource.data.keys().hasOnly(["categories"])
+        && request.resource.data.categories is list;
+    }
+
     match /servicios/{serviceId} {
       // Package composition needs the service catalog, but never its management actions.
       allow read: if hasPermission("services.view")
+        || (hasPermission("settings.view") && hasPermission("settings.update"))
         || hasModulePermission("packages", "packages.create") || hasModulePermission("packages", "packages.update")
         || hasPatientSectionPermission("procedures", "patients.procedures.view")
         || hasModulePermission("agenda", "agenda.appointments.create") || hasModulePermission("agenda", "agenda.appointments.update")

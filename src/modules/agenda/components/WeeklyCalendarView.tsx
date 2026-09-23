@@ -109,8 +109,8 @@ const WeeklyCalendarView = ({
         </CardTitle>
       </CardHeader>
 
-      <CardContent className="p-3 sm:p-4">
-        <div className="grid gap-3 xl:grid-cols-7">
+      <CardContent className="p-2 sm:p-4">
+        <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-7">
           {weekDays.map((day) => {
             const dayAppointments = appointmentsByDate[day] ?? [];
             const dayBlocks = activeBlocks.filter((block) =>
@@ -127,7 +127,7 @@ const WeeklyCalendarView = ({
               <div
                 key={day}
                 className={[
-                  "group rounded-2xl border bg-background/95 p-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md",
+                  "group min-w-0 rounded-2xl border bg-background/95 p-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md",
                   isSelected ? "ring-2 ring-primary/70" : "",
                   isToday ? "border-primary/40 bg-primary/[0.03]" : "",
                 ].join(" ")}
@@ -175,7 +175,7 @@ const WeeklyCalendarView = ({
                     Libre
                   </button>
                 ) : (
-                  <div className="space-y-2">
+                  <div className="max-h-80 space-y-2 overflow-y-auto overscroll-contain pr-0.5 sm:max-h-none sm:overflow-visible">
                     {dayBlocks.map((block) => {
                       const doctor =
                         block.staffType === "doctor"
@@ -285,7 +285,7 @@ const WeeklyCalendarView = ({
                           <p className="mt-1 inline-flex max-w-full items-center gap-1 text-muted-foreground">
                             <Stethoscope className="h-3 w-3 shrink-0" />
                             <span className="truncate">
-                              {doctor?.nombre ?? "Doctor no encontrado"}
+                              {doctor?.isDeletedReference && appointment.doctorName ? `${appointment.doctorName} · Doctor eliminado` : doctor?.nombre ?? "Doctor eliminado"}
                             </span>
                           </p>
                         </button>

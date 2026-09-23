@@ -8,6 +8,7 @@ export interface QuotationItem {
 export interface Quotation {
   id: string;
   pacienteId: string;
+  pacienteNombre?: string;
   fecha: string;
   items: QuotationItem[];
   descuento: number;

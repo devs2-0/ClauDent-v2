@@ -594,7 +594,7 @@ const Dashboard: React.FC = () => {
                 <Link
                   key={`${action.path}-${action.label}`}
                   to={action.path}
-                  className="group flex min-h-16 min-w-0 items-center gap-3 overflow-hidden rounded-xl border bg-muted/15 p-3 transition-colors hover:border-primary/40 hover:bg-muted/35 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:p-4"
+                  className="group flex min-h-16 min-w-0 items-center gap-3 overflow-hidden rounded-xl border bg-muted/15 p-3 transition-all duration-200 ease-out hover:-translate-y-0.5 hover:border-primary/40 hover:bg-muted/35 hover:shadow-md focus-visible:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:shadow-md sm:p-4"
                 >
                   <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 transition-colors group-hover:bg-primary/15">
                     <Icon className="h-5 w-5 text-primary" />

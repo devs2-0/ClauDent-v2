@@ -1,6 +1,6 @@
 // (Archivo MODIFICADO) src/components/InitialHistoryModal.tsx
 import { useCan } from '@/auth';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 // ¡CORREGIDO! Importamos initialState desde AppContext
 import { IHistoriaClinicaCompleta, initialState, usePatients } from '@/modules/patients';
 import { Button } from '@/shared/components/ui/button';
@@ -19,6 +19,8 @@ import {
   AccordionTrigger,
 } from '@/shared/components/ui/accordion';
 import { toast } from 'sonner';
+import { useModalDraft } from '@/shared/hooks/useModalDraft';
+import { prepareClinicalHistory } from '../utils/clinicalHistoryForm';
 
 // Importamos todos los formularios
 import FormHistoriaGeneral from './forms/FormHistoriaGeneral';
@@ -41,19 +43,34 @@ interface Props {
 
 const InitialHistoryModal: React.FC<Props> = ({ isOpen, patientId, onClose, initialData }) => {
   const { can } = useCan();
-  const { addInitialHistoryForms } = usePatients();
+  const { addInitialHistoryForms, patients } = usePatients();
   const [formData, setFormData] = useState(initialState);
   const [isSaving, setIsSaving] = useState(false);
+  const draft = useModalDraft<IHistoriaClinicaCompleta>(`clinical-history.${patientId}`);
+  const baseline = useRef(initialState);
+  const initialized = useRef(false);
+  const [draftRecovered, setDraftRecovered] = useState(false);
+  const patient = patients.find((item) => item.id === patientId);
 
   useEffect(() => {
-    if (isOpen) {
-      if (initialData) {
-        setFormData(initialData);
-      } else {
-        setFormData(initialState);
-      }
+    if (!isOpen) { initialized.current = false; return; }
+    if (initialized.current || !patientId || !patient) return;
+    initialized.current = true;
+    baseline.current = prepareClinicalHistory(patient, initialData);
+    const recovered = draft.read();
+    setFormData(recovered ? prepareClinicalHistory(patient, recovered) : baseline.current);
+    setDraftRecovered(Boolean(recovered));
+  }, [isOpen, initialData, patientId, patient, draft]);
+
+  const closeModal = (discard = false) => {
+    if (!initialized.current || !patient) { onClose(); return; }
+    if (discard || JSON.stringify(formData) === JSON.stringify(baseline.current) || JSON.stringify(formData) === JSON.stringify(initialState)) draft.discard();
+    else {
+      const persisted = draft.save(formData);
+      toast.info(persisted ? 'Borrador guardado en este dispositivo.' : 'Borrador conservado durante esta sesión.');
     }
-  }, [isOpen, initialData]);
+    onClose();
+  };
 
   const createFormUpdater = <K extends keyof IHistoriaClinicaCompleta>(formKey: K) => {
     return (updater: React.SetStateAction<IHistoriaClinicaCompleta[K]>) => {
@@ -74,6 +91,7 @@ const InitialHistoryModal: React.FC<Props> = ({ isOpen, patientId, onClose, init
     setIsSaving(true);
     try {
       await addInitialHistoryForms(patientId, formData);
+      draft.discard();
       toast.success("Historia Clínica guardada con éxito");
       onClose();
     } catch (error) {
@@ -85,8 +103,8 @@ const InitialHistoryModal: React.FC<Props> = ({ isOpen, patientId, onClose, init
   };
 
   return (
-    <Dialog open={isOpen && can("patients.clinicalHistory.update")} onOpenChange={onClose}>
-      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+    <Dialog open={isOpen && can("patients.clinicalHistory.update")} onOpenChange={(open) => { if (!open) closeModal(); }}>
+      <DialogContent className="max-h-[calc(100dvh-1rem)] max-w-4xl flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle>
             {initialData ? 'Editar Historia Clínica' : 'Crear Historia Clínica Inicial'}
@@ -99,7 +117,9 @@ const InitialHistoryModal: React.FC<Props> = ({ isOpen, patientId, onClose, init
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto -mx-6 px-6 py-4">
+        <div className="-mx-4 min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:-mx-6 sm:px-6">
+          {draftRecovered && <p role="status" className="mb-3 text-sm text-muted-foreground">Se recuperó tu borrador. Cancelar lo descarta.</p>}
+          {patient && <p className="mb-3 text-sm font-medium">{patient.nombres} {patient.apellidos}</p>}
           {/* ¡CORREGIDO! 'collapsible' eliminado */}
           <Accordion type="multiple" className="w-full">
             <AccordionItem value="item-1">
@@ -204,11 +224,11 @@ const InitialHistoryModal: React.FC<Props> = ({ isOpen, patientId, onClose, init
           </Accordion>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={isSaving}>
-            {initialData ? 'Cancelar' : 'Omitir (Lo haré después)'}
+        <DialogFooter className="shrink-0 gap-2">
+          <Button className="w-full sm:w-auto" variant="outline" onClick={() => closeModal(true)} disabled={isSaving}>
+            Cancelar
           </Button>
-          <Button onClick={handleSubmit} disabled={isSaving}>
+          <Button className="w-full sm:w-auto" onClick={handleSubmit} disabled={isSaving || !patient}>
             {isSaving ? "Guardando..." : (initialData ? "Guardar Cambios" : "Guardar Historia Inicial")}
           </Button>
         </DialogFooter>

@@ -20,7 +20,7 @@ const FormExploracionCabezaCuello: React.FC<Props> = ({ formData, setFormData })
 
   return (
     <div className="space-y-6 p-4">
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-3">
         <div className="flex items-center space-x-2">
           <Checkbox id="cabeza_exostosis" checked={formData.cabeza_exostosis} onCheckedChange={(v) => handleCheckboxChange('cabeza_exostosis', !!v)} />
           <Label htmlFor="cabeza_exostosis">Cabeza: Exostosis</Label>
@@ -42,7 +42,7 @@ const FormExploracionCabezaCuello: React.FC<Props> = ({ formData, setFormData })
           <Label htmlFor="cuello_cadena_ganglionar_palpable">Cuello: Cadena Ganglionar Palpable</Label>
         </div>
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-4">
         <div className="space-y-2">
           <Label htmlFor="craneo_tipo">Tipo de Cráneo</Label>
           <Select value={formData.craneo_tipo} onValueChange={(v) => handleSelectChange('craneo_tipo', v)}>
