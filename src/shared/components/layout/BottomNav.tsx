@@ -16,7 +16,7 @@ export function BottomNav() {
   return (
     <nav
       aria-label="Navegación principal"
-      className="fixed bottom-0 left-0 right-0 z-40 grid h-14 grid-cols-5 border-t bg-background/95 backdrop-blur md:hidden"
+      className="fixed bottom-0 left-0 right-0 z-40 grid h-14 grid-cols-5 border-t bg-background/95 backdrop-blur max-[360px]:hidden md:hidden"
     >
       {visibleItems.map((item) => {
         const isActive = location.pathname === item.url;
