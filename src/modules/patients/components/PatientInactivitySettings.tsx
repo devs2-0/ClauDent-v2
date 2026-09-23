@@ -85,7 +85,7 @@ const PatientInactivitySettings = () => {
         <section className="mb-6 space-y-3 rounded-lg border p-3">
           <h3 className="font-medium">Inactividad automática</h3>
           <p className="text-sm text-muted-foreground">El listado calcula el estado al consultar la actividad clínica completa. Sin un proceso de servidor, no se cambia el documento ni se ejecuta con la aplicación cerrada.</p>
-          <div className="flex gap-3">
+          <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-2"><Label htmlFor="auto-inactivity-value">Duración</Label><Input id="auto-inactivity-value" type="number" min={1} max={3650} value={autoValue} onChange={(event) => setAutoValue(event.target.value)} disabled={!canUpdateSettings} /></div>
             <div className="space-y-2"><Label htmlFor="auto-inactivity-unit">Unidad</Label><Select value={autoUnit} onValueChange={(value) => setAutoUnit(value as DurationUnit)} disabled={!canUpdateSettings}><SelectTrigger id="auto-inactivity-unit"><SelectValue /></SelectTrigger><SelectContent>{patientDurationUnits.map((value) => <SelectItem key={value} value={value}>{durationUnitLabels[value]}</SelectItem>)}</SelectContent></Select></div>
           </div>
@@ -116,7 +116,7 @@ const PatientInactivitySettings = () => {
               <SelectContent>{patientDurationUnits.map((value) => <SelectItem key={value} value={value}>{durationUnitLabels[value]}</SelectItem>)}</SelectContent>
             </Select>
           </div>
-          {canUpdateSettings && <Button type="button" onClick={handleSave}>Guardar</Button>}
+          {canUpdateSettings && <Button className="w-full sm:w-auto" type="button" onClick={handleSave}>Guardar</Button>}
         </div>
       </CardContent>
     </Card>

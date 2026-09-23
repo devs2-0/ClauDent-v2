@@ -162,7 +162,7 @@ const PatientAntecedentes: React.FC<{ readOnly?: boolean }> = ({ readOnly = fals
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h3 className="text-lg font-semibold">Antecedentes y Ficha Clínica</h3>
         {!readOnly && <Can permission="patients.clinicalHistory.update"><Button onClick={() => setIsModalOpen(true)}>
           <Edit className="h-4 w-4 mr-2" />

@@ -30,7 +30,7 @@ const FormExploracionAtm: React.FC<Props> = ({ formData, setFormData }) => {
           <Input id="lateralidad" value={formData.lateralidad} onChange={handleChange} />
         </div>
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-4">
         <div className="flex items-center space-x-2">
           <Checkbox id="ruidos" checked={formData.ruidos} onCheckedChange={(v) => handleCheckboxChange('ruidos', !!v)} />
           <Label htmlFor="ruidos">Ruidos</Label>

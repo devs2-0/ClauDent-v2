@@ -304,7 +304,7 @@ const DailyCalendarView = ({
         </div>
 
         {hasOverflow && (
-          <div className="sticky top-0 z-10 hidden border-b bg-card px-3 py-2 md:block">
+          <div className="sticky top-16 z-10 border-b bg-card px-3 py-2">
             <div className="flex items-center justify-between gap-2">
               <span className="text-xs text-muted-foreground">Desplazar doctores</span>
               <div className="flex gap-1">
@@ -317,13 +317,13 @@ const DailyCalendarView = ({
             }}><div style={{ width: scrollWidth }} className="h-1" /></div>
           </div>
         )}
-        <div ref={calendarRef} className="overflow-x-auto" onScroll={(event) => {
+        <div ref={calendarRef} role="region" aria-label="Agenda diaria por doctores" tabIndex={0} className="max-w-full overflow-x-auto overscroll-x-contain" onScroll={(event) => {
           if (topScrollRef.current && topScrollRef.current.scrollLeft !== event.currentTarget.scrollLeft) topScrollRef.current.scrollLeft = event.currentTarget.scrollLeft;
         }}>
           <div
-            className="grid min-w-[820px]"
+            className="grid w-max min-w-full"
             style={{
-              gridTemplateColumns: `82px repeat(${visibleDoctors.length}, minmax(230px, 1fr))`,
+              gridTemplateColumns: `72px repeat(${visibleDoctors.length}, minmax(210px, 1fr))`,
             }}
           >
             <div className="sticky left-0 z-[2] border-b bg-background/95 p-3 text-xs font-medium text-muted-foreground backdrop-blur">
@@ -336,7 +336,7 @@ const DailyCalendarView = ({
               return (
                 <div
                   key={doctor.id}
-                  className="border-b border-l p-3"
+                  className="min-w-0 border-b border-l p-2.5 sm:p-3"
                   style={{
                     backgroundColor: getSoftColor(doctorColor, 0.09),
                     borderTopColor: doctorColor,
@@ -409,7 +409,7 @@ const DailyCalendarView = ({
                     <div
                       key={`${doctor.id}-${slot.startTime}`}
                       className={[
-                        "min-h-[84px] border-b border-l p-2 transition-colors duration-200",
+                        "min-h-[76px] min-w-0 border-b border-l p-1.5 transition-colors duration-200 sm:min-h-[84px] sm:p-2",
                         !schedule ? "bg-muted/20" : "",
                         block ? "bg-muted/40" : "",
                         isAvailable ? "bg-background hover:bg-muted/20" : "",
@@ -418,7 +418,7 @@ const DailyCalendarView = ({
                       {appointment ? (
                         <button
                           type="button"
-                          className="w-full rounded-xl border p-3 text-left text-sm shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+                          className="w-full min-w-0 rounded-xl border p-2 text-left text-sm shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md sm:p-3"
                           style={{
                             borderColor: getSoftColor(doctorColor, 0.45),
                             borderLeftWidth: 6,

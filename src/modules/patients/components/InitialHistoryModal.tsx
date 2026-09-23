@@ -104,7 +104,7 @@ const InitialHistoryModal: React.FC<Props> = ({ isOpen, patientId, onClose, init
 
   return (
     <Dialog open={isOpen && can("patients.clinicalHistory.update")} onOpenChange={(open) => { if (!open) closeModal(); }}>
-      <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col">
+      <DialogContent className="max-h-[calc(100dvh-1rem)] max-w-4xl flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle>
             {initialData ? 'Editar Historia Clínica' : 'Crear Historia Clínica Inicial'}
@@ -117,7 +117,7 @@ const InitialHistoryModal: React.FC<Props> = ({ isOpen, patientId, onClose, init
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex-1 overflow-y-auto -mx-6 px-6 py-4">
+        <div className="-mx-4 min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:-mx-6 sm:px-6">
           {draftRecovered && <p role="status" className="mb-3 text-sm text-muted-foreground">Se recuperó tu borrador. Cancelar lo descarta.</p>}
           {patient && <p className="mb-3 text-sm font-medium">{patient.nombres} {patient.apellidos}</p>}
           {/* ¡CORREGIDO! 'collapsible' eliminado */}
@@ -224,11 +224,11 @@ const InitialHistoryModal: React.FC<Props> = ({ isOpen, patientId, onClose, init
           </Accordion>
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => closeModal(true)} disabled={isSaving}>
+        <DialogFooter className="shrink-0 gap-2">
+          <Button className="w-full sm:w-auto" variant="outline" onClick={() => closeModal(true)} disabled={isSaving}>
             Cancelar
           </Button>
-          <Button onClick={handleSubmit} disabled={isSaving || !patient}>
+          <Button className="w-full sm:w-auto" onClick={handleSubmit} disabled={isSaving || !patient}>
             {isSaving ? "Guardando..." : (initialData ? "Guardar Cambios" : "Guardar Historia Inicial")}
           </Button>
         </DialogFooter>

@@ -748,14 +748,14 @@ const UsersPage = () => {
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={loadData} disabled={loading}>
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row sm:flex-wrap">
+          <Button className="w-full sm:w-auto" variant="outline" onClick={loadData} disabled={loading}>
             <RefreshCw className="mr-2 h-4 w-4" />
             Actualizar
           </Button>
 
           <Can permission="users.create">
-            <Button className="shadow-lg" onClick={openInviteDialog}>
+            <Button className="w-full shadow-lg sm:w-auto" onClick={openInviteDialog}>
               <MailPlus className="mr-2 h-4 w-4" />
               Nueva invitación
             </Button>
@@ -793,7 +793,7 @@ const UsersPage = () => {
                     key={invitation.id}
                     className="flex flex-col gap-3 rounded-xl border bg-background p-4 md:flex-row md:items-start md:justify-between"
                   >
-                    <div className="space-y-2">
+                    <div className="min-w-0 space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
                         <h2 className="font-semibold">
                           {invitation.displayName}
@@ -813,7 +813,7 @@ const UsersPage = () => {
                         </Badge>
                       </div>
 
-                      <p className="text-sm text-muted-foreground">
+                      <p className="break-all text-sm text-muted-foreground">
                         {invitation.email}
                       </p>
 
@@ -867,7 +867,7 @@ const UsersPage = () => {
               <CardTitle>Usuarios del sistema</CardTitle>
               <CardDescription>Consulta y administra el acceso del equipo.</CardDescription>
             </div>
-            <div className="grid w-full gap-2 sm:grid-cols-2 lg:max-w-4xl xl:grid-cols-4">
+            <div className="grid min-w-0 w-full gap-2 sm:grid-cols-2 lg:max-w-4xl xl:grid-cols-4">
               <div className="relative sm:col-span-2 xl:col-span-1">
                 <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -909,7 +909,7 @@ const UsersPage = () => {
 
         <CardContent className="space-y-3">
           {canSelectUsers && (
-            <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/20 p-2">
+            <div className="flex flex-col items-stretch gap-2 rounded-lg border bg-muted/20 p-2 sm:flex-row sm:flex-wrap sm:items-center [&>button]:w-full sm:[&>button]:w-auto">
               <Button type="button" variant="outline" size="sm" onClick={toggleVisibleUsers} disabled={selectableVisibleUserIds.length === 0 || bulkSaving}>
                 <CheckCheck className="mr-2 h-4 w-4" />
                 {allVisibleUsersSelected ? "Quitar visibles" : "Seleccionar visibles"}
@@ -976,11 +976,11 @@ const UsersPage = () => {
                         title={getProtectedUserMessage(user) ?? "Seleccionar usuario"}
                       />
                     )}
-                    <div className="flex flex-col gap-4 pr-8 lg:flex-row lg:items-start lg:justify-between">
-                      <div className="space-y-3">
+                    <div className="flex min-w-0 flex-col gap-4 pr-8 lg:flex-row lg:items-start lg:justify-between">
+                      <div className="min-w-0 space-y-3">
                         <div>
                           <div className="flex flex-wrap items-center gap-2">
-                            <h2 className="font-semibold text-foreground">
+                            <h2 className="break-words font-semibold text-foreground">
                               {user.displayName || user.email}
                             </h2>
 
@@ -1008,7 +1008,7 @@ const UsersPage = () => {
                             )}
                           </div>
 
-                          <p className="text-sm text-muted-foreground">
+                          <p className="break-all text-sm text-muted-foreground">
                             {user.email}
                           </p>
 
@@ -1169,7 +1169,7 @@ const UsersPage = () => {
         }}
       >
         <DialogContent
-          className="max-h-[90vh] max-w-2xl overflow-y-auto"
+          className="max-h-[calc(100dvh-1rem)] max-w-2xl overflow-y-auto overscroll-contain"
           onCloseAutoFocus={handleDialogCloseAutoFocus}
           onEscapeKeyDown={blurActiveElement}
           onPointerDownOutside={blurActiveElement}
@@ -1408,7 +1408,7 @@ const UsersPage = () => {
         }}
       >
         <DialogContent
-          className="max-h-[90vh] max-w-2xl overflow-y-auto"
+          className="max-h-[calc(100dvh-1rem)] max-w-2xl overflow-y-auto overscroll-contain"
           onCloseAutoFocus={handleDialogCloseAutoFocus}
           onEscapeKeyDown={blurActiveElement}
           onPointerDownOutside={blurActiveElement}

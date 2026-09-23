@@ -1,5 +1,8 @@
 import type { Appointment, Doctor } from '../types/agenda.types';
 
+export const isInactiveCalendarDoctor = (doctor: Doctor) =>
+  doctor.status !== 'active' || Boolean(doctor.deletedAt) || Boolean(doctor.isDeletedReference);
+
 // Visibility scope is supplied by the existing user/assistant assignments.
 export const historicalDoctors = (doctors: Doctor[], appointments: Appointment[], all: boolean, allowedIds: Set<string>): Doctor[] => {
   const catalog = new Map(doctors.map((doctor) => [doctor.id, doctor]));

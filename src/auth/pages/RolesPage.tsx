@@ -610,14 +610,14 @@ const RolesPage = () => {
           </div>
         </div>
 
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={loadRoles} disabled={loading}>
+        <div className="flex w-full flex-col gap-2 sm:w-auto sm:flex-row">
+          <Button className="w-full sm:w-auto" variant="outline" onClick={loadRoles} disabled={loading}>
             <RefreshCw className="mr-2 h-4 w-4" />
             Actualizar
           </Button>
 
           <Can permission="roles.create">
-            <Button className="shadow-lg" onClick={openCreateDialog}>
+            <Button className="w-full shadow-lg sm:w-auto" onClick={openCreateDialog}>
               <Plus className="mr-2 h-4 w-4" />
               Nuevo rol
             </Button>
@@ -655,7 +655,7 @@ const RolesPage = () => {
 
         <CardContent className="space-y-3">
           {canSelectRoles && (
-            <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/20 p-2">
+            <div className="flex flex-col items-stretch gap-2 rounded-lg border bg-muted/20 p-2 sm:flex-row sm:flex-wrap sm:items-center [&>button]:w-full sm:[&>button]:w-auto">
               <Button type="button" variant="outline" size="sm" onClick={toggleVisibleRoles} disabled={selectableVisibleRoleIds.length === 0 || bulkSaving}>
                 <CheckCheck className="mr-2 h-4 w-4" />
                 {allVisibleRolesSelected ? "Quitar visibles" : "Seleccionar visibles"}
@@ -713,8 +713,8 @@ const RolesPage = () => {
                       title={isProtectedRole(role) ? "Rol protegido del sistema" : "Seleccionar rol"}
                     />
                   )}
-                  <div className="flex flex-col gap-4 pr-8 md:flex-row md:items-start md:justify-between">
-                    <div className="space-y-2">
+                  <div className="flex min-w-0 flex-col gap-4 pr-8 md:flex-row md:items-start md:justify-between">
+                    <div className="min-w-0 space-y-2">
                       <div className="flex flex-wrap items-center gap-2">
                         <div className="flex items-center gap-3">
                           <span
@@ -824,7 +824,7 @@ const RolesPage = () => {
         }}
       >
         <DialogContent
-          className="max-h-[90vh] max-w-4xl overflow-y-auto"
+          className="max-h-[calc(100dvh-1rem)] max-w-4xl overflow-y-auto overscroll-contain"
           onCloseAutoFocus={handleDialogCloseAutoFocus}
           onEscapeKeyDown={blurActiveElement}
           onPointerDownOutside={blurActiveElement}
@@ -921,7 +921,7 @@ const RolesPage = () => {
                 <div className="space-y-2">
                   <Label>Emoji del rol</Label>
 
-                  <div className="grid grid-cols-6 gap-2 sm:grid-cols-8 md:grid-cols-11">
+                  <div className="grid grid-cols-[repeat(auto-fit,minmax(2.5rem,1fr))] gap-2">
                     {ROLE_EMOJIS.map((emoji) => {
                       const selected = form.icon === emoji;
 
@@ -936,7 +936,7 @@ const RolesPage = () => {
                             }))
                           }
                           className={[
-                            "flex h-11 w-11 items-center justify-center rounded-xl border text-xl transition-all",
+                            "flex h-10 w-full min-w-0 items-center justify-center rounded-xl border text-xl transition-all sm:h-11",
                             selected
                               ? "border-primary bg-primary/10 ring-2 ring-primary"
                               : "hover:bg-muted",
@@ -953,7 +953,7 @@ const RolesPage = () => {
                 <div className="space-y-2">
                   <Label>Color del rol</Label>
 
-                  <div className="grid grid-cols-8 gap-2 sm:grid-cols-11 md:grid-cols-12">
+                  <div className="grid grid-cols-[repeat(auto-fit,minmax(2.25rem,1fr))] gap-2">
                     {ROLE_COLORS.map((color) => {
                       const selected = form.color === color;
 
@@ -968,7 +968,7 @@ const RolesPage = () => {
                             }))
                           }
                           className={[
-                            "h-9 w-9 rounded-full border-2 transition-transform",
+                            "mx-auto h-9 w-9 max-w-full rounded-full border-2 transition-transform",
                             selected
                               ? "scale-110 border-foreground ring-2 ring-ring"
                               : "border-transparent hover:scale-105",
@@ -1061,7 +1061,7 @@ const RolesPage = () => {
                                   }
                                 />
 
-                                <div className="space-y-1">
+                                <div className="min-w-0 space-y-1">
                                   <div className="flex flex-wrap items-center gap-2">
                                     <span className="text-sm font-medium">
                                       {permission.label}
@@ -1074,7 +1074,7 @@ const RolesPage = () => {
                                     )}
                                   </div>
 
-                                  <p className="text-xs text-muted-foreground">
+                                  <p className="break-words text-xs text-muted-foreground">
                                     {permission.description}
                                   </p>
                                   {disabled && <p className="text-xs text-muted-foreground">Activa primero: {getPermissionDependencies(permission.key).filter((parent) => !form.permissions.includes(parent)).map((parent) => permissionCatalog.find((item) => item.key === parent)?.label).join(", ")}</p>}

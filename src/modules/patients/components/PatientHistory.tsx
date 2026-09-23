@@ -462,7 +462,7 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId, readOnly = f
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h3 className="text-lg font-semibold">Historial de Procedimientos</h3>
         {!readOnly && <Can permission="patients.procedures.create"><Button onClick={() => handleOpenDialog()} disabled={historialLoading}>
           <Plus className="h-4 w-4 mr-2" />
@@ -491,7 +491,7 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId, readOnly = f
                         <CardTitle className="text-base">{formatDate(entry.fecha)}</CardTitle>
                         <CardDescription>Total: {formatCurrency(entry.total)}</CardDescription>
                     </div>
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex gap-1 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
                         {!readOnly && <Can permission="patients.procedures.update"><Button variant="ghost" size="icon" aria-label="Editar" onClick={() => handleOpenDialog(entry)}>
                             <Edit className="h-4 w-4" />
                         </Button></Can>}
@@ -547,13 +547,13 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId, readOnly = f
       </div>
 
       <Dialog open={isDialogOpen && (!readOnly && hasPermission(editingEntryId ? "patients.procedures.update" : "patients.procedures.create"))} onOpenChange={(open) => { if (!open) closeHistoryDialog(); }}>
-        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col">
+        <DialogContent className="max-h-[calc(100dvh-1rem)] max-w-2xl flex flex-col overflow-hidden">
           <DialogHeader>
             <DialogTitle>{editingEntryId ? 'Editar Entrada' : 'Nueva Entrada en Historial'}</DialogTitle>
             <DialogDescription>Registra los servicios aplicados al paciente</DialogDescription>
           </DialogHeader>
           
-          <div className="flex-1 overflow-y-auto -mx-6 px-6 py-4">
+          <div className="-mx-4 min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-4 sm:-mx-6 sm:px-6">
             {draftRecovered && <p role="status" className="mb-3 text-sm text-muted-foreground">Se recuperó tu borrador. Cancelar lo descarta.</p>}
             <form id="history-form" onSubmit={handleSubmit} className="space-y-4">
                 <fieldset disabled={isFormLoading} className="space-y-4">
@@ -577,7 +577,7 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId, readOnly = f
                     </Button>
                     </div>
                     {formData.servicios.map((item, index) => (
-                    <div key={index} className="flex gap-2 items-center">
+                    <div key={index} className="grid min-w-0 grid-cols-[minmax(0,1fr)_5rem_2.5rem] items-center gap-2">
                         
                         {/* BUSCADOR DE SERVICIOS (POPOVER) */}
                         <Popover 
@@ -592,7 +592,7 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId, readOnly = f
                                     variant="outline"
                                     role="combobox"
                                     className={cn(
-                                        "flex-1 justify-between text-left font-normal",
+                                        "w-full min-w-0 justify-between text-left font-normal",
                                         !item.servicioId && "text-muted-foreground"
                                     )}
                                 >
@@ -604,7 +604,7 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId, readOnly = f
                                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                 </Button>
                             </PopoverTrigger>
-                            <PopoverContent className="w-[300px] p-0" align="start">
+                            <PopoverContent className="w-[min(300px,calc(100vw-2rem))] p-0" align="start">
                                 <Command shouldFilter={false}>
                                     <CommandInput 
                                         placeholder="Buscar servicio..." 
@@ -729,7 +729,7 @@ const PatientHistory: React.FC<PatientHistoryProps> = ({ patientId, readOnly = f
                                                 <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                                             </Button>
                                         </PopoverTrigger>
-                                        <PopoverContent className="w-[360px] p-0" align="start">
+                                        <PopoverContent className="w-[min(360px,calc(100vw-2rem))] p-0" align="start">
                                             <Command shouldFilter={false}>
                                                 <CommandInput
                                                     placeholder="Buscar producto, marca o categoria..."

@@ -27,7 +27,7 @@ export default function ServiceCategorySettings() {
   };
   if (!can('settings.view')) return null;
   return <Card className="overflow-hidden border-border/70 shadow-sm">
-    <CardHeader className="border-b bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-5">
+    <CardHeader className="border-b bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-4 sm:p-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/15">
@@ -43,7 +43,7 @@ export default function ServiceCategorySettings() {
         </span>}
       </div>
     </CardHeader>
-    <CardContent className="space-y-4 p-5">
+    <CardContent className="space-y-4 p-4 sm:p-5">
       {categoriesLoading ? <div className="space-y-3" role="status" aria-label="Cargando categorías">
         {[0, 1, 2].map((item) => <div key={item} className="flex items-center justify-between rounded-lg border p-3">
           <div className="flex items-center gap-3"><Skeleton className="h-8 w-8 rounded-md" /><Skeleton className="h-4 w-36" /></div>
@@ -65,7 +65,7 @@ export default function ServiceCategorySettings() {
               <Label htmlFor="category-name">{editing ? 'Editar categoría' : 'Nueva categoría'}</Label>
               <Input id="category-name" value={name} maxLength={80} required disabled={saving} placeholder="Ej. Ortodoncia" onChange={(event) => setName(event.target.value)} />
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2 min-[420px]:flex-row">
               <Button className="flex-1 sm:flex-none" disabled={saving}>
                 {editing ? <Pencil className="mr-2 h-4 w-4" /> : <Plus className="mr-2 h-4 w-4" />}
                 {editing ? 'Guardar' : 'Crear categoría'}

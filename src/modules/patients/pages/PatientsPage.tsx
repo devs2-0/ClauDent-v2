@@ -342,14 +342,14 @@ const Pacientes: React.FC = () => {
     }[clinicalHistoryStatus];
 
     return (
-      <div className="bg-card border rounded-xl p-4 hover:shadow-md transition-all flex flex-col justify-between gap-4 h-full">
+      <div className="flex h-full min-w-0 flex-col justify-between gap-4 rounded-xl border bg-card p-3 transition-all hover:shadow-md sm:p-4">
         <div>
-            <div className="flex justify-between items-start mb-3">
-                <div className="flex gap-3 items-center">
+            <div className="mb-3 flex min-w-0 items-start justify-between gap-2">
+                <div className="flex min-w-0 items-center gap-3">
                     <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold shrink-0">
                         {p.nombres[0]}{p.apellidos[0]}
                     </div>
-                    <div>
+                    <div className="min-w-0">
                         <h3 className="font-semibold text-base leading-tight line-clamp-1" title={`${p.nombres} ${p.apellidos}`}>
                             {p.nombres} {p.apellidos}
                         </h3>
@@ -367,7 +367,7 @@ const Pacientes: React.FC = () => {
                       aria-label={`Seleccionar a ${p.nombres} ${p.apellidos}`}
                     />
                   )}
-                  <Badge variant={p.estado === 'activo' ? 'default' : 'secondary'} className="capitalize">{p.estado}{p.estado === 'inactivo' && storedPatients.find((patient) => patient.id === p.id)?.estado === 'activo' ? ' por periodo' : ''}</Badge>
+                  <Badge variant={p.estado === 'activo' ? 'default' : 'secondary'} className="max-w-28 truncate capitalize">{p.estado}{p.estado === 'inactivo' && storedPatients.find((patient) => patient.id === p.id)?.estado === 'activo' ? ' por periodo' : ''}</Badge>
                 </div>
             </div>
             
@@ -414,7 +414,7 @@ const Pacientes: React.FC = () => {
   };
 
   return (
-    <div className="space-y-4 h-[calc(100vh-6rem)] flex flex-col">
+    <div className="flex min-h-0 flex-col space-y-4 lg:h-[calc(100dvh-7rem)]">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shrink-0">
         <div>
           <div className="flex items-center gap-1">
@@ -426,7 +426,7 @@ const Pacientes: React.FC = () => {
           <p className="text-muted-foreground">Directorio completo</p>
         </div>
         {canCreatePatient && (
-          <Button onClick={() => handleOpenDialog()} size="lg" className="shadow-lg">
+          <Button onClick={() => handleOpenDialog()} size="lg" className="w-full shadow-lg sm:w-auto">
             <Plus className="h-5 w-5 mr-2" /> Nuevo Paciente
           </Button>
         )}
@@ -480,7 +480,7 @@ const Pacientes: React.FC = () => {
             </div>
       </div>
 
-      <div className="flex shrink-0 flex-wrap items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2">
+      <div className="flex shrink-0 flex-col items-stretch gap-2 rounded-lg border bg-muted/30 px-3 py-2 sm:flex-row sm:flex-wrap sm:items-center">
         <div className="flex items-center gap-1 text-sm text-muted-foreground">
           <ClipboardCheck className="h-4 w-4" />
           <span>Estado del historial</span>
@@ -493,7 +493,7 @@ const Pacientes: React.FC = () => {
 
         {selectedPatientIds.size > 0 && (
           <>
-            <Badge variant="secondary" className="ml-auto">
+            <Badge variant="secondary" className="self-start sm:ml-auto sm:self-auto">
               {selectedPatientIds.size} seleccionados
             </Badge>
             {canUpdatePatient && (
@@ -501,6 +501,7 @@ const Pacientes: React.FC = () => {
                 type="button"
                 variant="outline"
                 size="sm"
+                className="w-full sm:w-auto"
                 onClick={() => void updateSelectedPatientsStatus('activo', 'Activar')}
                 disabled={isBulkUpdating}
               >
@@ -512,6 +513,7 @@ const Pacientes: React.FC = () => {
                 type="button"
                 variant="outline"
                 size="sm"
+                className="w-full sm:w-auto"
                 onClick={() => void updateSelectedPatientsStatus('inactivo', 'Desactivar')}
                 disabled={isBulkUpdating}
               >
@@ -523,6 +525,7 @@ const Pacientes: React.FC = () => {
                 type="button"
                 variant="destructive"
                 size="sm"
+                className="w-full sm:w-auto"
                 onClick={() => void updateSelectedPatientsStatus('inactivo', 'Eliminar')}
                 disabled={isBulkUpdating}
               >
@@ -533,6 +536,7 @@ const Pacientes: React.FC = () => {
               type="button"
               variant="ghost"
               size="sm"
+              className="w-full sm:w-auto"
               onClick={() => setSelectedPatientIds(new Set())}
               disabled={isBulkUpdating}
             >
@@ -550,9 +554,9 @@ const Pacientes: React.FC = () => {
             <p className="mt-2 font-semibold">{`${patientDraft.nombres || ''} ${patientDraft.apellidos || ''}`.trim() || 'Nuevo paciente'}</p>
             <p className="text-sm text-muted-foreground">Guardado solo en tu cuenta y este dispositivo. Aún no tiene expediente.</p>
           </button>
-          <div className="mt-3 flex gap-2">
-            <Button size="sm" onClick={() => handleOpenDialog()}>Continuar</Button>
-            <Button size="sm" variant="outline" onClick={async () => {
+          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+            <Button className="w-full sm:w-auto" size="sm" onClick={() => handleOpenDialog()}>Continuar</Button>
+            <Button className="w-full sm:w-auto" size="sm" variant="outline" onClick={async () => {
               if (await confirm({ title: 'Descartar borrador', description: 'Se eliminarán los datos capturados en este borrador local.', confirmLabel: 'Descartar', destructive: true })) {
                 draft.discard(); setDraftRecovered(false); setFormData({ ...initialFormData });
               }
@@ -609,13 +613,14 @@ const Pacientes: React.FC = () => {
 
       {/* Modal de Formulario */}
       <Dialog open={isDialogOpen && can(editingPatient ? "patients.update" : "patients.create")} onOpenChange={(open) => { if (!open) closePatientDialog(); }}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="flex max-h-[calc(100dvh-1rem)] max-w-2xl flex-col gap-0 overflow-hidden p-0">
+          <DialogHeader className="shrink-0 px-4 pb-3 pr-12 pt-4 sm:px-6 sm:pt-6">
             <DialogTitle>{editingPatient ? 'Editar Paciente' : 'Registrar Nuevo Paciente'}</DialogTitle>
             <DialogDescription>Los campos marcados con * son obligatorios.</DialogDescription>
           </DialogHeader>
-          {!editingPatient && draftRecovered && <p role="status" className="text-sm text-muted-foreground">Se recuperó tu borrador. Cancelar lo descarta.</p>}
-          <form onSubmit={handleRequestSubmit} className="space-y-6 pt-2">
+          {!editingPatient && draftRecovered && <p role="status" className="shrink-0 px-4 text-sm text-muted-foreground sm:px-6">Se recuperó tu borrador. Cancelar lo descarta.</p>}
+          <form onSubmit={handleRequestSubmit} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <div className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain px-4 py-2 sm:px-6">
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="space-y-2">
                     <Label htmlFor="nombres">Nombres *</Label>
@@ -696,9 +701,10 @@ const Pacientes: React.FC = () => {
                   </div>
               )}
 
-            <DialogFooter>
-              <Button type="button" variant="outline" disabled={isFormLoading} onClick={() => closePatientDialog(true)}>Cancelar</Button>
-              <Button type="submit" disabled={isFormLoading}>{editingPatient ? 'Guardar Cambios' : 'Registrar Paciente'}</Button>
+            </div>
+            <DialogFooter className="shrink-0 gap-2 border-t bg-background px-4 py-3 sm:px-6">
+              <Button className="w-full sm:w-auto" type="button" variant="outline" disabled={isFormLoading} onClick={() => closePatientDialog(true)}>Cancelar</Button>
+              <Button className="w-full sm:w-auto" type="submit" disabled={isFormLoading}>{editingPatient ? 'Guardar Cambios' : 'Registrar Paciente'}</Button>
             </DialogFooter>
           </form>
         </DialogContent>

@@ -69,7 +69,7 @@ const AgendaBlockDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-xl">
+      <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-xl overflow-y-auto overscroll-contain">
         <DialogHeader>
           <DialogTitle>Bloquear horario</DialogTitle>
           <DialogDescription>
@@ -105,7 +105,7 @@ const AgendaBlockDialog = ({
           </label>
 
           {!form.allDay && (
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="block-start-time">Inicio</Label>
                 <Input
@@ -169,8 +169,9 @@ const AgendaBlockDialog = ({
           </div>
         </div>
 
-        <DialogFooter>
+        <DialogFooter className="gap-2">
           <Button
+            className="w-full sm:w-auto"
             variant="outline"
             onClick={() => onOpenChange(false)}
             disabled={saving}
@@ -179,6 +180,7 @@ const AgendaBlockDialog = ({
           </Button>
 
           <Button
+            className="w-full sm:w-auto"
             variant="destructive"
             onClick={() => void onSubmit(form)}
             disabled={saving}

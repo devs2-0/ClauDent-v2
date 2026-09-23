@@ -115,13 +115,13 @@ const MonthlyCalendarView = ({
         </CardTitle>
       </CardHeader>
 
-      <CardContent className="p-3 sm:p-4">
-        <div className="overflow-hidden rounded-2xl border bg-background shadow-sm">
+      <CardContent className="p-1.5 sm:p-3 md:p-4">
+        <div className="min-w-0 overflow-hidden rounded-xl border bg-background shadow-sm sm:rounded-2xl">
           <div className="grid grid-cols-7 border-b bg-muted/40">
             {weekdayLabels.map((label) => (
               <div
                 key={label}
-                className="border-r p-2 text-center text-[11px] font-semibold uppercase tracking-wide text-muted-foreground last:border-r-0 sm:p-3"
+                className="min-w-0 border-r px-0.5 py-2 text-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground last:border-r-0 sm:p-3 sm:text-[11px]"
               >
                 {label}
               </div>
@@ -168,24 +168,25 @@ const MonthlyCalendarView = ({
                   onClick={(event) => { event.stopPropagation(); onSelectDate(day); }}
                   onKeyDown={(event) => { if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); onSelectDate(day); } }}
                   className={[
-                    "group cursor-pointer focus-visible:outline focus-visible:outline-primary min-h-[150px] border-b border-r p-2 align-top transition-colors duration-200 hover:bg-muted/20",
+                    "group min-h-[68px] min-w-0 cursor-pointer border-b border-r p-1 align-top transition-colors duration-200 hover:bg-muted/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary sm:min-h-[92px] sm:p-2 md:min-h-[150px]",
                     !isCurrentMonth ? "bg-muted/10 text-muted-foreground" : "",
                     isSelected ? "ring-2 ring-primary ring-inset" : "",
                   ].join(" ")}
                 >
-                  <div className="mb-2 flex items-center justify-between gap-2">
+                  <div className="flex min-w-0 items-center justify-center gap-1 md:mb-2 md:justify-between md:gap-2">
                     <button
                       type="button"
                       className={[
-                        "flex h-7 w-7 items-center justify-center rounded-full text-xs font-semibold transition-all duration-200 hover:scale-105 hover:bg-muted",
+                        "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-semibold transition-all duration-200 hover:scale-105 hover:bg-muted",
                         isToday ? "bg-primary text-primary-foreground shadow-sm" : "",
                       ].join(" ")}
                       onClick={(event) => { event.stopPropagation(); onSelectDate(day); }}
+                      aria-label={`Seleccionar dÃ­a ${date.getDate()}`}
                     >
                       {date.getDate()}
                     </button>
 
-                    <div className="flex flex-wrap justify-end gap-1">
+                    <div className="hidden flex-wrap justify-end gap-1 md:flex">
                       {walkInCount > 0 && (
                         <Badge
                           variant="secondary"
@@ -204,7 +205,16 @@ const MonthlyCalendarView = ({
                     </div>
                   </div>
 
-                  <div className="space-y-1.5">
+                  {(dayAppointments.length > 0 || dayBlocks.length > 0) && (
+                    <div className="mt-1 flex items-center justify-center gap-1 md:hidden" aria-hidden="true">
+                      <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                      <span className="max-w-full truncate text-[10px] font-semibold text-muted-foreground">
+                        {dayAppointments.length + dayBlocks.length}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="hidden space-y-1.5 md:block">
                     {visibleBlocks.map((block) => {
                       const doctor =
                         block.staffType === "doctor"

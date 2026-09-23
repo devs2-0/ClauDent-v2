@@ -1,4 +1,8 @@
-import { historicalDoctors, selectedDayLabel } from "../utils/historicalDoctors";
+import {
+  historicalDoctors,
+  isInactiveCalendarDoctor,
+  selectedDayLabel,
+} from "../utils/historicalDoctors";
 import { useEffect, useMemo, useState } from "react";
 import { formatTimeRange, normalizeTime, timeToMinutes } from "@/shared/utils/time";
 import {
@@ -33,6 +37,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/shared/components/ui/select";
+import { Switch } from "@/shared/components/ui/switch";
 import { useConfirmAction } from "@/shared/hooks/useConfirmAction";
 
 import AgendaBlockDialog, {
@@ -87,6 +92,7 @@ import {
 type CalendarViewMode = "month" | "week" | "doctorDay";
 
 const AGENDA_DEFAULT_VIEW_KEY = "claudent.agenda.defaultView";
+const AGENDA_SHOW_INACTIVE_DOCTORS_KEY = "claudent.agenda.showInactiveDoctors";
 
 const readDefaultView = (): CalendarViewMode => {
   if (typeof window === "undefined") return "month";
@@ -98,6 +104,16 @@ const readDefaultView = (): CalendarViewMode => {
       : "month";
   } catch {
     return "month";
+  }
+};
+
+const readShowInactiveDoctors = () => {
+  if (typeof window === "undefined") return true;
+
+  try {
+    return window.localStorage.getItem(AGENDA_SHOW_INACTIVE_DOCTORS_KEY) !== "false";
+  } catch {
+    return true;
   }
 };
 
@@ -196,6 +212,7 @@ const AppointmentManager = ({
   const [selectedDate, setSelectedDate] = useState(today);
   const [viewMode, setViewMode] = useState<CalendarViewMode>(readDefaultView);
   const [defaultViewMode, setDefaultViewMode] = useState<CalendarViewMode>(readDefaultView);
+  const [showInactiveDoctors, setShowInactiveDoctors] = useState(readShowInactiveDoctors);
   const [selectedDoctorId, setSelectedDoctorId] = useState("all");
   const [selectedAssistantId, setSelectedAssistantId] = useState("all");
   const [selectedStatus, setSelectedStatus] =
@@ -242,6 +259,19 @@ const AppointmentManager = ({
       return;
     }
     toast.success("Vista predeterminada actualizada.");
+  };
+
+  const updateShowInactiveDoctors = (checked: boolean) => {
+    setShowInactiveDoctors(checked);
+
+    try {
+      window.localStorage.setItem(
+        AGENDA_SHOW_INACTIVE_DOCTORS_KEY,
+        String(checked),
+      );
+    } catch {
+      toast.error("No se pudo guardar el filtro de doctores en este navegador.");
+    }
   };
 
   const canViewAllDoctors =
@@ -390,10 +420,39 @@ const AppointmentManager = ({
     linkedAssistant?.doctorIdsAsignados.forEach((id) => allowedIds.add(id));
     return historicalDoctors(doctors, appointments, canViewAllDoctors || Boolean(linkedAssistant && linkedAssistant.status === 'active' && linkedAssistant.doctorIdsAsignados.length === 0), allowedIds);
   }, [doctors, appointments, assistants, agendaUser, currentUser?.uid, visibleDoctors, canViewAllDoctors]);
-  const calendarDoctorIds = useMemo(() => new Set(calendarDoctors.map((doctor) => doctor.id)), [calendarDoctors]);
+
+  const inactiveDoctorCount = useMemo(
+    () => calendarDoctors.filter(isInactiveCalendarDoctor).length,
+    [calendarDoctors],
+  );
+
+  const displayedCalendarDoctors = useMemo(() => {
+    const visibleCalendarDoctors = showInactiveDoctors
+      ? calendarDoctors
+      : calendarDoctors.filter((doctor) => !isInactiveCalendarDoctor(doctor));
+
+    return visibleCalendarDoctors.map((doctor) => {
+      if (doctor.status === "active" || doctor.isDeletedReference || doctor.deletedAt) {
+        return doctor;
+      }
+
+      return {
+        ...doctor,
+        nombre: doctor.nombre.includes("Doctor inactivo")
+          ? doctor.nombre
+          : `${doctor.nombre} · Doctor inactivo`,
+        color: "#6B7280",
+      };
+    });
+  }, [calendarDoctors, showInactiveDoctors]);
+
+  const calendarDoctorIds = useMemo(
+    () => new Set(displayedCalendarDoctors.map((doctor) => doctor.id)),
+    [displayedCalendarDoctors],
+  );
 
   const canSelectAllVisibleDoctors =
-    canViewAllDoctors || calendarDoctors.length > 1;
+    canViewAllDoctors || displayedCalendarDoctors.length > 1;
 
   const visibleAssistants = useMemo(() => {
     if (canViewAllDoctors) {
@@ -427,7 +486,10 @@ const AppointmentManager = ({
   }, [visibleAssistants]);
 
   useEffect(() => {
-    if (calendarDoctors.length === 0) return;
+    if (displayedCalendarDoctors.length === 0) {
+      setSelectedDoctorId("all");
+      return;
+    }
 
     const selectedDoctorIsValid =
       selectedDoctorId === "all"
@@ -437,13 +499,13 @@ const AppointmentManager = ({
     if (selectedDoctorIsValid) return;
 
     setSelectedDoctorId(
-      canSelectAllVisibleDoctors ? "all" : calendarDoctors[0].id,
+      canSelectAllVisibleDoctors ? "all" : displayedCalendarDoctors[0].id,
     );
   }, [
     canSelectAllVisibleDoctors,
     selectedDoctorId,
     calendarDoctorIds,
-    calendarDoctors,
+    displayedCalendarDoctors,
   ]);
 
   useEffect(() => {
@@ -469,7 +531,7 @@ const AppointmentManager = ({
   }, [assistants]);
 
   const doctorFilterOptions = useMemo<SearchableSelectOption[]>(() => {
-    const options = calendarDoctors.map((doctor) => ({
+    const options = displayedCalendarDoctors.map((doctor) => ({
       value: doctor.id,
       label: doctor.nombre,
       description: doctor.especialidad || "Sin especialidad",
@@ -496,7 +558,7 @@ const AppointmentManager = ({
       },
       ...options,
     ];
-  }, [canSelectAllVisibleDoctors, canViewAllDoctors, calendarDoctors]);
+  }, [canSelectAllVisibleDoctors, canViewAllDoctors, displayedCalendarDoctors]);
 
   const assistantFilterOptions = useMemo<SearchableSelectOption[]>(() => {
     return [
@@ -1697,7 +1759,7 @@ const AppointmentManager = ({
   return (
     <div className="space-y-4">
       <p className="text-xs text-muted-foreground">Resumen del día seleccionado · {selectedDayLabel(selectedDate)}</p>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 xl:grid-cols-5">
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(8rem,1fr))] gap-2 sm:grid-cols-3 xl:grid-cols-5">
         <Card>
           <CardContent className="p-3">
             <p className="text-xs text-muted-foreground">Total</p>
@@ -1741,9 +1803,32 @@ const AppointmentManager = ({
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
             <h2 className="text-base font-semibold">Filtros del calendario</h2>
 
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+              <div className="flex w-full min-w-0 items-center justify-between gap-3 rounded-lg border bg-muted/30 px-3 py-2 sm:w-auto">
+                <div className="min-w-0">
+                  <Label
+                    htmlFor="agenda-show-inactive-doctors"
+                    className="cursor-pointer text-sm font-medium"
+                  >
+                    Mostrar doctores inactivos
+                  </Label>
+                  <p className="text-xs text-muted-foreground">
+                    {inactiveDoctorCount === 0
+                      ? "Sin referencias históricas"
+                      : `${inactiveDoctorCount} ${inactiveDoctorCount === 1 ? "referencia histórica" : "referencias históricas"}`}
+                  </p>
+                </div>
+                <Switch
+                  id="agenda-show-inactive-doctors"
+                  checked={showInactiveDoctors}
+                  onCheckedChange={updateShowInactiveDoctors}
+                  aria-label="Mostrar doctores inactivos"
+                  disabled={inactiveDoctorCount === 0}
+                />
+              </div>
+
               {canCreateAppointment && (
-                <Button className="shadow-lg" onClick={openManualAppointmentDialog}>
+                <Button className="w-full shadow-lg sm:w-auto" onClick={openManualAppointmentDialog}>
                   <Plus className="mr-2 h-4 w-4" />
                   Nueva cita
                 </Button>
@@ -1839,7 +1924,7 @@ const AppointmentManager = ({
               aria-label="Fecha del calendario"
             />
 
-            <div className="flex w-fit rounded-lg border bg-muted/30 p-1">
+            <div className="grid w-full grid-cols-3 rounded-lg border bg-muted/30 p-1 sm:w-fit">
               <Button
                 type="button"
                 size="sm"
@@ -1869,7 +1954,7 @@ const AppointmentManager = ({
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex w-full flex-wrap items-center gap-2 lg:w-auto lg:justify-end">
             <Button variant="outline" size="sm" onClick={goToToday}>
               Hoy
             </Button>
@@ -1913,9 +1998,11 @@ const AppointmentManager = ({
           </Card>
         ) : (
           <>
-            {calendarDoctors.length === 0 && (
+            {displayedCalendarDoctors.length === 0 && (
               <div className="rounded-lg border border-dashed bg-card p-4 text-sm text-muted-foreground">
-                No hay doctores disponibles.
+                {calendarDoctors.length > 0
+                  ? "No hay doctores activos visibles. Activa ‘Mostrar doctores inactivos’ para consultar el historial."
+                  : "No hay doctores disponibles."}
               </div>
             )}
             {viewMode === "month" && (
@@ -1923,7 +2010,7 @@ const AppointmentManager = ({
                 selectedDate={selectedDate}
                 appointments={filteredAppointments}
                 blocks={scopedBlocks}
-                doctors={calendarDoctors}
+                doctors={displayedCalendarDoctors}
                 onSelectDate={handleSelectDateFromSummaryView}
                 onSelectAppointment={openAppointmentDetails}
               />
@@ -1934,7 +2021,7 @@ const AppointmentManager = ({
                 selectedDate={selectedDate}
                 appointments={filteredAppointments}
                 blocks={scopedBlocks}
-                doctors={calendarDoctors}
+                doctors={displayedCalendarDoctors}
                 onSelectDate={handleSelectDateFromSummaryView}
                 onSelectAppointment={openAppointmentDetails}
               />
@@ -1942,7 +2029,7 @@ const AppointmentManager = ({
 
             {viewMode === "doctorDay" && (
               <DailyCalendarView
-                doctors={calendarDoctors}
+                doctors={displayedCalendarDoctors}
                 appointments={filteredAppointments}
                 schedules={schedules}
                 blocks={scopedBlocks}

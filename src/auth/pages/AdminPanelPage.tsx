@@ -48,8 +48,8 @@ const AdminPanelPage = () => {
         label: "Configuración",
         icon: Settings2,
         permission: "settings.view" as const,
-        content: <Tabs defaultValue="pacientes" className="space-y-4">
-          <TabsList><TabsTrigger value="pacientes">Pacientes</TabsTrigger><TabsTrigger value="servicios">Servicios</TabsTrigger></TabsList>
+        content: <Tabs defaultValue="pacientes" className="min-w-0 space-y-4">
+          <TabsList className="grid h-auto w-full grid-cols-2 sm:w-fit"><TabsTrigger value="pacientes">Pacientes</TabsTrigger><TabsTrigger value="servicios">Servicios</TabsTrigger></TabsList>
           <TabsContent value="pacientes"><PatientInactivitySettings /></TabsContent>
           <TabsContent value="servicios"><ServiceCategorySettings /></TabsContent>
         </Tabs>,
@@ -76,8 +76,8 @@ const AdminPanelPage = () => {
   return (
     <main className="space-y-4">
       <section className="rounded-xl border bg-card p-4 shadow-sm">
-        <div className="flex items-center gap-2">
-          <h1 className="text-2xl font-semibold text-foreground">
+        <div className="flex min-w-0 items-start gap-2">
+          <h1 className="min-w-0 break-words text-2xl font-semibold text-foreground">
             Panel de administración
           </h1>
           <SectionHelp title="Acerca del Panel de administración">

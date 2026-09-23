@@ -51,7 +51,7 @@ const FormAppPatologicos: React.FC<Props> = ({ formData, setFormData }) => {
           </SelectContent>
         </Select>
       </div>
-      {padecimientosValue === 'true' && <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+      {padecimientosValue === 'true' && <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:grid-cols-4">
         <div className="flex items-center space-x-2">
           <Checkbox id="ets" checked={formData.ets} onCheckedChange={(v) => handleCheckboxChange('ets', !!v)} />
           <Label htmlFor="ets">ETS</Label>

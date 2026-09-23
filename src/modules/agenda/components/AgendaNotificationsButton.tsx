@@ -195,7 +195,7 @@ const AgendaNotificationsButton = ({
       </Button>
 
       <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <DialogContent className="max-h-[calc(100dvh-1rem)] max-w-2xl overflow-y-auto overscroll-contain">
           <DialogHeader>
             <DialogTitle>Notificaciones de agenda</DialogTitle>
             <DialogDescription>

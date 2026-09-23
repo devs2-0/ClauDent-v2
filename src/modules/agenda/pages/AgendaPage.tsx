@@ -777,7 +777,7 @@ const AgendaPage = () => {
     <main className="space-y-4">
       <section className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-semibold text-foreground">Agenda</h1>
             <SectionHelp title="Acerca de Agenda">
               <p>
@@ -809,12 +809,12 @@ const AgendaPage = () => {
       </section>
 
       <Tabs value={activeTab} onValueChange={setSelectedTab}>
-        <TabsList className="h-auto w-full flex-nowrap justify-start overflow-x-auto p-1">
+        <TabsList className="h-auto w-full max-w-full flex-nowrap justify-start overflow-x-auto overscroll-x-contain p-1">
           {visibleTabs.map((tab) => {
             const Icon = tab.icon;
 
             return (
-              <TabsTrigger key={tab.value} value={tab.value} className="gap-2">
+              <TabsTrigger key={tab.value} value={tab.value} className="shrink-0 gap-2">
                 <Icon className="h-4 w-4" />
                 {tab.label}
               </TabsTrigger>
@@ -1241,7 +1241,7 @@ const AgendaPage = () => {
       {confirmationDialog}
 
       <Dialog open={doctorDialogOpen} onOpenChange={setDoctorDialogOpen}>
-        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-2xl overflow-y-auto overscroll-contain">
           <DialogHeader>
             <DialogTitle>
               {editingDoctor ? "Editar doctor" : "Nuevo doctor"}
@@ -1375,7 +1375,7 @@ const AgendaPage = () => {
         open={assistantDialogOpen}
         onOpenChange={setAssistantDialogOpen}
       >
-        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
+        <DialogContent className="max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-2xl overflow-y-auto overscroll-contain">
           <DialogHeader>
             <DialogTitle>
               {editingAssistant ? "Editar asistente" : "Nuevo asistente"}

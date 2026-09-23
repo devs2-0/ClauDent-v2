@@ -100,7 +100,7 @@ const PatientRecordPage: React.FC = () => {
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6">
-      <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+      <div className="flex min-w-0 flex-wrap items-start gap-3 sm:flex-nowrap sm:items-center sm:gap-4">
         <Button variant="ghost" size="icon" onClick={() => navigate("/pacientes")}>
           <ArrowLeft className="h-5 w-5" />
         </Button>
@@ -122,7 +122,7 @@ const PatientRecordPage: React.FC = () => {
             type="button"
             variant="destructive"
             size="sm"
-            className="shrink-0"
+            className="ml-12 w-[calc(100%-3rem)] shrink-0 sm:ml-0 sm:w-auto"
             onClick={() => void handleRemovePatient()}
           >
             <Trash2 className="mr-2 h-4 w-4" />
@@ -134,14 +134,14 @@ const PatientRecordPage: React.FC = () => {
       <Card>
         <CardContent className="p-0">
           <Tabs value={allowedTab} onValueChange={setActiveTab}>
-            <TabsList className="h-auto w-full justify-start overflow-x-auto rounded-none border-b bg-transparent p-0">
+            <TabsList className="h-auto w-full max-w-full flex-nowrap justify-start overflow-x-auto overscroll-x-contain rounded-none border-b bg-transparent p-0">
               {visibleTabs.map((tab) => {
                 const Icon = tab.icon;
                 return (
                   <TabsTrigger
                     key={tab.value}
                     value={tab.value}
-                    className="rounded-none border-b-2 border-transparent px-4 py-3 data-[state=active]:border-primary data-[state=active]:bg-transparent sm:px-5"
+                    className="shrink-0 rounded-none border-b-2 border-transparent px-4 py-3 data-[state=active]:border-primary data-[state=active]:bg-transparent sm:px-5"
                   >
                     <Icon className="mr-2 h-4 w-4" />
                     {tab.label}
@@ -150,7 +150,7 @@ const PatientRecordPage: React.FC = () => {
               })}
             </TabsList>
 
-            <div className="p-4 sm:p-6">
+            <div className="min-w-0 p-3 sm:p-6">
               {visibleTabs.some((item) => item.value === "datos") && (<TabsContent value="datos" className="mt-0">
                 {deleted ? <p className="text-sm text-muted-foreground">El documento principal fue eliminado. El expediente conserva sus registros históricos en modo de consulta.</p> : <PatientData patient={patient} />}
               </TabsContent>)}
