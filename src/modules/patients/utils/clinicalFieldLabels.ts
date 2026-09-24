@@ -54,7 +54,7 @@ export const clinicalFieldLabels: Record<string, string> = {
   "motivo_ult_consulta_medica": "Motivo de última consulta médica",
   "fecha_ult_consulta_odontologica": "Última consulta odontológica",
   "motivo_ult_consulta_odontologica": "Motivo de última consulta odontológica",
-  "ha_sido_hospitalizado": "¿Ha sido hospitalizado en los últimos 5 años?",
+  "ha_sido_hospitalizado": "¿Ha sido hospitalizado en los últimos años?",
   "fecha": "Fecha (Aprox.)",
   "motivo": "Motivo",
   "peso_kg": "Peso (kg)",
