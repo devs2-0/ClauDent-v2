@@ -24,7 +24,7 @@ const FormHospitalizaciones: React.FC<Props> = ({ formData, setFormData }) => {
           checked={formData.ha_sido_hospitalizado} 
           onCheckedChange={(v) => setFormData(prev => ({...prev, ha_sido_hospitalizado: !!v}))} 
         />
-        <Label htmlFor="ha_sido_hospitalizado">¿Ha sido hospitalizado en los últimos 5 años?</Label>
+        <Label htmlFor="ha_sido_hospitalizado">¿Ha sido hospitalizado en los últimos años?</Label>
       </div>
       {formData.ha_sido_hospitalizado && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pl-6">
